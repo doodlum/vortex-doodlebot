@@ -127,6 +127,14 @@ explicitly. Ordinary release must preserve ownership of an app that is still run
 
 ## Verify and hand off
 
+Human documentation is a completion requirement for a behavior or workflow change. Update
+the mapped `/docs` guide and machine-facing contract/manual together, regenerate references
+with `pnpm run docs:generate`, and run the paired documentation check. This site is human-only:
+explain the operation for readers instead of publishing agent instructions or redirecting
+them to AGENTS files. Keep code examples, test/benchmark prerequisites and expected results
+current. `scripts/documentation-map.json` supplies the pairing; reviewers still establish
+semantic accuracy and coverage. The README introduces human use cases and links into the site.
+
 Select checks by target, task and affected contracts, then have QA inspect applicability
 against the actual diff. Documentation-only labels cannot waive changed executable behavior.
 Kit changes run CI; affected runtime contracts also run the account-free released-app core.

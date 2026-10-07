@@ -1,0 +1,123 @@
+{
+  "groups": [
+    {
+      "name": "MCP and renderer tools",
+      "sources": ["^src/.*\\.ts$"],
+      "human": [
+        "docs/reference/mcp-tools.md",
+        "docs/guides/calling-tools.md",
+        "docs/guides/ui-automation.md",
+        "docs/security.md",
+        "docs/troubleshooting.md"
+      ],
+      "ai": [
+        "harness/reference/mcp-tools.md",
+        "harness/AGENTS.md",
+        "ARCHITECTURE.md",
+        "KNOWLEDGE.md"
+      ]
+    },
+    {
+      "name": "CLI and configuration",
+      "sources": ["^harness/src/(cli|cliArgs|config|doctor|paths|slots)\\.ts$"],
+      "human": [
+        "docs/reference/cli.md",
+        "docs/reference/configuration.md",
+        "docs/getting-started/first-session.md",
+        "docs/guides/parallel-sessions.md"
+      ],
+      "ai": ["harness/reference/cli.md", "harness/AGENTS.md"]
+    },
+    {
+      "name": "Lifecycle and authentication",
+      "sources": [
+        "^harness/src/(instance|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
+      ],
+      "human": [
+        "docs/guides/lifecycle.md",
+        "docs/getting-started/authentication.md",
+        "docs/security.md",
+        "docs/troubleshooting.md"
+      ],
+      "ai": ["harness/AGENTS.md", "KNOWLEDGE.md", "harness/TESTING.md"]
+    },
+    {
+      "name": "Reusable script helpers",
+      "sources": [
+        "^harness/src/(kit|mcpClient|cdp|uiDriver|uiSession|localMod|deployment|collections|largeLibrary|tableProbes|collectionScale|offlineCollection|profiling|recording|slowDownload|downloadServer|vortexLog|jsonFile)\\.ts$"
+      ],
+      "human": [
+        "docs/reference/script-api.md",
+        "docs/guides/scripting.md",
+        "docs/guides/mod-workflows.md",
+        "docs/testing/benchmarks.md"
+      ],
+      "ai": ["harness/reference/script-api.md", "harness/AGENTS.md", "harness/TESTING.md"]
+    },
+    {
+      "name": "Coordination, builds and evidence",
+      "sources": [
+        "^harness/src/(lease|leaseCommand|operations|checkoutOperation|liveOperation|processRunner|kitLock|source|worktree|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|readiness|prChecks|prPreflight|vortexE2e)\\.ts$"
+      ],
+      "human": [
+        "docs/guides/parallel-sessions.md",
+        "docs/guides/source-development.md",
+        "docs/guides/evidence.md",
+        "docs/contributing.md"
+      ],
+      "ai": [
+        "harness/AGENT-WORKFLOW.md",
+        "harness/WORKFLOWS.md",
+        "harness/TESTING.md",
+        "harness/AGENTS.md"
+      ]
+    },
+    {
+      "name": "Checks and benchmarks",
+      "sources": [
+        "^harness/src/tests/",
+        "\\.test\\.ts$",
+        "^harness/.*playwright\\.config\\.ts$",
+        "^vitest\\.config\\.ts$",
+        "^package\\.json$"
+      ],
+      "human": [
+        "docs/testing/running.md",
+        "docs/testing/integration.md",
+        "docs/testing/unit.md",
+        "docs/testing/benchmarks.md",
+        "docs/reference/package-scripts.md"
+      ],
+      "ai": ["harness/TESTING.md", "harness/reference/package-scripts.md"]
+    },
+    {
+      "name": "Harness implementation coverage",
+      "sources": ["^harness/src/[^/]+\\.ts$"],
+      "human": [
+        "docs/reference/script-api.md",
+        "docs/reference/cli.md",
+        "docs/reference/configuration.md",
+        "docs/guides/lifecycle.md",
+        "docs/guides/parallel-sessions.md",
+        "docs/testing/running.md"
+      ],
+      "ai": [
+        "harness/reference/script-api.md",
+        "harness/reference/cli.md",
+        "harness/AGENTS.md",
+        "harness/TESTING.md"
+      ]
+    },
+    {
+      "name": "Documentation maintenance",
+      "sources": [
+        "^scripts/docs",
+        "^scripts/documentation-map\\.json$",
+        "^mkdocs\\.yml$",
+        "^requirements-docs\\.txt$"
+      ],
+      "human": ["docs/maintaining-documentation.md"],
+      "ai": ["AGENTS.md", "harness/KNOWLEDGE-ROUTES.md", "harness/AGENT-WORKFLOW.md"]
+    }
+  ]
+}

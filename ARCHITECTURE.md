@@ -24,7 +24,7 @@ method on the `api` object itself (e.g. `translate`, `sendNotification`,
 `runExecutable`), and (5) a literal `"type:<TYPE>"` prefix, dispatching a
 raw `{type, payload}` Redux action directly. None of the five tiers is
 allowlisted — the security boundary is the loopback bind + bearer token
-(see [README's Safety section](README.md#safety)); once an operator holds
+(see [human security guidance](docs/security.md)); once an operator holds
 the token they already have full write privileges, matching what a human
 at Vortex's own UI can do. `ACTION_HINTS`/`EXTENSION_API_HINTS`/`EVENT_HINTS`
 in `vortexControl.ts` document real positional argument order for the
@@ -50,7 +50,8 @@ your first real dispatch of anything newly discovered.
 `vortex_query` stays genuinely read-only (`selector`/`path` modes, neither
 can mutate anything), so it keeps working with no token at all; `api.ext`
 calls go through `vortex_dispatch` instead, since they can have side
-effects. `check_nexus_mod_updates` stays a dedicated write tool because it
+effects. `check_nexus_mod_updates` is registered as a diagnostic tool, available without
+a configured token, even though it contacts Nexus and consumes API quota. It stays dedicated because it
 does a real join no generic dispatcher can do in one call (resolving mod
 ids to full `IMod` records and filtering to Nexus-sourced ones before
 calling `nexusCheckModsVersion`).

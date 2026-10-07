@@ -5,6 +5,11 @@ Vortex extension is an MCP server exposing Vortex's state and UI; the harness (t
 CLI `doodlebot`, run as `pnpm run ai -- <command>`) launches isolated profiles of an unmodified
 Vortex, drives them, captures evidence and runs Playwright checks. A source checkout is optional.
 
+This is the AI operating manual. Human setup, tool use, LLM workflows, tests and benchmarks
+are documented separately in [the human site](../docs/index.md). Update both audiences when
+their shared behavior changes; `pnpm run docs:generate` refreshes their contract references,
+and `pnpm run docs:check` enforces the mapping in `scripts/documentation-map.json`.
+
 - [KNOWLEDGE-ROUTES.md](KNOWLEDGE-ROUTES.md): shared specialist reading paths and evidence rules.
 - [KNOWLEDGE.md](../KNOWLEDGE.md): confirmed pitfalls; search the affected area and recheck its scope.
 - [WORKFLOWS.md](WORKFLOWS.md): bug reproduction, features, designs, state and window-size
@@ -71,7 +76,9 @@ pnpm run ai -- login-import --cache-dir D:\other-cache [--from D:\bench-cache] [
   `null` tombstone. Vortex's forced-logout migration is handled (KNOWLEDGE.md).
 - Credential presence does not prove Nexus still accepts them; a revoked login means repeating
   `setup --oauth`.
-- A new `--cache-dir` starts logged out. `login-import` copies the login from `harness/.cache` (or
+- A nondefault cache with no OAuth file can inherit the default cache's login automatically.
+  A new cache is therefore not proof of anonymous execution; core fixtures write an explicit
+  null OAuth tombstone. `login-import` copies the login from `harness/.cache` (or
   `--from`) for the target `--installed`/`--dev-dir` selects; it refuses a logged-out source and
   replaces a login only with `--force`. Copies then rotate apart; if Nexus refuses one, import
   again or repeat setup.

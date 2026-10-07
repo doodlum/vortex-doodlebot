@@ -1,0 +1,91 @@
+site_name: Doodlebot
+site_description: Automated development and testing for Vortex, for developers, testers and people using LLM assistants.
+site_url: https://doodlum.github.io/vortex-doodlebot/
+repo_url: https://github.com/doodlum/vortex-doodlebot
+repo_name: doodlum/vortex-doodlebot
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+copyright: Doodlebot contributors. GPL-3.0-only. Nexus Mods theme by Nexus Mods.
+theme:
+  name: material
+  font: false
+  logo: assets/doodlebot-logo.svg
+  favicon: assets/doodlebot-logo.svg
+  palette:
+    scheme: nexus-slate
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+extra_css:
+  - theme/Stylesheets/extra.css
+  - stylesheets/doodlebot.css
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    not_found: warn
+    anchors: warn
+nav:
+  - Start here:
+      - What Doodlebot is for: index.md
+      - Install: getting-started/installation.md
+      - Your first session: getting-started/first-session.md
+      - Accounts and login: getting-started/authentication.md
+      - Troubleshooting: troubleshooting.md
+  - Use the tools:
+      - Call tools and read results: guides/calling-tools.md
+      - Manage app sessions: guides/lifecycle.md
+      - Drive the UI: guides/ui-automation.md
+      - Install, deploy and test mods: guides/mod-workflows.md
+      - Screenshots, video and layout: guides/capture.md
+      - Write scratch scripts: guides/scripting.md
+      - Run independent sessions: guides/parallel-sessions.md
+      - Work on Vortex source: guides/source-development.md
+      - Save test reports: guides/evidence.md
+  - Use an LLM:
+      - Connect your assistant: llms/connecting.md
+      - Choose and supervise a task: llms/workflows.md
+  - Tests and performance:
+      - Choose and run checks: testing/running.md
+      - Write unit tests: testing/unit.md
+      - Write real-app tests: testing/integration.md
+      - Write and compare benchmarks: testing/benchmarks.md
+  - Reference:
+      - CLI: reference/cli.md
+      - MCP tools: reference/mcp-tools.md
+      - Script helpers: reference/script-api.md
+      - Configuration: reference/configuration.md
+      - Package scripts: reference/package-scripts.md
+      - Architecture and limits: architecture.md
+      - Security and privacy: security.md
+  - Contribute:
+      - Make a change: contributing.md
+      - Maintain documentation: maintaining-documentation.md
+      - Credits and licenses: credits.md

@@ -6,8 +6,8 @@ feature regression is useful evidence for that feature, but is not a universal k
 
 ## Fast gate
 
-`pnpm run ci` runs types, lint, formatting, unit and filesystem/process tests, and the
-extension build. Run it for every kit change. Tests use synthetic credentials and an
+`pnpm run ci` runs types, lint, formatting, paired documentation checks and their negative
+controls, unit and filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials and an
 isolated lease directory. The operator's package-manager override must not affect them.
 
 Keep boundary and failure tests: authentication/redaction, stale profile guards, leases,
@@ -15,6 +15,12 @@ sandbox containment, refused destructive dialogs, incomplete installs, failed sh
 cache rotation/logout, and restoring a checkout after a failed check. Test runtime selection
 through a real child process and concurrent Electron resolution through separate processes.
 These tests do not download tools or contact Nexus.
+
+Human tests/benchmark run instructions live in `/docs/testing`; update those with this manual
+and the source-generated package/helper references when selection or prerequisites change.
+`docs:check` validates contract drift, paired change coverage and the human-only site boundary.
+`docs:test` verifies stale/missing/one-audience failures and executable documentation examples.
+`docs:build` is the separate strict MkDocs gate for site publication, using requirements-docs.txt.
 
 Workflow regression coverage must exercise actual boundaries: independent commands with the
 same owner are excluded; intentional nested work is allowed; partial holds unwind before retry;

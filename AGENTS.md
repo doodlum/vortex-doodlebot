@@ -41,8 +41,9 @@ The account owner completes the browser login; the kit caches and refreshes it. 
 
 ## Verification
 
-- `pnpm run ci` is the gate: types (extension and harness), lint, format check, unit tests,
-  build. It needs no Vortex.
+- `pnpm run ci` is the gate: types (extension and harness), lint, format check, paired
+  documentation checks/controls, unit tests and build. It needs no Vortex. The human site
+  also runs `pnpm run docs:build` with pinned Python packages for publication.
 - `pnpm run ai:test` runs the Playwright suite against a real Vortex, with a disposable test
   game and no account. It is outside `ci` because it needs Electron.
 - Say which one you ran. Passing unit tests alone is not evidence that a Vortex workflow works.
@@ -70,6 +71,16 @@ When asked to perform or test something in Vortex:
 A task is complete only when its result is verified, or a concrete external blocker is reported.
 
 ## Working on this repo
+
+- **Maintain both documentation audiences in the same change.** `README.md` and `docs/` are
+  human-focused; this file and the harness instruction/specialist files remain machine-facing
+  outside the published site. Update the mapped human guide and AI companion for changed
+  commands, tools, prerequisites, fixtures and guarantees. Run `pnpm run docs:generate` for
+  paired source-derived references and `pnpm run docs:check` to catch drift. Use
+  `scripts/documentation-map.json` for topic ownership. A generated contract or trivial prose
+  edit cannot substitute for an accurate human procedure; review both audiences against source.
+  A new test or benchmark needs human run instructions, prerequisites and an explanation of
+  what the result proves. See `docs/maintaining-documentation.md` for build/preview/deployment.
 
 - **One accountable owner per issue.** Follow [the canonical agent workflow](harness/AGENT-WORKFLOW.md).
   Parallel live workers have distinct owners, Vortex worktrees and slots. Independent QA starts

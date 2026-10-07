@@ -58,6 +58,13 @@ Do not relay raw model reasoning or treat task conversation as canonical memory.
 
 ## Canonical homes and maintenance
 
+Audience pairing is explicit: `/docs` and the README serve humans; these operating/specialist
+instructions serve AI workers. Source-generated references under `harness/reference` share
+the same facts as `docs/reference`, but are not published as site pages. Use
+`scripts/documentation-map.json` to update both audiences in tandem when a contract changes.
+Keep task-local guesses out of both canonical audiences until verified, and run the human
+site build for navigation, links and rendered examples.
+
 | Material                                                   | Home                                                                         |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Tool behavior and executable guarantees                    | Implementation plus meaningful regression tests                              |

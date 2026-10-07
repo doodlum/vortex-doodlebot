@@ -13,5 +13,10 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: check-yaml
+        exclude: ^mkdocs\.yml$
+      - id: check-yaml
+        name: Check trusted MkDocs extension tags
+        files: ^mkdocs\.yml$
+        args: [--unsafe]
       - id: check-added-large-files
       - id: check-merge-conflict

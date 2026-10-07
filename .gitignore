@@ -10,3 +10,7 @@ coverage/
 
 # Per-session Vortex worktrees of .vortex-src (see harness/src/worktree.ts)
 .vortex-worktrees/
+
+# Human documentation output and local Python environment.
+site/
+.venv-docs/

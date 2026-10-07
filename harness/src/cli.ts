@@ -220,7 +220,7 @@ Instance lifecycle
     --compare <json>     Diff against an earlier report: regressions vs pre-existing
     --json               Print the report as JSON (Playwright's output goes to stderr)
 
-Parallel sessions (harness/AGENTS.md, "Parallel sessions")
+Parallel sessions
   kit lock               Take the global kit lock before changing doodlebot itself (knowledge,
                          skills, harness, docs): --owner <name> [--ttl <min>, default 30]
                          [--wait <min>]. Take it again to renew.
@@ -318,8 +318,8 @@ Target and isolation (repeat the same flags for all commands)
                          up fails unless the renderer loaded production React
 
 Without a target flag: .vortex-src if present, otherwise installed Vortex.
-Read harness/AGENT-WORKFLOW.md and relevant sources in harness/KNOWLEDGE-ROUTES.md.
-For Vortex changes also follow its AGENTS.md and linked task-specific docs.
+Human guides: https://doodlum.github.io/vortex-doodlebot/
+For Vortex changes follow its contribution rules and task-specific documentation.
 `;
 async function main(): Promise<number> {
   const commandLine = process.argv.slice(2);

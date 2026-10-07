@@ -1,0 +1,35 @@
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+.md-typeset code,
+.md-typeset pre {
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+.md-typeset .hero {
+  display: block;
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+.md-typeset .use-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.md-typeset .use-case {
+  padding: 1rem;
+  border: 1px solid var(--md-typeset-table-color);
+  border-radius: 0.35rem;
+  background: var(--nexus-background-content-primary);
+}
+.md-typeset .use-case h3 {
+  margin-top: 0;
+}
+@media (max-width: 600px) {
+  .md-typeset .use-cases {
+    grid-template-columns: 1fr;
+  }
+}
