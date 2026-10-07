@@ -51,11 +51,12 @@ Vortex; source changes and features such as user-folder redirection require a so
 
 ## Current state and practical limits
 
-The core toolkit is implemented and tested. The recorded verification of code revision
-`343fd18` on **7 October 2026** passed 675 unit tests in 58 files and 21 account-free integration
-checks against official Vortex 2.8.0. Later branding-only CI also passed. Optional live-service,
-game and performance scenarios need their own checks; these results cover the recorded runs.
-See the repository's [Actions](https://github.com/doodlum/vortex-doodlebot/actions) for individual runs.
+The latest [kit CI run](https://github.com/doodlum/vortex-doodlebot/actions/runs/37673176382)
+at revision `1729a39` on **7 October 2026** passed the kit checks, including 675 unit tests in
+58 files and the documentation controls. Its account-free integration suite against official
+Vortex 2.8.0 passed 20 of 21 checks. The lifecycle test failed because Vortex did not exit
+cleanly; that failure remains unresolved. An earlier run at `343fd18` passed all 21 checks.
+Optional live-service, game and performance scenarios need their own checks.
 
 The tools expose **58 MCP registrations**, **40 CLI commands** and reusable script helpers.
 Availability depends on your runtime and bearer-token configuration. Diagnostics help you

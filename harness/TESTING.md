@@ -48,6 +48,13 @@ current and baseline reports when that kit identity differs from the readiness m
 
 ## Account-free real-app contract
 
+Recorded CI at `1729a39` on 7 October 2026 passed the kit gate (675 unit tests in 58 files,
+plus documentation controls), but the released Vortex 2.8.0 core passed 20/21. The lifecycle
+test failed with `Vortex did not exit cleanly`; fixture preservation remained enabled.
+Run [37673176382](https://github.com/doodlum/vortex-doodlebot/actions/runs/37673176382) retains
+the failure trace. Its cause is unconfirmed; do not treat an earlier 21/21 at `343fd18` as
+evidence that this run passed, or force shutdown/delete the fixture to hide the failure.
+
 `pnpm run ai:test:core` (`ai:test` is the same suite) runs only the four core `.spec.ts`
 files. It uses disposable profiles, games, and credentials, independent of the operator's
 login. Run it after changes to the extension, launch/cache code, UI driver or deployment,

@@ -32,6 +32,11 @@ Run this after extension, lifecycle/cache, UI-driver or deployment changes and b
 release. CI uses a checksum-pinned official Vortex 2.8.0 installer. Source runs alone do not
 establish released-app compatibility. See [integration test writing](integration.md).
 
+The [recorded run at `1729a39`](https://github.com/doodlum/vortex-doodlebot/actions/runs/37673176382)
+passed 20 of 21 checks. The lifecycle test failed because Vortex did not exit cleanly;
+the cause is still unconfirmed. If you hit this error, keep the failed profile and logs,
+check for the remaining app window, and confirm exit before cleanup or another run.
+
 ## Deliberate opt-in scenarios
 
 Run from the repository root. For scripts that attach to an existing app, first configure

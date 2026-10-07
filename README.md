@@ -51,10 +51,11 @@ Keep the same owner, target and slot/cache throughout the session. Live collecti
 ## Current state
 
 The toolkit has 58 MCP tool registrations, 40 CLI commands and reusable TypeScript helpers.
-Recorded core verification on 7 October 2026 at code revision `343fd18` passed 675 unit tests
-in 58 files and 21 account-free checks against official Vortex 2.8.0. Optional scenarios have
-their own prerequisites and test results. Check individual
-[Actions runs](https://github.com/doodlum/vortex-doodlebot/actions) for their outcomes.
+The latest [kit CI run](https://github.com/doodlum/vortex-doodlebot/actions/runs/37673176382)
+at revision `1729a39` passed the kit checks, including 675 unit tests in 58 files and the
+documentation controls. Its released Vortex 2.8.0 suite passed 20 of 21 checks; the lifecycle
+test failed because Vortex did not exit cleanly. An earlier run at `343fd18` passed all 21.
+The shutdown failure remains unresolved. Optional scenarios need their own checks.
 
 Doodlebot supplies the automation and evidence tools; your LLM client supplies the model,
 planning and delegation. You choose the intended behavior and what may happen to personal
