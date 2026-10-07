@@ -20,7 +20,7 @@ export class FixtureCleanup {
   remove(dir: string): void {
     if (this.failed)
       throw new Error(
-        `Preserved ${dir} because fixture launch or shutdown failed; inspect the running app before cleanup.`,
+        `Preserved ${dir} because fixture validation, launch or shutdown failed; inspect its evidence and any running app before cleanup.`,
         { cause: this.failure },
       );
     removeInstanceDir(dir);

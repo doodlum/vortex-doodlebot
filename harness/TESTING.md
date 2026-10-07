@@ -48,6 +48,10 @@ login. Run it after changes to the extension, launch/cache code, UI driver or de
 and before releasing the kit.
 
 - Launch and clean shutdown; cold/warm/fresh profile semantics and game activation.
+- No unrecoverable errors in the fixture's main/renderer logs, including rotated logs.
+  Check after confirmed shutdown and before deleting or resetting each profile; a responsive
+  MCP endpoint and passing UI assertions do not establish a healthy startup. Retain the
+  fixture evidence on a failed health check, and skip links to unrelated profiles.
 - Correct profile/debug ports; MCP tools available with writes enabled.
 - Snapshot references, React clicks/input, native select, keyboard, scroll and hover.
 - Real window dimensions and restoration, allowing at most two DIPs of OS rounding.

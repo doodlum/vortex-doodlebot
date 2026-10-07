@@ -67,6 +67,14 @@ it works against a released build.
 
 ### Install paths that fail silently
 
+- A portable released Vortex inside `harness/.artifacts` can inherit `harness/package.json`'s
+  `"type": "module"` for its unpacked bundled plugins. Blade & Sorcery then reports
+  `Cannot find module './common'` from `app.asar/index.html` even with `common.js` present.
+  Use an installation outside an ESM package scope, or put `{"type":"commonjs"}` in the
+  dedicated portable installation root, outside the app archive. No Vortex source, archive
+  or plugin code change is required. This was verified by the renderer's `findPackageJSON`
+  and anonymous before/after startup logs; `harness/src/tests/appHealth.ts` now rejects the
+  retained fatal log before profile cleanup.
 - An extension under an ESM package root never runs. Vortex says only
   `corrupt extension, failed to initialize: {"name":"doodlebot",...}`. Node takes a `.js` file's
   module type from the nearest `package.json`, so under `"type": "module"` the CommonJS bundle

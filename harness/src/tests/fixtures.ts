@@ -42,6 +42,7 @@ import { withLiveOperation } from "../liveOperation";
 import { resolveDevElectron } from "../electronRuntime";
 import { CONTEXT_ENV } from "../operations";
 import { FixtureCleanup, closeFixtureApp } from "./fixtureCleanup";
+import { assertNoUnrecoverableErrors } from "./appHealth";
 
 // Also cover direct spec invocation without the core global setup. Fixtures own new instances.
 delete process.env[CONTEXT_ENV];
@@ -111,6 +112,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
         fs.writeFileSync(authCacheFile(config), "null");
         await use(config);
       } finally {
+        await fixtureCleanup.preserveOnFailure(async () => assertNoUnrecoverableErrors(cacheDir));
         fixtureCleanup.remove(cacheDir);
       }
     },
@@ -130,6 +132,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       try {
         await use(dir);
       } finally {
+        await fixtureCleanup.preserveOnFailure(async () => assertNoUnrecoverableErrors(dir));
         fixtureCleanup.remove(dir);
       }
     },

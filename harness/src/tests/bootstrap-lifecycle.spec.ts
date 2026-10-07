@@ -4,6 +4,7 @@ import { ANONYMOUS, bootstrap, captureLogin, liveDir, readMarker, snapshotDir } 
 import { authCacheFile, stopStaleInstance } from "../instance";
 import { test, expect, freePort } from "./fixtures";
 import { sandboxConfig } from "../sandbox";
+import { assertNoUnrecoverableErrors } from "./appHealth";
 
 test("cold, warm and fresh starts preserve only the intended profile state", async ({
   config: parentConfig,
@@ -21,6 +22,11 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
   fs.mkdirSync(config.cacheDir, { recursive: true });
   fs.writeFileSync(authCacheFile(config), "null");
   const options = { skipGame: true, onProgress: (message: string) => messages.push(message) };
+  const stopAndInspect = () =>
+    fixtureCleanup.preserveOnFailure(async () => {
+      await stopStaleInstance(config);
+      assertNoUnrecoverableErrors(config.cacheDir);
+    });
   try {
     const cold = await bootstrap(config, options);
     expect(cold.tier).toBe("cold");
@@ -33,6 +39,7 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
     const warm = await bootstrap(config, options);
     expect(warm.tier).toBe("warm");
     expect(fs.readFileSync(sentinel, "utf8")).toBe("keep on warm start");
+    await stopAndInspect();
     const reset = await bootstrap(config, { ...options, fresh: true });
     expect(reset.tier).toBe("reset");
     expect(fs.existsSync(sentinel)).toBe(false);
@@ -42,6 +49,7 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
       oauthRefreshable: false,
     });
 
+    await stopAndInspect();
     const managed = await bootstrap(config);
     expect(managed.tier).toBe("cold");
     expect(managed.game.activated).toBe(true);
@@ -50,7 +58,7 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
       config.gameId,
     );
   } finally {
-    await fixtureCleanup.preserveOnFailure(() => stopStaleInstance(config));
+    await stopAndInspect();
     await test
       .info()
       .attach("bootstrap-progress", { body: messages.join("\n"), contentType: "text/plain" });
