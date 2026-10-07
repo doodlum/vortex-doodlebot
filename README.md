@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/doodlebot.png" alt="Doodlebot compact robot head logo" width="192" />
+  <img src="assets/doodlebot-banner.svg" alt="Doodlebot — Automated development &amp; testing for Vortex" width="1280" />
 </p>
 
 # vortex-doodlebot
