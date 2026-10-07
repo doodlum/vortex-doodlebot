@@ -53,7 +53,6 @@ jobs:
     timeout-minutes: 20
     env:
       VORTEX_AI_INSTALLED: "1"
-      VORTEX_AI_EXE: ${{ runner.temp }}\vortex-release\Vortex.exe
       VORTEX_AI_OWNER: ci-core
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +64,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Install pinned official Vortex 2.8.0
+        env:
+          VORTEX_AI_EXE: ${{ runner.temp }}\vortex-release\Vortex.exe
         shell: pwsh
         run: |
           $installer = Join-Path $env:RUNNER_TEMP 'vortex-setup-2.8.0.exe'
@@ -79,6 +80,8 @@ jobs:
             throw "Vortex installation failed: $($install.ExitCode)"
           }
       - run: pnpm run ai:test:core
+        env:
+          VORTEX_AI_EXE: ${{ runner.temp }}\vortex-release\Vortex.exe
       - uses: actions/upload-artifact@v4
         if: always()
         with:
