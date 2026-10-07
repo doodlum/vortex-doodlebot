@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/doodlebot.png" alt="Doodlebot compact robot head logo" width="192" />
+</p>
+
 # vortex-doodlebot
 
 Doodlebot is a development and testing toolkit for [Vortex](https://www.nexusmods.com/about/vortex/),
