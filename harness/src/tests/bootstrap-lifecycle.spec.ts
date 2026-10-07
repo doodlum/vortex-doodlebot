@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ANONYMOUS, bootstrap, captureLogin, liveDir, readMarker, snapshotDir } from "../bootstrap";
-import { stopStaleInstance } from "../instance";
+import { authCacheFile, stopStaleInstance } from "../instance";
 import { test, expect, freePort } from "./fixtures";
 import { sandboxConfig } from "../sandbox";
 
@@ -16,6 +16,9 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
     cdpPort: await freePort(),
   });
   const messages: string[] = [];
+  // Explicit logout tombstone prevents bootstrap from importing the operator's login.
+  fs.mkdirSync(config.cacheDir, { recursive: true });
+  fs.writeFileSync(authCacheFile(config), "null");
   const options = { skipGame: true, onProgress: (message: string) => messages.push(message) };
   try {
     const cold = await bootstrap(config, options);

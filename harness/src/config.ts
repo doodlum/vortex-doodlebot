@@ -5,11 +5,11 @@
  * check it and AGENTS.md can document it without either drifting from the code.
  */
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
 import { ConfigError } from "./errors";
+import { resolveDevElectron } from "./electronRuntime";
 import { resolveOwner } from "./lease";
 import { HARNESS_ROOT, REPO_ROOT } from "./paths";
 import { assignSlot, parseSlot, type SlotRequest, slotPaths } from "./slots";
@@ -209,11 +209,6 @@ export function resolveTarget(
   Or point at one directly:   VORTEX_AI_EXE / VORTEX_AI_DEV_DIR`);
   }
   return { kind: "installed", executable: exe, args: [], appName: "Vortex" };
-}
-
-/** Electron binary from a Vortex source checkout — only used by the `dev` target. */
-function resolveDevElectron(mainDir: string): string {
-  return createRequire(path.join(mainDir, "package.json"))("electron") as string;
 }
 
 /**

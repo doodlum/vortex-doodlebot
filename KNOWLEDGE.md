@@ -617,6 +617,25 @@ The instance lease is per cache (`instance:<cache dir>`, bare `instance` for the
 
 ## Tooling on Windows
 
+### Account-free lifecycle tests must prevent automatic login import
+
+`bootstrap` seeds a new cache from slot 0's OAuth cache. After the operator logs in, a fresh
+test profile can unexpectedly be signed in. Core fixtures write a `null` OAuth tombstone in
+their disposable cache before bootstrapping; this prevents import without touching the login.
+
+### Fractional display scaling rounds window sizes
+
+At 125% scaling, a requested 1280-DIP window can report 1281. Real-app resize assertions allow
+two DIPs of rounding on both axes and always restore the original size, even after failure.
+Read the DOM dimensions independently; a tool's requested size is not proof it resized.
+
+### Concurrent Electron resolution can overwrite a running binary
+
+Electron 44's module downloads a missing executable during `require("electron")`. Two setup
+commands can both download and one then fails replacing a DLL the other's app has loaded.
+`electronRuntime.ts` serializes resolution with a process lease beside the Electron package,
+including when different slots resolve the same binary, and releases it after failures.
+
 ### No `pnpm`, or only Node 20, on the agent's PATH
 
 A fresh shell can have Node 20 and no `pnpm`; `corepack pnpm` fails signature verification, and

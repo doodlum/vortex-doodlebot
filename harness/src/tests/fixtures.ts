@@ -36,6 +36,7 @@ import {
   installMcpExtension,
   prepareUserDataDir,
   recordLaunchedPid,
+  authCacheFile,
   removeInstanceDir,
 } from "../instance";
 import { VortexMcpClient } from "../mcpClient";
@@ -85,12 +86,15 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       let cdpPort = await freePort();
       while (cdpPort === mcpPort) cdpPort = await freePort();
       try {
-        await use(sandboxConfig(loadConfig({ cacheDir, mcpPort, cdpPort, apiKey: undefined })));
+        const config = sandboxConfig(loadConfig({ cacheDir, mcpPort, cdpPort, apiKey: undefined }));
+        // New profiles stay anonymous even when slot 0 has an operator's cached OAuth.
+        fs.writeFileSync(authCacheFile(config), "null");
+        await use(config);
       } finally {
         removeInstanceDir(cacheDir);
       }
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 240_000 },
   ],
 
   userDataDir: [
@@ -106,7 +110,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       await use(dir);
       removeInstanceDir(dir);
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 240_000 },
   ],
 
   vortexApp: [
@@ -134,7 +138,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
         lease.release();
       }
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 240_000 },
   ],
 
   vortexWindow: [
@@ -151,7 +155,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       if (main === undefined) throw new Error("Vortex's main window never appeared.");
       await use(main);
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 240_000 },
   ],
 
   mcp: [
@@ -162,7 +166,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       await client.waitUntilReady();
       await use(client);
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 240_000 },
   ],
 
   managedGame: [
@@ -173,7 +177,7 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       });
       await use({ gameId: game.gameId, gamePath: game.gamePath });
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 240_000 },
   ],
 });
 

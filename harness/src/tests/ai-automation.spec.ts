@@ -88,30 +88,41 @@ test.describe("acting on the UI", () => {
 });
 
 test.describe("viewport", () => {
-  test("resizes the real window and restores it", async ({ mcp }) => {
+  test("resizes the real window and restores it", async ({ mcp, vortexWindow }) => {
     const before = await mcp.call<{ window: { width: number; height: number } }>("ui_get_viewport");
 
-    const result = await mcp.call<{ actual: { width: number; height: number } }>(
-      "ui_set_viewport",
-      { width: 1280, height: 800 },
+    try {
+      const result = await mcp.call<{ actual: { width: number; height: number } }>(
+        "ui_set_viewport",
+        { width: 1280, height: 800 },
+      );
+      // Fractional Windows display scaling can round a requested DIP by one pixel.
+      expect(Math.abs(result.actual.width - 1280)).toBeLessThanOrEqual(2);
+      expect(Math.abs(result.actual.height - 800)).toBeLessThanOrEqual(2);
+
+      const after = await mcp.call<{ inner: { width: number } }>("ui_get_viewport");
+      expect(after.inner.width).toBe(await vortexWindow.evaluate(() => window.innerWidth));
+      expect(after.inner.width).toBeGreaterThan(400);
+    } finally {
+      await mcp.call("ui_set_viewport", before.window);
+    }
+    const restored = await mcp.call<{ window: { width: number; height: number } }>(
+      "ui_get_viewport",
     );
-    // The OS clamps to the window's minimum size, so assert we moved towards the
-    // request rather than that it was honoured exactly.
-    expect(result.actual.width).toBeLessThanOrEqual(1280);
-    expect(result.actual.width).toBeGreaterThan(400);
-
-    const after = await mcp.call<{ inner: { width: number } }>("ui_get_viewport");
-    expect(after.inner.width).toBeLessThanOrEqual(1280);
-
-    await mcp.call("ui_set_viewport", before.window);
+    expect(Math.abs(restored.window.width - before.window.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(restored.window.height - before.window.height)).toBeLessThanOrEqual(2);
   });
 
-  test("a sweep reports per-width findings and restores the original size", async ({ mcp }) => {
+  test("the extension sweep changes real dimensions and restores both axes", async ({ mcp }) => {
     const before = await mcp.call<{ window: { width: number; height: number } }>("ui_get_viewport");
 
     const sweep = await mcp.call<{
       restored: { width: number; height: number };
-      results: { viewport: { width: number }; issues: unknown[] }[];
+      results: {
+        viewport: { width: number };
+        inner: { width: number; height: number };
+        issues: unknown[];
+      }[];
     }>(
       "ui_responsive_sweep",
       {
@@ -124,10 +135,12 @@ test.describe("viewport", () => {
     );
 
     expect(sweep.results).toHaveLength(2);
-    expect(sweep.results.map((r) => r.viewport.width)).toEqual([1024, 1600]);
+    expect(sweep.results[1]!.inner.width).toBeGreaterThan(sweep.results[0]!.inner.width);
+    expect(sweep.results[1]!.inner.height).toBeGreaterThan(sweep.results[0]!.inner.height);
 
-    const after = await mcp.call<{ window: { width: number } }>("ui_get_viewport");
-    expect(Math.abs(after.window.width - before.window.width)).toBeLessThan(50);
+    const after = await mcp.call<{ window: { width: number; height: number } }>("ui_get_viewport");
+    expect(Math.abs(after.window.width - before.window.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(after.window.height - before.window.height)).toBeLessThanOrEqual(2);
   });
 });
 
@@ -149,15 +162,29 @@ test.describe("diagnostics", () => {
     expect(after.entries.some((e) => e.text.includes(needle))).toBe(true);
   });
 
-  test("layout scan reports against the current viewport", async ({ mcp }) => {
-    const result = await mcp.call<{
-      viewport: { width: number };
-      issues: { kind: string }[];
-    }>("ui_detect_layout_issues");
+  test("layout scan detects a known offscreen control", async ({ mcp, vortexWindow }) => {
+    await vortexWindow.evaluate(() => {
+      const button = document.createElement("button");
+      button.id = "layout-probe";
+      button.textContent = "Offscreen layout probe";
+      button.style.cssText = "position:fixed;left:-200px;top:200px;width:100px;height:40px";
+      document.body.prepend(button);
+    });
+    try {
+      const result = await mcp.call<{
+        viewport: { width: number };
+        issues: { kind: string; selector: string }[];
+      }>("ui_detect_layout_issues", { maxIssues: 500 });
 
-    expect(result.viewport.width).toBeGreaterThan(0);
-    // Advisory, so no assertion on the count — only that the shape is usable.
-    expect(Array.isArray(result.issues)).toBe(true);
+      expect(result.viewport.width).toBeGreaterThan(0);
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "offscreen", selector: "button#layout-probe" }),
+        ]),
+      );
+    } finally {
+      await vortexWindow.locator("#layout-probe").evaluate((el) => el.remove());
+    }
   });
 });
 

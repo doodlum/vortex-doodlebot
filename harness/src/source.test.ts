@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -127,3 +127,45 @@ it("leaves a kit command's environment alone, and cleans a Vortex command's", ()
   );
   expect(commandEnv(path.resolve("/elsewhere"), base, repo).npm_config_user_agent).toBeUndefined();
 });
+
+it.runIf(process.platform === "win32")(
+  "runs the selected manager with the intended Node and without parent pnpm overrides",
+  async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vortex manager "));
+    const shim = path.join(dir, "pnpm.cmd");
+    const output = path.join(dir, "observed.json");
+    fs.writeFileSync(shim, '@echo off\r\nnode "%~dp0probe.cjs" %*\r\n');
+    fs.writeFileSync(
+      path.join(dir, "probe.cjs"),
+      `
+require('fs').writeFileSync(${JSON.stringify(output)}, JSON.stringify({
+  executable: process.execPath, version: process.version, args: process.argv.slice(2),
+  parentManager: process.env.npm_config_user_agent, parentOverride: process.env.PNPM_TEST_OVERRIDE
+}));
+`,
+    );
+    const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+    vi.stubEnv(
+      pathKey,
+      `${path.dirname(process.execPath)}${path.delimiter}${process.env[pathKey] ?? ""}`,
+    );
+    vi.stubEnv("VORTEX_AI_PNPM", shim);
+    vi.stubEnv("npm_config_user_agent", "pnpm/9.15.0");
+    vi.stubEnv("PNPM_TEST_OVERRIDE", "wrong-parent");
+    try {
+      const manager = selectPnpmCommand("11.10.0", "9.15.0");
+      await runStreaming(manager.cmd, [...manager.args, "install"], {
+        cwd: dir,
+        label: "Runtime probe",
+      });
+      expect(JSON.parse(fs.readFileSync(output, "utf8"))).toEqual({
+        executable: process.execPath,
+        version: process.version,
+        args: ["install"],
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

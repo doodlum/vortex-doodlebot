@@ -47,15 +47,16 @@ Collections need a Nexus login, done once per machine:
 
 ## Where to read next
 
-| File                                                 | For                                                  |
-| ---------------------------------------------------- | ---------------------------------------------------- |
-| [AGENTS.md](AGENTS.md)                               | Agents: how to work in this repo                     |
-| [harness/AGENTS.md](harness/AGENTS.md)               | The operating manual: every command, lease and slot  |
-| [harness/WORKFLOWS.md](harness/WORKFLOWS.md)         | Bug fixes, features, designs, several agents at once |
-| [harness/PULL-REQUESTS.md](harness/PULL-REQUESTS.md) | Vortex PR titles, descriptions, briefs and review    |
-| [KNOWLEDGE.md](KNOWLEDGE.md)                         | Vortex behaviours that fail silently                 |
-| [ARCHITECTURE.md](ARCHITECTURE.md)                   | Why the extension reflects Vortex's API              |
-| `.claude/skills/`                                    | Skills: developing Vortex, driving its UI, UI tests  |
+| File                                                 | For                                                     |
+| ---------------------------------------------------- | ------------------------------------------------------- |
+| [AGENTS.md](AGENTS.md)                               | Agents: how to work in this repo                        |
+| [harness/AGENTS.md](harness/AGENTS.md)               | The operating manual: every command, lease and slot     |
+| [harness/WORKFLOWS.md](harness/WORKFLOWS.md)         | Bug fixes, features, designs, several agents at once    |
+| [harness/TESTING.md](harness/TESTING.md)             | Required test gates, compatibility and opt-in scenarios |
+| [harness/PULL-REQUESTS.md](harness/PULL-REQUESTS.md) | Vortex PR titles, descriptions, briefs and review       |
+| [KNOWLEDGE.md](KNOWLEDGE.md)                         | Vortex behaviours that fail silently                    |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                   | Why the extension reflects Vortex's API                 |
+| `.claude/skills/`                                    | Skills: developing Vortex, driving its UI, UI tests     |
 
 ## Connecting an MCP client
 

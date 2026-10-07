@@ -16,7 +16,12 @@ export default defineConfig({
     // harness/**/*.spec.ts are Playwright e2e and deliberately not matched.
     include: ["src/**/*.test.ts", "harness/src/**/*.test.ts"],
     // Unit tests must never take or read the machine-wide instance lease (lease.ts).
-    env: { VORTEX_AI_LEASE_DIR: path.join(os.tmpdir(), "vortex-ai-unit-test-leases") },
+    env: {
+      VORTEX_AI_LEASE_DIR: path.join(os.tmpdir(), "vortex-ai-unit-test-leases"),
+      // Operator setup must not change pure command-selection tests.
+      VORTEX_AI_PNPM: "",
+      VORTEX_AI_OWNER: "unit-tests",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

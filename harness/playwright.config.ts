@@ -14,6 +14,9 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./src/tests",
+  // Only the account-free integration contract belongs in the default gate.
+  testMatch: "**/*.spec.ts",
+  testIgnore: "**/oauth-restore.spec.ts",
   // Holds the machine-wide instance lease for the whole run.
   globalSetup: "./src/tests/leaseGlobalSetup.ts",
   // One at a time: the tools under test resize the real window and the MCP
@@ -21,7 +24,7 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   // A cold bootstrap plus an Electron launch is minutes, not seconds.
-  timeout: 10 * 60 * 1000,
+  timeout: 60_000,
   expect: { timeout: 30_000 },
   reporter: [
     ["list"],

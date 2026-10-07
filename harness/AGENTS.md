@@ -287,11 +287,14 @@ pnpm run ai -- e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch
 
 ```powershell
 pnpm run ci         # typecheck, lint, format, unit tests, build; no Vortex
-pnpm run ai:test    # Playwright against a real Vortex, account-free
+pnpm run ai:test:core # Playwright contract against a real Vortex, account-free (ai:test alias)
+pnpm run ai:test:oauth # opt-in: cached sandbox OAuth survives a fresh restore
 pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080" [--strict]
 ```
 
 - Say which suite ran and disclose skips. Quote comma lists in PowerShell.
+- See [TESTING.md](TESTING.md) for the core contract, pinned-release CI and opt-in scenarios.
+  Feature regressions and performance scripts stay outside the default kit gate.
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (WORKFLOWS.md has the state matrix).
 - `pnpm run ai:source` prepares `.vortex-src` (`--update`, `--no-build`, `--where`), which `up`

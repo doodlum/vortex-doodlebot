@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -15,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -36,3 +37,44 @@ jobs:
           path: |
             dist
             info.json
+
+  core-released:
+    needs: ci
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      VORTEX_AI_INSTALLED: "1"
+      VORTEX_AI_EXE: ${{ runner.temp }}\vortex-release\Vortex.exe
+      VORTEX_AI_OWNER: ci-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Install pinned official Vortex 2.8.0
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'vortex-setup-2.8.0.exe'
+          Invoke-WebRequest 'https://github.com/Nexus-Mods/Vortex/releases/download/v2.8.0/vortex-setup-2.8.0.exe' -OutFile $installer
+          $expected = '4a433bcd5b7d8a735af74d6c23081bfdce659ce70feeba384d43eb3a60028bb2'
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'Vortex installer checksum mismatch'
+          }
+          $destination = Split-Path $env:VORTEX_AI_EXE
+          $install = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$destination") -WindowStyle Hidden -Wait -PassThru
+          if ($install.ExitCode -ne 0 -or !(Test-Path -LiteralPath $env:VORTEX_AI_EXE)) {
+            throw "Vortex installation failed: $($install.ExitCode)"
+          }
+      - run: pnpm run ai:test:core
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: released-vortex-contract-results
+          path: |
+            harness/test-results
+            harness/playwright-report
+            harness/.artifacts
