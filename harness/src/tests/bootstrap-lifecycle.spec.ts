@@ -7,6 +7,7 @@ import { sandboxConfig } from "../sandbox";
 
 test("cold, warm and fresh starts preserve only the intended profile state", async ({
   config: parentConfig,
+  fixtureCleanup,
 }) => {
   test.setTimeout(240_000);
   const config = sandboxConfig({
@@ -49,7 +50,7 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
       config.gameId,
     );
   } finally {
-    await stopStaleInstance(config);
+    await fixtureCleanup.preserveOnFailure(() => stopStaleInstance(config));
     await test
       .info()
       .attach("bootstrap-progress", { body: messages.join("\n"), contentType: "text/plain" });

@@ -16,6 +16,30 @@ cache rotation/logout, and restoring a checkout after a failed check. Test runti
 through a real child process and concurrent Electron resolution through separate processes.
 These tests do not download tools or contact Nexus.
 
+Workflow regression coverage must exercise actual boundaries: independent commands with the
+same owner are excluded; intentional nested work is allowed; partial holds unwind before retry;
+known children keep protection after wrapper interruption; failed child registration waits for
+exit; expired/replaced acquisitions cannot be renewed or released by stale callers. Kit unlock
+requires the original acquisition ID; forced recovery still checks live operations and a clean tree.
+Fixture shutdown errors preserve the app PID, profile and parent cache, and fail the run;
+directory cleanup follows confirmed exit. Use synthetic
+repositories/processes for these cases, never temporary edits to a user's Vortex source.
+
+Watch tests check source edits/additions/deletions, contention without lost updates, finite
+build/copy/reload guards, immutable inputs through edit/Undo, build failure and cancellation,
+verified generation freshness, staged publication/copy rollback and foreign profiles at every
+attachment/reload boundary. Fixture tests include rejected shutdowns without an error value.
+Evidence tests
+check real CLI exclusion/cancellation, source/runtime drift, applicable gates, nonempty complete
+selection and changed E2E failures. A happy-path schema test alone cannot prove these contracts.
+Readiness regressions also cover native producer-kit drift, provenance on every production
+performance run, Vortex runtime/subject mismatch across checkouts, and skipped or TODO
+scoped/control tests. Native assertion controls retain reporter bytes for each test group;
+tests reject absent, inconsistent, empty or incomplete execution on either side, prove real
+Vitest output is collected, and verify cancellation waits for child exit before restoration.
+Retain the producing kit identity on both sides of native preflight and E2E execution; regenerate
+current and baseline reports when that kit identity differs from the readiness manifest.
+
 ## Account-free real-app contract
 
 `pnpm run ai:test:core` (`ai:test` is the same suite) runs only the four core `.spec.ts`
@@ -69,3 +93,17 @@ Use production React for performance runs, an idle machine, explicit fixture siz
 baseline comparisons. Do not treat a measurements-only script's successful exit as a passed
 performance test. Existing Vortex bugs may fail a targeted regression without invalidating
 doodlebot's core contract. Report each suite, failures and skips separately.
+
+## Final workflow integration
+
+After scoped checks, run the actual CI and released-app core commands through `evidence run`,
+using an isolated owner/slot and new reporter paths. Unit and core fixture environments start
+their own operation contexts; the collecting parent retains protection for its known child.
+This checks the composed workflow as well as the individual helpers.
+
+Fresh QA inspects the identified diff and independently exercises a refusal or failed check,
+recovery and a subsequent handoff. Synthetic repositories cover source mutation/restoration;
+an isolated released app covers runtime behavior. Inspect the final manifest and artifacts,
+then run `readiness`. Verify the actual final commit for publication; a previous local-diff
+receipt remains evidence for that diff only. See [the manual](AGENTS.md#recorded-checks-and-readiness)
+and [the workflow](AGENT-WORKFLOW.md) for commands and report responsibilities.

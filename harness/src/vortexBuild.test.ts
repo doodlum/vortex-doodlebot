@@ -132,10 +132,11 @@ describe("building a checkout", () => {
 
   it("refuses while a Vortex runs from the checkout, and while another owner holds it", async () => {
     const resource = checkoutResource(checkout);
-    acquireLease(resource, "kit", { ...env, pid: process.pid });
-    addInstancePid(resource, 4242, env);
+    const reservation = acquireLease(resource, "kit", { ...env, pid: process.pid });
+    addInstancePid(reservation.lease, 4242, env);
     await expect(
       buildCheckout({
+        owner: "kit",
         checkout,
         production: true,
         installedPnpm: "11.10.0",

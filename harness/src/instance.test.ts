@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,8 +16,18 @@ import {
   instanceLeaseResources,
   launchStdio,
   recordLaunchedPid,
+  registerLaunchedProcess,
 } from "./instance";
-import { LeaseHeldError, acquireLease, checkoutResource, readLease, type LeaseEnv } from "./lease";
+import {
+  LeaseHeldError,
+  acquireLease,
+  checkoutResource,
+  processAlive,
+  readLease,
+  releaseLease,
+  type LeaseEnv,
+} from "./lease";
+import { claimOperations, operationResource } from "./operations";
 
 let dir: string;
 let checkout: string;
@@ -136,7 +147,7 @@ describe("the leases a running Vortex needs", () => {
   it("lock the checkout while Vortex runs from it, after the launching command exits", () => {
     const config = devConfig();
     const hold = claimInstanceLease(config, "launch Vortex", env);
-    recordLaunchedPid(config, 4242, env);
+    recordLaunchedPid(hold.identities, 4242, env);
     hold.release();
     // `up` has exited; its Vortex still holds both.
     for (const resource of [instance(), checkoutResource(checkout)]) {
@@ -148,9 +159,69 @@ describe("the leases a running Vortex needs", () => {
     expect(() =>
       acquireLease(checkoutResource(checkout), "rebuilder", { ...env, pid: 1002 }),
     ).toThrow(/held by "kit-agent2"/);
-    forgetLaunchedPid(config, 4242, env);
+    forgetLaunchedPid(hold.identities, 4242, env);
     expect(readLease(checkoutResource(checkout), env)).toBeUndefined();
     expect(readLease(instance(), env)).toBeUndefined();
+  });
+
+  it.each(["kit-agent2", "other"])(
+    "launch bookkeeping retains its acquisition across replacement by %s",
+    (owner) => {
+      const config = devConfig();
+      const original = claimInstanceLease(config, "old launch", env);
+      for (const identity of original.identities)
+        releaseLease(identity.resource, identity.owner, { ...env, force: true });
+      const successor = claimInstanceLease(devConfig({ owner }), "new launch", env);
+      recordLaunchedPid(successor.identities, 4242, env);
+      const before = successor.identities.map(({ resource }) => readLease(resource, env)!.lease);
+      expect(() => recordLaunchedPid(original.identities, 1001, env)).toThrow(
+        /Lost .* acquisition/,
+      );
+      forgetLaunchedPid(original.identities, 4242, env);
+      original.release();
+      expect(successor.identities.map(({ resource }) => readLease(resource, env)!.lease)).toEqual(
+        before,
+      );
+      forgetLaunchedPid(successor.identities, 4242, env);
+      successor.release();
+    },
+  );
+
+  it("awaits an exact child after partial registration fails and preserves the successor", async () => {
+    env = { dir: path.join(dir, "leases"), isAlive: processAlive };
+    const config = devConfig();
+    const original = claimInstanceLease(config, "launch", env);
+    const operation = claimOperations(instanceLeaseResources(config), config.owner!, {
+      leaseEnv: env,
+    });
+    const resource = checkoutResource(checkout);
+    releaseLease(resource, config.owner!, { ...env, force: true });
+    const successor = acquireLease(resource, "successor", env).lease;
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    try {
+      await expect(
+        registerLaunchedProcess(child, original.identities, {
+          leaseEnv: env,
+          context: operation.context,
+        }),
+      ).rejects.toThrow(/Lost .* acquisition/);
+      expect(processAlive(child.pid!)).toBe(false);
+      expect(readLease(resource, env)!.lease).toEqual(successor);
+      expect(readLease(instance(), env)!.lease.instancePids).toEqual([]);
+      for (const guarded of operation.context.resources)
+        expect(readLease(operationResource(guarded), env)!.lease.holders).toEqual([process.pid]);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, "exit");
+        child.kill("SIGKILL");
+        await exited;
+      }
+      operation.release();
+      original.release();
+    }
   });
 
   it("for a command attaching to a running Vortex, are its checkout, not the configured one", () => {

@@ -15,19 +15,32 @@
  * deliberately simple indentation-and-regex heuristic over the declarations
  * enclosing each changed line; its limits are listed on `touchedSymbols`.
  */
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
 
-import { LeaseHeldError, checkoutResource, resolveOwner, withLeases } from "./lease";
+import { checkoutResource } from "./lease";
+import { withCheckoutOperation } from "./checkoutOperation";
+import type { OperationOptions } from "./operations";
+import {
+  abortOnSignals,
+  captureCheckoutIdentity,
+  digestSchema,
+  sameIdentity,
+  runEvidenceProcess,
+  type CheckoutIdentity,
+} from "./evidence";
 import { UPSTREAM, childEnv } from "./source";
+import { REPO_ROOT } from "./paths";
 
 const execFileAsync = promisify(execFile);
 
-export type CheckStatus = "pass" | "warn" | "fail" | "skip";
+export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "inconclusive";
 
 export interface CheckResult {
   id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "description";
@@ -40,8 +53,14 @@ export interface CheckResult {
 }
 
 export interface PreflightReport {
+  tool: "pr-preflight";
+  schemaVersion: 4;
+  kit: CheckoutIdentity;
+  kitAfter: CheckoutIdentity;
+  identity: CheckoutIdentity;
   checkout: string;
   base: string;
+  baseSha: string;
   head: string;
   headSha: string;
   mergeBase: string;
@@ -1787,28 +1806,98 @@ async function stateCheck(
 // ---------------------------------------------------------------------------
 
 export interface TestRunResult {
-  code: number;
+  code: number | null;
   output: string;
+  /** Exact reporter bytes, retained even when execution was incomplete. */
+  reporter?: z.infer<typeof nativeTestReporterSchema>;
 }
 
-export type TestRunner = (cwd: string, tests: string[]) => Promise<TestRunResult>;
+export const nativeTestReporterSchema = z.strictObject({
+  json: z.string(),
+  sha256: digestSchema,
+});
 
-/** `pnpm exec vitest run <tests>` in `cwd`, output captured. */
-export const vitestRunner: TestRunner = (cwd, tests) =>
-  new Promise((resolve, reject) => {
-    const quoted = tests.map((t) => `"${t.replace(/"/g, '\\"')}"`);
-    const child = spawn("pnpm", ["exec", "vitest", "run", ...quoted], {
+const testCount = z.number().int().nonnegative();
+const nativeVitestReportSchema = z.object({
+  numTotalTests: testCount,
+  numPassedTests: testCount,
+  numFailedTests: testCount,
+  numPendingTests: testCount,
+  numTodoTests: testCount,
+  testResults: z.array(
+    z.object({
+      assertionResults: z.array(
+        z.object({ status: z.enum(["passed", "failed", "pending", "skipped", "todo"]) }),
+      ),
+    }),
+  ),
+});
+
+/** Validate execution, not the causal meaning of a reverted failure. */
+export function completeNativeTestRun(run: Pick<TestRunResult, "code" | "reporter">): void {
+  const reporter = nativeTestReporterSchema.parse(run.reporter);
+  if (sha256(Buffer.from(reporter.json)) !== reporter.sha256)
+    throw new Error("native test reporter digest mismatch");
+  const report = nativeVitestReportSchema.parse(JSON.parse(reporter.json));
+  const assertions = report.testResults.flatMap((result) => result.assertionResults);
+  if (
+    assertions.length !== report.numTotalTests ||
+    assertions.filter((assertion) => assertion.status === "passed").length !==
+      report.numPassedTests ||
+    assertions.filter((assertion) => assertion.status === "failed").length !==
+      report.numFailedTests ||
+    report.numTotalTests !==
+      report.numPassedTests + report.numFailedTests + report.numPendingTests + report.numTodoTests
+  )
+    throw new Error("native test reporter has inconsistent execution counts");
+  if (report.numTotalTests === 0 || report.numPendingTests !== 0 || report.numTodoTests !== 0)
+    throw new Error("native control requires nonempty execution with zero skipped or todo tests");
+  if (run.code === null || run.code < 0 || (run.code === 0) !== (report.numFailedTests === 0))
+    throw new Error("native test exit code does not match its reported assertions");
+}
+
+export type TestRunner = (
+  cwd: string,
+  tests: string[],
+  options: OperationOptions & {
+    signal: AbortSignal;
+    checkout: string;
+  },
+) => Promise<TestRunResult>;
+
+/** Vitest's default output retains the assertion oracle; JSON establishes completeness. */
+export const vitestRunner: TestRunner = async (cwd, tests, options) => {
+  const require = createRequire(path.join(cwd, "package.json"));
+  const cli = path.join(path.dirname(require.resolve("vitest/package.json")), "vitest.mjs");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-vitest-"));
+  const reportFile = path.join(directory, "report.json");
+  try {
+    const result = await runEvidenceProcess({
+      ...options,
+      executable: process.execPath,
+      args: [
+        cli,
+        "run",
+        ...tests,
+        "--reporter=default",
+        "--reporter=json",
+        "--outputFile.json",
+        reportFile,
+      ],
       cwd,
-      shell: true,
-      windowsHide: true,
       env: childEnv(),
+      persistentResources: [checkoutResource(options.checkout)],
     });
-    let output = "";
-    child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? 1, output }));
-  });
+    options.signal.throwIfAborted();
+    const json = fs.existsSync(reportFile) ? fs.readFileSync(reportFile, "utf8") : undefined;
+    return {
+      ...result,
+      reporter: json === undefined ? undefined : { json, sha256: sha256(Buffer.from(json)) },
+    };
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+};
 
 interface SavedFile {
   file: string;
@@ -1873,7 +1962,19 @@ function tail(output: string, lines = 25): string[] {
 const MISSING_IMPORT =
   /does not provide an export named|is not exported by|Cannot find module|Failed to (?:resolve|load) (?:import|url)|is not a function|is not a constructor/;
 
-export interface RevertOptions {
+/** Output can disqualify a negative control, but cannot establish its intended assertion. */
+export function negativeFailureKind(
+  output: string,
+): "import" | "compile" | "setup" | "unclassified" {
+  if (MISSING_IMPORT.test(output)) return "import";
+  if (/SyntaxError|Transform failed|TS\d{4}:|Failed to compile/i.test(output)) return "compile";
+  if (/No test files found|beforeAll|beforeEach|setup failed|ENOENT|ECONNREFUSED/i.test(output))
+    return "setup";
+  return "unclassified";
+}
+
+export interface RevertOptions extends OperationOptions {
+  signal: AbortSignal;
   tests: string[];
   projectDir?: string;
   /** Paths to revert; default every non-test file in the diff (none when `revertHunks`). */
@@ -1983,31 +2084,68 @@ async function revertCheck(
   }
   const runAll = async (
     label: string,
-  ): Promise<{ passed: boolean; details: string[]; output: string }> => {
+  ): Promise<{
+    passed: boolean;
+    complete: boolean;
+    details: string[];
+    output: string;
+    runs: (Pick<TestRunResult, "code" | "reporter"> & { cwd: string; tests: string[] })[];
+  }> => {
     const details: string[] = [];
     let passed = true;
+    let complete = true;
     let output = "";
+    const runs: (Pick<TestRunResult, "code" | "reporter"> & { cwd: string; tests: string[] })[] =
+      [];
     for (const [cwd, group] of groups) {
       const where = path.relative(dir, cwd) || ".";
       options.onProgress?.(
         `[pr-preflight] ${label}: vitest run ${group.join(" ")} (in ${where}; paths relative to it)`,
       );
-      const run = await options.runner(cwd, group);
+      options.signal.throwIfAborted();
+      const run = await options.runner(cwd, group, { ...options, checkout: dir });
+      options.signal.throwIfAborted();
+      runs.push({ cwd: where, tests: group, code: run.code, reporter: run.reporter });
       output += run.output;
       details.push(
         `${label}: exit ${String(run.code)} in ${where} (paths relative to it): ${group.join(" ")}`,
       );
+      try {
+        completeNativeTestRun(run);
+      } catch (error) {
+        complete = false;
+        details.push(`${label}: incomplete test evidence: ${(error as Error).message}`);
+      }
       if (run.code !== 0) {
         passed = false;
         details.push(...tail(run.output));
       }
     }
-    return { passed, details, output };
+    return { passed, complete, details, output, runs };
   };
 
   const branch = await runAll("branch");
-  if (!branch.passed) {
-    return revertResult("fail", "the tests fail on the branch itself", branch.details);
+  const evidence = (reverted?: Awaited<ReturnType<typeof runAll>>, restored = false) => ({
+    branchRuns: branch.runs,
+    revertedRuns: reverted?.runs ?? [],
+    branchOutput: branch.output,
+    revertedOutput: reverted?.output ?? "",
+    branchOutputSha256: sha256(Buffer.from(branch.output)),
+    revertedOutputSha256: sha256(Buffer.from(reverted?.output ?? "")),
+    restored,
+    revertedFiles: reverted === undefined ? [] : toRevert,
+  });
+  if (!branch.complete || !branch.passed) {
+    return {
+      ...revertResult(
+        "fail",
+        branch.complete
+          ? "the tests fail on the branch itself"
+          : "branch test execution is incomplete",
+        branch.details,
+      ),
+      data: evidence(),
+    };
   }
 
   // Save the branch's exact working-tree bytes before touching anything.
@@ -2048,17 +2186,10 @@ async function revertCheck(
     }
     restored = true;
   };
-  const onSignal = (signal: NodeJS.Signals): void => {
-    restore();
-    process.stderr.write(`[pr-preflight] ${signal}: branch files restored\n`);
-    process.exit(130);
-  };
-  const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-  signals.forEach((s) => process.once(s, onSignal));
-
   let reverted: Awaited<ReturnType<typeof runAll>>;
   try {
     for (const entry of saved) {
+      options.signal.throwIfAborted();
       const hunkContent = partial.get(entry.file)?.content;
       if (hunkContent !== undefined) {
         fs.writeFileSync(entry.abs, hunkContent);
@@ -2088,7 +2219,6 @@ async function revertCheck(
     reverted = await runAll("reverted");
   } finally {
     restore();
-    signals.forEach((s) => process.removeListener(s, onSignal));
   }
 
   const mismatched = saved.filter((entry) => {
@@ -2098,14 +2228,17 @@ async function revertCheck(
   });
   const after = (await git(dir, ["status", "--porcelain", "--untracked-files=no"])).trim();
   if (mismatched.length > 0 || after !== "") {
-    return revertResult(
-      "fail",
-      `RESTORE FAILED: the branch files are not back as they were. A backup is in ${backup}`,
-      [
-        ...mismatched.map((m) => `differs: ${m.file}`),
-        ...after.split("\n").filter((l) => l !== ""),
-      ],
-    );
+    return {
+      ...revertResult(
+        "fail",
+        `RESTORE FAILED: the branch files are not back as they were. A backup is in ${backup}`,
+        [
+          ...mismatched.map((m) => `differs: ${m.file}`),
+          ...after.split("\n").filter((l) => l !== ""),
+        ],
+      ),
+      data: evidence(reverted),
+    };
   }
   fs.rmSync(backup, { recursive: true, force: true });
 
@@ -2117,33 +2250,41 @@ async function revertCheck(
     ...reverted.details,
     restoredNote,
   ];
-  if (reverted.passed) {
-    return revertResult(
-      "fail",
-      "the tests still pass with the fix reverted; they do not prove the fix",
-      details,
-    );
+  if (!reverted.complete || reverted.passed) {
+    return {
+      ...revertResult(
+        "fail",
+        reverted.complete
+          ? "the tests still pass with the fix reverted; they do not prove the fix"
+          : "reverted test execution is incomplete",
+        details,
+      ),
+      data: evidence(reverted, true),
+    };
   }
-  if (MISSING_IMPORT.test(reverted.output)) {
-    return revertResult(
-      "warn",
-      "the tests fail with the fix reverted, but apparently because something they import is missing. " +
-        "Check they also fail with only the wiring reverted (--revert <file>)",
+  const failureKind = negativeFailureKind(reverted.output);
+  return {
+    ...revertResult(
+      failureKind === "unclassified" ? "inconclusive" : "fail",
+      failureKind === "unclassified"
+        ? "branch passes and reverted run fails; inspect the output and identify the intended assertion before readiness"
+        : `reverted run failed during ${failureKind}; this does not prove the intended assertion`,
       details,
-    );
-  }
-  return revertResult(
-    "pass",
-    "the tests pass on the branch and fail with the fix reverted",
-    details,
-  );
+    ),
+    data: {
+      failureKind,
+      ...evidence(reverted, true),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
 
-export interface PreflightOptions {
+export interface PreflightOptions extends OperationOptions {
+  signal?: AbortSignal;
+  handleSignals?: boolean;
   checkout: string;
   base?: string;
   /** Compare against this ref without checking it out. Disables the revert check. */
@@ -2160,7 +2301,7 @@ export interface PreflightOptions {
   runner?: TestRunner;
   fetchPullRequest?: (pr: string, repo: string) => Promise<PullRequestText>;
   onProgress?: (message: string) => void;
-  /** Lease owner for the checkout lock (default VORTEX_AI_OWNER or "anonymous"). */
+  /** Named owner required for checkout mutation. */
   owner?: string;
   /** Lease directory override, for tests. */
   leaseDir?: string;
@@ -2176,6 +2317,29 @@ export async function fetchPullRequestText(pr: string, repo: string): Promise<Pu
 }
 
 export async function runPreflight(options: PreflightOptions): Promise<PreflightReport> {
+  if (options.skipRevert || options.head !== undefined) return runPreflightInside(options);
+  return withCheckoutOperation(
+    path.resolve(options.checkout),
+    options.owner,
+    "pr-preflight",
+    {
+      context: options.context,
+      leaseEnv: options.leaseEnv ?? { dir: options.leaseDir },
+      rewriting: true,
+    },
+    async (context) => {
+      const cancellation = abortOnSignals(options.signal, options.handleSignals !== false);
+      try {
+        return await runPreflightInside({ ...options, context, signal: cancellation.signal });
+      } finally {
+        cancellation.dispose();
+      }
+    },
+  );
+}
+
+async function runPreflightInside(options: PreflightOptions): Promise<PreflightReport> {
+  const kit = captureCheckoutIdentity(REPO_ROOT);
   const dir = path.resolve(options.checkout);
   if (!(await gitOk(dir, ["rev-parse", "--git-dir"]))) {
     throw new PreflightError(`${dir} is not a git checkout. Pass --checkout <dir>.`);
@@ -2233,32 +2397,19 @@ export async function runPreflight(options: PreflightOptions): Promise<Preflight
       details: [],
     });
   } else {
-    // The revert check rewrites the checkout, so it holds the checkout's lease: another
-    // owner patching the same tree (vortex-e2e, another preflight) must not interleave.
-    const owner = resolveOwner(options.owner);
-    try {
-      checks.push(
-        await withLeases(
-          [checkoutResource(dir)],
-          owner,
-          { purpose: "pr-preflight revert check", dir: options.leaseDir },
-          () =>
-            revertCheck(dir, files, mergeBase, {
-              tests: options.tests ?? [],
-              projectDir: options.projectDir,
-              revert: options.revert,
-              revertHunks: (options.revertHunks ?? []).map(parseHunkSpec),
-              runner: options.runner ?? vitestRunner,
-              onProgress: options.onProgress,
-            }),
-        ),
-      );
-    } catch (err) {
-      if (!(err instanceof LeaseHeldError)) throw err;
-      checks.push(
-        revertResult("fail", "refused: another owner holds this checkout", [err.message]),
-      );
-    }
+    checks.push(
+      await revertCheck(dir, files, mergeBase, {
+        context: options.context,
+        leaseEnv: options.leaseEnv ?? { dir: options.leaseDir },
+        signal: options.signal!,
+        tests: options.tests ?? [],
+        projectDir: options.projectDir,
+        revert: options.revert,
+        revertHunks: (options.revertHunks ?? []).map(parseHunkSpec),
+        runner: options.runner ?? vitestRunner,
+        onProgress: options.onProgress,
+      }),
+    );
   }
 
   checks.push(commentCheck(files));
@@ -2286,15 +2437,27 @@ export async function runPreflight(options: PreflightOptions): Promise<Preflight
     });
   }
 
+  const kitAfter = captureCheckoutIdentity(REPO_ROOT);
+  const kitUnchanged = sameIdentity(kit, kitAfter);
+  if (!kitUnchanged)
+    notes.push("Producing kit code changed during preflight; rerun with unchanged kit code.");
   return {
+    tool: "pr-preflight",
+    schemaVersion: 4,
+    kit,
+    kitAfter,
+    identity: captureCheckoutIdentity(dir, baseSha),
     checkout: dir,
     base,
+    baseSha,
     head,
     headSha,
     mergeBase,
     notes,
     checks,
-    passed: checks.every((check) => check.status !== "fail"),
+    passed:
+      kitUnchanged &&
+      checks.every((check) => check.status !== "fail" && check.status !== "inconclusive"),
   };
 }
 
@@ -2314,7 +2477,7 @@ export function formatPreflightReport(report: PreflightReport): string {
   lines.push(
     "",
     `Result: ${report.passed ? "no failures" : "FAILED"} (${String(count("fail"))} fail, ` +
-      `${String(count("warn"))} warn, ${String(count("skip"))} skipped). ` +
+      `${String(count("warn"))} warn, ${String(count("inconclusive"))} inconclusive, ${String(count("skip"))} skipped). ` +
       "Warnings are a to-review list; say in the PR how each was resolved.",
   );
   return lines.join("\n");

@@ -22,15 +22,11 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { ConfigError } from "./config";
-import {
-  checkoutResource,
-  processAlive,
-  readLease,
-  resolveOwner,
-  withLeases,
-  type LeaseEnv,
-} from "./lease";
+import { ConfigError } from "./errors";
+import { withCheckoutOperation } from "./checkoutOperation";
+import { type OperationContext } from "./operations";
+import { abortOnSignals, runEvidenceProcess } from "./processRunner";
+import { type LeaseEnv } from "./lease";
 import { bundleModeOf, type BundleMode } from "./productionMode";
 import {
   childEnv,
@@ -38,6 +34,7 @@ import {
   nestedPath,
   parsePnpmVersion,
   selectPnpmCommand,
+  needsShell,
 } from "./source";
 
 /** Tracked files Vortex's build regenerates. */
@@ -89,28 +86,39 @@ export function restoreChanged(dir: string, saved: SavedFile[]): string[] {
 export type BuildRunner = (
   command: string,
   args: string[],
-  options: { cwd: string; env: NodeJS.ProcessEnv },
+  options: { cwd: string; env: NodeJS.ProcessEnv; context?: OperationContext; leaseEnv?: LeaseEnv },
 ) => Promise<number>;
 
 /** Run with the output streamed: a Vortex build prints for minutes, captured it looks hung. */
-export const streamingRunner: BuildRunner = (command, args, options) =>
-  new Promise((resolve, reject) => {
+export const streamingRunner: BuildRunner = async (command, args, options) => {
+  const cancellation = abortOnSignals();
+  try {
     // One command line: through a shell (pnpm is a .cmd on Windows), separate args are
     // concatenated unescaped anyway, and Node warns about it (DEP0190).
     const line = [command, ...args]
       .map((part) => (/^[\w@%+=:,./\\-]+$/.test(part) ? part : `"${part.replace(/"/g, '\\"')}"`))
       .join(" ");
-    const child = spawn(line, {
+    const shell = needsShell(command);
+    const result = await runEvidenceProcess({
+      executable: shell ? line : command,
+      args: shell ? [] : args,
       cwd: options.cwd,
       env: options.env,
-      shell: true,
-      stdio: "inherit",
+      shell,
+      stdin: "inherit",
+      context: options.context,
+      leaseEnv: options.leaseEnv,
+      signal: cancellation.signal,
+      onOutput: (chunk) => process.stdout.write(chunk),
     });
-    child.once("error", reject);
-    child.once("close", (code) => resolve(code ?? 1));
-  });
+    return result.aborted ? 130 : (result.code ?? 1);
+  } finally {
+    cancellation.dispose();
+  }
+};
 
 export interface BuildOptions {
+  context?: OperationContext;
   checkout: string;
   production: boolean;
   owner?: string;
@@ -152,24 +160,13 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
   }
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8")) as { packageManager?: string };
   const wanted = parsePnpmVersion(manifest.packageManager);
-  const resource = checkoutResource(dir);
-  const running = readLease(resource, options.leaseEnv)?.lease.instancePids.filter(
-    options.leaseEnv?.isAlive ?? processAlive,
-  );
-  if (running !== undefined && running.length > 0) {
-    throw new ConfigError(
-      `A Vortex (pid ${running.join(", ")}) is running from ${dir}; it holds native modules open ` +
-        "and would be rebuilt underneath. Stop it first: `doodlebot down` with its --owner and " +
-        "cache flags.",
-    );
-  }
-  const owner = resolveOwner(options.owner);
   const report = options.onProgress ?? ((): void => undefined);
-  return withLeases(
-    [resource],
-    owner,
-    { ...options.leaseEnv, purpose: `build ${options.production ? "--production" : ""}`.trim() },
-    async () => {
+  return withCheckoutOperation(
+    dir,
+    options.owner,
+    "build checkout",
+    { context: options.context, leaseEnv: options.leaseEnv, rewriting: true },
+    async (context) => {
       const pnpm = selectPnpmCommand(
         wanted,
         options.installedPnpm ?? (await installedPnpmVersion(dir)),
@@ -186,7 +183,12 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
       let exitCode = 1;
       let restored: string[] = [];
       try {
-        exitCode = await (options.runner ?? streamingRunner)(pnpm.cmd, args, { cwd: dir, env });
+        exitCode = await (options.runner ?? streamingRunner)(pnpm.cmd, args, {
+          cwd: dir,
+          env,
+          context,
+          leaseEnv: options.leaseEnv,
+        });
       } finally {
         restored = restoreChanged(dir, saved);
       }
@@ -199,6 +201,8 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
         exitCode = await (options.runner ?? streamingRunner)("node", ["./build.mjs"], {
           cwd: path.join(dir, "src", "main"),
           env,
+          context,
+          leaseEnv: options.leaseEnv,
         });
         const still = missingBuildOutputs(dir);
         if (exitCode === 0 && still.length > 0) {

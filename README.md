@@ -2,7 +2,8 @@
 
 An agentic development and testing tool for [Vortex](https://www.nexusmods.com/about/vortex/),
 the Nexus Mods mod manager. AI agents use it to reproduce Vortex bugs, change Vortex's code,
-and verify the result in the real app, then open the pull request.
+and verify the result in the real app, then prepare or publish a pull request within the
+user's authorization.
 
 It has two halves:
 
@@ -17,6 +18,8 @@ It has two halves:
 
 Several doodlebots can work at once, each on its own issue in its own Vortex worktree and
 instance slot, each looking after itself. Changes to the kit itself go through a global kit lock.
+Follow [the canonical agent workflow](harness/AGENT-WORKFLOW.md) for routing, delegation,
+independent QA, strict readiness and cleanup. Supported live operations require named owners.
 
 Based on [vortex-mcp](https://github.com/alandtse/vortex-mcp) by Alan Tse. License:
 [GPL-3.0-only](LICENSE.md).
@@ -26,6 +29,7 @@ Based on [vortex-mcp](https://github.com/alandtse/vortex-mcp) by Alan Tse. Licen
 Windows, Node 22+, and this repo's pinned pnpm (9.15.0).
 
 ```powershell
+$env:VORTEX_AI_OWNER = 'operator'
 pnpm install
 pnpm run build                                   # the extension
 pnpm run ai -- setup --installed --sandbox       # installed Vortex, disposable game, no account
@@ -37,8 +41,8 @@ pnpm run ai:test                                 # the Playwright suite against 
 To work on Vortex itself:
 
 ```powershell
-pnpm run ai:source                                # finds your GitHub fork, clones it to .vortex-src, builds it
-pnpm run ai -- worktree add fix-123               # a worktree of it for one piece of work
+pnpm run ai:source -- --owner source-setup --no-build # prepares the managed base; workers use worktrees
+pnpm run ai -- worktree add fix-123 --owner fix-123 # a worktree for one worker
 pnpm run ai -- up --worktree fix-123 --slot auto --owner fix-123 --bethesda-sandbox
 ```
 
@@ -47,16 +51,18 @@ Collections need a Nexus login, done once per machine:
 
 ## Where to read next
 
-| File                                                 | For                                                     |
-| ---------------------------------------------------- | ------------------------------------------------------- |
-| [AGENTS.md](AGENTS.md)                               | Agents: how to work in this repo                        |
-| [harness/AGENTS.md](harness/AGENTS.md)               | The operating manual: every command, lease and slot     |
-| [harness/WORKFLOWS.md](harness/WORKFLOWS.md)         | Bug fixes, features, designs, several agents at once    |
-| [harness/TESTING.md](harness/TESTING.md)             | Required test gates, compatibility and opt-in scenarios |
-| [harness/PULL-REQUESTS.md](harness/PULL-REQUESTS.md) | Vortex PR titles, descriptions, briefs and review       |
-| [KNOWLEDGE.md](KNOWLEDGE.md)                         | Vortex behaviours that fail silently                    |
-| [ARCHITECTURE.md](ARCHITECTURE.md)                   | Why the extension reflects Vortex's API                 |
-| `.claude/skills/`                                    | Skills: developing Vortex, driving its UI, UI tests     |
+| File                                                       | For                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------- |
+| [AGENTS.md](AGENTS.md)                                     | Agents: how to work in this repo                        |
+| [harness/AGENTS.md](harness/AGENTS.md)                     | The operating manual: every command, lease and slot     |
+| [harness/WORKFLOWS.md](harness/WORKFLOWS.md)               | Bug fixes, features, designs, several agents at once    |
+| [harness/AGENT-WORKFLOW.md](harness/AGENT-WORKFLOW.md)     | Task routing, worker briefs, ownership and readiness    |
+| [harness/TESTING.md](harness/TESTING.md)                   | Required test gates, compatibility and opt-in scenarios |
+| [harness/PULL-REQUESTS.md](harness/PULL-REQUESTS.md)       | Vortex PR titles, descriptions, briefs and review       |
+| [harness/KNOWLEDGE-ROUTES.md](harness/KNOWLEDGE-ROUTES.md) | Specialist reading paths and verified knowledge sharing |
+| [KNOWLEDGE.md](KNOWLEDGE.md)                               | Confirmed diagnostic traps                              |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                         | Why the extension reflects Vortex's API                 |
+| `.claude/skills/`                                          | Skills: developing Vortex, driving its UI, UI tests     |
 
 ## Connecting an MCP client
 
@@ -66,8 +72,9 @@ Collections need a Nexus login, done once per machine:
 claude mcp add --transport http vortex http://127.0.0.1:3701/mcp -H "Authorization: Bearer <token>"
 ```
 
-For a stdio-only client, bridge with `mcp-remote`. To load the extension into your own
-Vortex instead of a harness instance, run `pnpm run install-plugin` and restart Vortex.
+For a stdio-only client, bridge with `mcp-remote`. Use `pnpm run ai -- setup --installed
+--sandbox --owner <you>` to provision an owned isolated instance, then `pnpm run ai -- up`
+with the same owner, target and cache/slot flags to reopen it. See the operating manual.
 
 ## Safety
 

@@ -1,0 +1,93 @@
+{
+  "tool": "doodlebot-readiness",
+  "schemaVersion": 2,
+  "mode": "final",
+  "task": {
+    "id": "replace-task-id",
+    "kind": "docs",
+    "target": "doodlebot",
+    "summary": "Replace with actual documentation change",
+    "author": "author-owner"
+  },
+  "subject": {
+    "checkout": "C:/replace/with/doodlebot",
+    "headSha": "0000000000000000000000000000000000000000",
+    "baseSha": "0000000000000000000000000000000000000000",
+    "changesSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "changedFiles": ["README.md"],
+    "dirty": false
+  },
+  "kit": {
+    "checkout": "C:/replace/with/doodlebot",
+    "headSha": "0000000000000000000000000000000000000000",
+    "baseSha": "0000000000000000000000000000000000000000",
+    "changesSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "changedFiles": [],
+    "dirty": false
+  },
+  "risk": {
+    "contracts": [],
+    "reason": "Replace with actual diff applicability assessment",
+    "inspectedBy": "independent-reviewer"
+  },
+  "authorization": {
+    "vortexE2eRequested": false,
+    "appLaunchAllowed": false,
+    "sourceMutationAllowed": false,
+    "reference": "Replace with the user's actual scope and authorization"
+  },
+  "acceptance": [
+    {
+      "id": "docs-correct",
+      "criterion": "Replace with the concrete accepted outcome"
+    }
+  ],
+  "evidence": [
+    {
+      "role": "review",
+      "status": "pass",
+      "subject": {
+        "checkout": "C:/replace/with/doodlebot",
+        "headSha": "0000000000000000000000000000000000000000",
+        "baseSha": "0000000000000000000000000000000000000000",
+        "changesSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "changedFiles": ["README.md"],
+        "dirty": false
+      },
+      "reason": "Replace with source-grounded independent findings",
+      "inspectedBy": "independent-reviewer",
+      "criteria": ["docs-correct"],
+      "artifacts": [
+        {
+          "path": "C:/replace/with/artifact.json",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    },
+    {
+      "role": "kit-ci",
+      "status": "pass",
+      "subject": {
+        "checkout": "C:/replace/with/doodlebot",
+        "headSha": "0000000000000000000000000000000000000000",
+        "baseSha": "0000000000000000000000000000000000000000",
+        "changesSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "changedFiles": ["README.md"],
+        "dirty": false
+      },
+      "reason": "Replace with current collected pnpm run ci receipt",
+      "inspectedBy": "author-owner",
+      "criteria": [],
+      "artifacts": [
+        {
+          "path": "C:/replace/with/artifact.json",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "command": {
+        "path": "C:/replace/with/artifact.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  ]
+}

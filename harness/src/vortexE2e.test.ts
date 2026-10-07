@@ -3,10 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as evidence from "./evidence";
+import { REPO_ROOT } from "./paths";
 
 import { INSTANCE_RESOURCE, checkoutResource, readLease, type LeaseEnv } from "./lease";
 import { VORTEX_E2E_RESOURCE } from "./vortexE2e";
+import { runEvidenceProcess } from "./evidence";
 import {
   accountsForTest,
   callEnd,
@@ -300,10 +303,26 @@ describe("summary", () => {
 
 describe("compareRuns", () => {
   it("separates regressions from pre-existing failures", () => {
+    const metadata = {
+      selection: {
+        specs: [],
+        grep: null,
+        grepInvert: null,
+        configSha256: "c".repeat(64),
+        fixturePatches: [],
+        platform: "win32",
+        nodeVersion: "v24",
+        workers: 1 as const,
+        retries: 0 as const,
+        ci: true as const,
+      },
+      accounts: { free: false, premium: false },
+    };
     const baseline = {
+      ...metadata,
       headSha: "b".repeat(40),
       outcomes: [
-        outcome("still-broken", "failed"),
+        { ...outcome("still-broken", "failed"), failureFingerprint: "f".repeat(64) },
         outcome("newly-broken", "passed"),
         outcome("fixed", "failed"),
         outcome("dropped", "passed"),
@@ -311,8 +330,9 @@ describe("compareRuns", () => {
       credentialSkipped: [{ id: "was-skipped", file: "", line: 0, title: "", accounts: [] }],
     };
     const current = {
+      ...metadata,
       outcomes: [
-        outcome("still-broken", "failed"),
+        { ...outcome("still-broken", "failed"), failureFingerprint: "f".repeat(64) },
         outcome("newly-broken", "failed"),
         outcome("fixed", "passed"),
         outcome("brand-new", "failed"),
@@ -329,6 +349,59 @@ describe("compareRuns", () => {
     expect(c.preExisting).toEqual([{ id: "still-broken", error: "still-broken broke" }]);
     expect(c.fixed).toEqual(["fixed"]);
     expect(c.notRun).toEqual(["dropped"]);
+  });
+
+  it("does not hide disappearing coverage, different failures, or credential/config drift", () => {
+    const metadata = {
+      selection: {
+        specs: [],
+        grep: null,
+        grepInvert: null,
+        configSha256: "c".repeat(64),
+        fixturePatches: [],
+        platform: "win32",
+        nodeVersion: "v24",
+        workers: 1 as const,
+        retries: 0 as const,
+        ci: true as const,
+      },
+      accounts: { free: false, premium: false },
+    };
+    const baseline = {
+      ...metadata,
+      headSha: "b".repeat(40),
+      credentialSkipped: [],
+      outcomes: [
+        outcome("skipped", "passed"),
+        outcome("credentials", "passed"),
+        { ...outcome("failure", "failed"), failureFingerprint: "a".repeat(64) },
+        outcome("missing", "passed"),
+      ],
+    };
+    const current = {
+      ...metadata,
+      selection: { ...metadata.selection, grepInvert: "missing" },
+      accounts: { free: true, premium: false },
+      credentialSkipped: [
+        {
+          id: "credentials",
+          file: "a.spec.ts",
+          line: 1,
+          title: "credentials",
+          accounts: ["premium" as const],
+        },
+      ],
+      outcomes: [
+        outcome("skipped", "skipped"),
+        { ...outcome("failure", "failed"), failureFingerprint: "b".repeat(64) },
+      ],
+    };
+    const c = compareRuns(current, baseline, "baseline.json");
+    expect(c.notRun).toEqual(["missing"]);
+    expect(c.lostCoverage).toEqual(["skipped", "credentials"]);
+    expect(c.changedFailures).toEqual(["failure"]);
+    expect(c.preExisting).toEqual([]);
+    expect(c.metadataChanges).toEqual(["selection.grepInvert", "accounts.free"]);
   });
 });
 
@@ -394,7 +467,7 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
     return async (invocation: PlaywrightInvocation): Promise<{ code: number }> => {
       const list = listing();
       list.config = { rootDir: path.join(invocation.cwd, "src", "tests") };
-      if (invocation.list) {
+      {
         const invert = invocation.args[invocation.args.indexOf("--grep-invert") + 1];
         if (invocation.args.includes("--grep-invert") && invert !== undefined) {
           const re = new RegExp(invert, "i");
@@ -413,8 +486,10 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
             suites: (f.suites ?? []).map((c) => keep(c, [c.title])),
           }));
         }
-        fs.writeFileSync(invocation.jsonFile, JSON.stringify(list));
-        return { code: 0 };
+        if (invocation.list) {
+          fs.writeFileSync(invocation.jsonFile, JSON.stringify(list));
+          return { code: 0 };
+        }
       }
       seen.fixtureDuringRun = fs.readFileSync(
         path.join(invocation.cwd, "src", "fixtures", "vortex-app.ts"),
@@ -423,7 +498,27 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
       seen.runArgs = invocation.args;
       expect(invocation.env.CI).toBe("1");
       expect(invocation.env.VORTEX_E2E_HEADED).toBeUndefined();
-      fs.writeFileSync(invocation.jsonFile, JSON.stringify(runReport()));
+      let index = 0;
+      const mark = (suite: NonNullable<PlaywrightJsonReport["suites"]>[number]): void => {
+        for (const spec of suite.specs ?? []) {
+          const failed = index++ > 0;
+          spec.tests = [
+            {
+              projectName: "",
+              status: failed ? "unexpected" : "expected",
+              results: [
+                {
+                  status: failed ? "failed" : "passed",
+                  error: failed ? { message: "existing assertion" } : undefined,
+                },
+              ],
+            },
+          ];
+        }
+        suite.suites?.forEach(mark);
+      };
+      list.suites?.forEach(mark);
+      fs.writeFileSync(invocation.jsonFile, JSON.stringify(list));
       return { code: 1 };
     };
   }
@@ -468,10 +563,13 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
     expect(readLease(checkoutResource(checkout), leaseEnv)).toBeUndefined();
 
     expect(report.headSha).toBe(run(checkout, ["rev-parse", "HEAD"]).trim());
+    expect(report.schemaVersion).toBe(4);
+    expect(report.kit).toEqual(evidence.captureCheckoutIdentity(REPO_ROOT));
+    expect(report.kitAfter).toEqual(report.kit);
     expect(report.patches).toEqual([
       { id: "fix", files: [FIXTURE], applied: true, alreadyPresent: false, restored: true },
     ]);
-    expect(report.counts).toMatchObject({ passed: 1, failed: 1, skipped: 1, credentialSkipped: 4 });
+    expect(report.counts).toMatchObject({ passed: 1, failed: 1, skipped: 0, credentialSkipped: 4 });
     expect(report.credentialSkipped.map((s) => s.accounts)).toEqual([
       ["free"],
       ["free"],
@@ -484,7 +582,7 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
       tool: "vortex-e2e",
     });
     expect(formatE2eReport(report)).toContain(
-      "1 passed, 1 failed, 1 skipped, 4 skipped for missing credentials",
+      "1 passed, 1 failed, 0 skipped, 4 skipped for missing credentials",
     );
   });
 
@@ -504,6 +602,37 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
     const second = await runVortexE2e({ ...options, compare: baseline });
     expect(second.compare?.regressions).toEqual([]);
     expect(second.compare?.preExisting.length).toBeGreaterThan(0);
+  });
+
+  it("records producing-kit drift during native E2E and fails the run after restoration", async () => {
+    const capture = evidence.captureCheckoutIdentity;
+    const kit = capture(REPO_ROOT);
+    const changed = { ...kit, changesSha256: "f".repeat(64) };
+    let current = kit;
+    const spy = vi
+      .spyOn(evidence, "captureCheckoutIdentity")
+      .mockImplementation((dir, base) => (dir === REPO_ROOT ? current : capture(dir, base)));
+    const runner = stubRunner({});
+    try {
+      const report = await runVortexE2e({
+        checkout,
+        artifactDir,
+        patches: [patch],
+        leaseEnv,
+        handleSignals: false,
+        runner: async (invocation) => {
+          const result = await runner(invocation);
+          current = changed;
+          return result;
+        },
+      });
+      expect(report).toMatchObject({ kit, kitAfter: changed, restore: { restored: true } });
+      expect(report.globalErrors.join(" ")).toContain("kit code changed during E2E");
+      expect(e2eExitCode(report)).not.toBe(0);
+      expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("refuses to patch a fixture with uncommitted changes and leaves it alone", async () => {
@@ -589,6 +718,38 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
     expect(run(checkout, ["status", "--porcelain"]).trim()).toBe("");
     expect(readLease(VORTEX_E2E_RESOURCE, leaseEnv)).toBeUndefined();
+  });
+
+  it("awaits a cancelled real child before restoring patched fixture bytes", async () => {
+    const controller = new AbortController();
+    let childExitedBeforeRestore = false;
+    await expect(
+      runVortexE2e({
+        checkout,
+        artifactDir,
+        owner: "cancel",
+        patches: [patch],
+        leaseEnv,
+        signal: controller.signal,
+        handleSignals: false,
+        runner: async (invocation) => {
+          if (invocation.list) return stubRunner({})(invocation);
+          const result = await runEvidenceProcess({
+            ...invocation,
+            executable: process.execPath,
+            args: ["-e", "console.log('ready'); setInterval(()=>{},1000)"],
+            persistentResources: [VORTEX_E2E_RESOURCE, checkoutResource(checkout)],
+            onOutput: () => controller.abort(),
+          });
+          expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_AFTER);
+          childExitedBeforeRestore = true;
+          return result;
+        },
+      }),
+    ).rejects.toThrow(/interrupted/);
+    expect(childExitedBeforeRestore).toBe(true);
+    expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
+    expect(readLease(checkoutResource(checkout), leaseEnv)).toBeUndefined();
   });
 
   it("runs while another owner's harness Vortex holds an instance", async () => {

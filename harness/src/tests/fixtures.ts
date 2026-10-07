@@ -32,17 +32,23 @@ import {
   buildInstanceEnv,
   claimInstanceLease,
   ensureExtensionBuilt,
-  forgetLaunchedPid,
   installMcpExtension,
   prepareUserDataDir,
-  recordLaunchedPid,
+  registerLaunchedProcess,
   authCacheFile,
-  removeInstanceDir,
 } from "../instance";
 import { VortexMcpClient } from "../mcpClient";
+import { withLiveOperation } from "../liveOperation";
+import { resolveDevElectron } from "../electronRuntime";
+import { CONTEXT_ENV } from "../operations";
+import { FixtureCleanup, closeFixtureApp } from "./fixtureCleanup";
+
+// Also cover direct spec invocation without the core global setup. Fixtures own new instances.
+delete process.env[CONTEXT_ENV];
 
 export interface AiFixtures {
   config: HarnessConfig;
+  fixtureCleanup: FixtureCleanup;
   /** Isolated user-data directory for this test file. */
   userDataDir: string;
   vortexApp: ElectronApplication;
@@ -78,43 +84,60 @@ export async function freePort(): Promise<number> {
 }
 
 export const test = base.extend<NoTestFixtures, AiFixtures>({
-  config: [
+  fixtureCleanup: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
+      await use(new FixtureCleanup());
+    },
+    { scope: "worker" },
+  ],
+  config: [
+    async ({ fixtureCleanup }, use) => {
       const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-ai-test-"));
       const mcpPort = await freePort();
       let cdpPort = await freePort();
       while (cdpPort === mcpPort) cdpPort = await freePort();
       try {
-        const config = sandboxConfig(loadConfig({ cacheDir, mcpPort, cdpPort, apiKey: undefined }));
+        const config = sandboxConfig(
+          loadConfig({
+            cacheDir,
+            mcpPort,
+            cdpPort,
+            apiKey: undefined,
+            owner: `core-worker-${process.pid}`,
+          }),
+        );
         // New profiles stay anonymous even when slot 0 has an operator's cached OAuth.
         fs.writeFileSync(authCacheFile(config), "null");
         await use(config);
       } finally {
-        removeInstanceDir(cacheDir);
+        fixtureCleanup.remove(cacheDir);
       }
     },
     { scope: "worker", timeout: 240_000 },
   ],
 
   userDataDir: [
-    async ({ config }, use) => {
+    async ({ config, fixtureCleanup }, use) => {
       // A dedicated temp directory rather than the shared .cache/live one: these
       // tests install mods and resize windows, and must not disturb a working
       // instance the operator has up.
       const dir = path.join(config.cacheDir, "instance");
       prepareUserDataDir(dir, config.target.appName);
-      await ensureExtensionBuilt();
-      installMcpExtension(dir);
+      await ensureExtensionBuilt({ owner: config.owner });
+      installMcpExtension(dir, undefined, { owner: config.owner });
       installSandboxExtension(dir, config);
-      await use(dir);
-      removeInstanceDir(dir);
+      try {
+        await use(dir);
+      } finally {
+        fixtureCleanup.remove(dir);
+      }
     },
     { scope: "worker", timeout: 240_000 },
   ],
 
   vortexApp: [
-    async ({ config, userDataDir }, use) => {
+    async ({ config, userDataDir, fixtureCleanup }, use) => {
       // Whatever the config resolved — a released Vortex.exe by default, or an
       // Electron pointed at a source checkout. CDP is opened so the screenshot
       // helpers can attach alongside Playwright's own connection.
@@ -122,18 +145,27 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       // a spec run some other way is still serialized against other agents.
       const lease = claimInstanceLease(config, "ai:test");
       try {
-        const app = await electron.launch({
-          executablePath: config.target.executable,
-          args: [...config.target.args, `--remote-debugging-port=${String(config.cdpPort)}`],
-          env: buildInstanceEnv(userDataDir, config),
-          cwd: path.dirname(config.target.executable),
-          timeout: 180_000,
-        });
-        const pid = app.process().pid;
-        if (pid !== undefined) recordLaunchedPid(config, pid);
-        await use(app);
-        await app.close().catch(() => undefined);
-        if (pid !== undefined) forgetLaunchedPid(config, pid);
+        const app = await fixtureCleanup.preserveOnFailure(() =>
+          withLiveOperation(config, "core fixture launch", async (context) => {
+            if (config.target.kind === "dev" && !fs.existsSync(config.target.executable))
+              config.target.executable = resolveDevElectron(config.target.args[0]!);
+            const launched = await electron.launch({
+              executablePath: config.target.executable,
+              args: [...config.target.args, `--remote-debugging-port=${String(config.cdpPort)}`],
+              env: buildInstanceEnv(userDataDir, config),
+              cwd: path.dirname(config.target.executable),
+              timeout: 180_000,
+            });
+            // Preserve the parent cache if registration cannot confirm child shutdown.
+            await registerLaunchedProcess(launched.process(), lease.identities, { context });
+            return launched;
+          }),
+        );
+        try {
+          await use(app);
+        } finally {
+          await closeFixtureApp(app, lease.identities, fixtureCleanup);
+        }
       } finally {
         lease.release();
       }

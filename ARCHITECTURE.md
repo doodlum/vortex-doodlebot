@@ -139,10 +139,11 @@ do not restore old refresh tokens or copy another game's mods into a blank profi
   `activate-game`, which have no plain dispatchable-action equivalent — this
   is the same interface Vortex uses internally to trigger them.
 - `src/mcpServer.ts` — MCP tool definitions + a `NodeStreamableHTTPServerTransport`
-  HTTP server, bound to `127.0.0.1` only. Stateless: a fresh transport is
-  connected to the shared `McpServer` per request (`sessionIdGenerator:
-undefined`), matching the 2026-07-28 spec's removal of sessions — there is
-  no session state to leak, TTL, or clobber across requests.
+  HTTP server, bound to `127.0.0.1` only. Each HTTP request creates its own
+  `McpServer` and transport with `sessionIdGenerator: undefined`; listener buffers
+  and UI references remain renderer-wide. See `src/mcpServer.ts` and its transport
+  tests. Harness operation guards coordinate supported clients, while raw MCP clients
+  still share the renderer's state and bearer authority.
 - `src/index.ts` — the Vortex extension entry point (`context.once`). This
   has to run in the renderer process: the event listeners and Redux store
   this extension talks to are all renderer-side, so `onceMain` would produce

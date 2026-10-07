@@ -1,215 +1,224 @@
-/**
- * Hot-reloading changes into a running Vortex without restarting it.
- *
- * What counts as "a change" depends on what you are working on, so there are two
- * modes and the harness picks by target:
- *
- * - **extension** (default, and the only option against an installed Vortex).
- *   Watches this repo's `dist/`, reinstalls the built extension into the live
- *   instance, and reloads the renderer. `location.reload()` re-runs extension
- *   initialisation, so the new code is live — this is the tight loop for
- *   developing the MCP tools themselves.
- * - **renderer** (`dev` target only). Also watches Vortex's own renderer bundle,
- *   for when you are changing Vortex's UI rather than the extension.
- *
- * Neither mode owns the build. They watch *output*, so they compose with
- * whatever produced it — `pnpm run dev` (tsup --watch), a one-off `pnpm run
- * build`, or webpack's watch in a Vortex checkout. Owning the build instead
- * would mean a second builder racing the first over the same output directory.
- *
- * A change to Vortex's MAIN process can never be hot-reloaded — nothing in the
- * renderer can reload main — so that is reported explicitly rather than
- * reloading and appearing to do nothing.
- */
-import { execFile } from "node:child_process";
-import fs from "node:fs";
+/** Watch extension source; each build/copy/reload cycle owns resources only until it finishes. */
 import path from "node:path";
-import { promisify } from "node:util";
 
 import { extensionRoot, type HarnessConfig } from "./config";
+import { ConfigError } from "./errors";
+import {
+  captureExtensionInputs,
+  ExtensionInputsChangedError,
+  type ExtensionInputs,
+} from "./extensionGeneration";
+import { expectedUserDataDir, ProfileMismatchError, readAutomationProfile } from "./runningProfile";
+import {
+  buildExtension,
+  ExtensionBuildError,
+  ExtensionBuildCancelledError,
+  extensionOutputResource,
+  type ExtensionBuildOptions,
+} from "./extensionBuild";
 import { installMcpExtension } from "./instance";
+import { LeaseHeldError, normalizedPath, requireNamedOwner } from "./lease";
+import { withLiveOperation } from "./liveOperation";
 import type { VortexMcpClient } from "./mcpClient";
+import { CONTEXT_ENV, withOperations, type OperationOptions } from "./operations";
 
-const execFileAsync = promisify(execFile);
-
-/** Built extension artifacts — a change here means the tools themselves changed. */
-export function extensionArtifacts(): string[] {
-  return [path.join(extensionRoot(), "dist", "index.js")];
+function changed(before: ExtensionInputs, after: ExtensionInputs): string[] {
+  if (before.digest === after.digest) return [];
+  const edits = [...new Set([...Object.keys(before.files), ...Object.keys(after.files)])].filter(
+    (file) => {
+      const a = before.files[file];
+      const b = after.files[file];
+      return a === null || a === undefined || b === null || b === undefined
+        ? a !== b
+        : !a.equals(b);
+    },
+  );
+  return edits.length > 0 ? edits : ["build environment"];
 }
 
-/** Vortex's own renderer output. Only meaningful for a `dev` target. */
-export function rendererArtifacts(config: HarnessConfig): string[] {
-  const source = config.target.sourceDir;
-  if (config.target.kind !== "dev" || source === undefined) return [];
-  const build = path.join(source, "src", "main", "build");
-  return [path.join(build, "renderer.js"), path.join(build, "assets", "css", "tailwind-v4.css")];
+/** A parent holding resources for the watcher's lifetime would defeat idle access. */
+export function assertStandaloneWatch(options: OperationOptions = {}): void {
+  if (options.context !== undefined || process.env[CONTEXT_ENV] !== undefined)
+    throw new ConfigError("Run watch directly, outside script/lease/evidence execution contexts.");
 }
 
-/** Vortex main-process output — a change here cannot be hot-reloaded. */
-export function mainArtifacts(config: HarnessConfig): string[] {
-  const source = config.target.sourceDir;
-  if (config.target.kind !== "dev" || source === undefined) return [];
-  return [path.join(source, "src", "main", "build", "main.cjs")];
-}
-
-interface Fingerprint {
-  [file: string]: number;
-}
-
-function fingerprintOf(files: string[]): Fingerprint {
-  const out: Fingerprint = {};
-  for (const file of files) {
-    try {
-      out[file] = fs.statSync(file).mtimeMs;
-    } catch {
-      out[file] = 0;
-    }
-  }
-  return out;
-}
-
-function changed(before: Fingerprint, after: Fingerprint): string[] {
-  return Object.keys(after).filter((f) => before[f] !== after[f]);
-}
-
-/** Rebuild the extension once. */
-export async function buildExtension(): Promise<void> {
-  await execFileAsync("pnpm", ["run", "build"], {
-    cwd: extensionRoot(),
-    shell: true,
-    maxBuffer: 20 * 1024 * 1024,
-  });
-}
-
-export interface WatchOptions {
-  /** The live instance directory to reinstall the extension into. */
+export interface WatchOptions extends OperationOptions {
   liveDir: string;
-  /** Run a build ourselves on each change instead of only reacting to one. */
-  build?: boolean;
-  /** Poll interval for the output fingerprint. */
+  source?: string;
   pollMs?: number;
-  /**
-   * Quiet period after a change before reloading. A build writes several files;
-   * reloading on the first would reload against a half-written bundle.
-   */
   debounceMs?: number;
+  retryMs?: number;
+  reloadTimeoutMs?: number;
+  reloadPollMs?: number;
+  buildRunner?: ExtensionBuildOptions["runner"];
   onEvent?: (event: HotReloadEvent) => void;
   signal?: AbortSignal;
 }
 
 export type HotReloadEvent =
-  | { type: "watching"; extension: string[]; renderer: string[] }
-  | { type: "changed"; what: "extension" | "renderer"; files: string[] }
+  | { type: "watching"; files: string[] }
+  | { type: "changed"; files: string[] }
   | { type: "building" }
+  | { type: "waiting"; message: string }
   | { type: "reloaded"; elapsedMs: number }
-  | { type: "main-changed"; files: string[] }
   | { type: "error"; message: string };
 
-/**
- * Watch build output and reload the running instance whenever it changes.
- *
- * Polls mtimes rather than using fs.watch: bundlers replace output by rename on
- * some platforms, which invalidates an fs.watch handle on the old inode and
- * silently stops delivering events — the watcher appears to work and then just
- * never fires again.
- */
+type ReloadClient = Pick<VortexMcpClient, "call">;
+
+function runtimeId(status: unknown): string | undefined {
+  if (status === null || typeof status !== "object" || !("runtimeId" in status)) return undefined;
+  return typeof status.runtimeId === "string" && status.runtimeId.length > 0
+    ? status.runtimeId
+    : undefined;
+}
+
+async function waitForReload(
+  mcp: ReloadClient,
+  before: string,
+  options: WatchOptions,
+  expected: string,
+): Promise<void> {
+  const deadline = Date.now() + (options.reloadTimeoutMs ?? 60_000);
+  while (Date.now() < deadline) {
+    const after = await readAutomationProfile(
+      mcp,
+      expected,
+      Math.max(1, Math.min(3_000, deadline - Date.now())),
+    ).catch((error: unknown) => {
+      if (error instanceof ProfileMismatchError) throw error;
+      return undefined;
+    });
+    const id = after === undefined ? undefined : runtimeId(after);
+    if (id !== undefined && id !== before) return;
+    // Once reload is requested, finish its bounded verification even after cancellation.
+    // An aborted sleep here would spin and release protection before readiness is known.
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await sleep(Math.min(options.reloadPollMs ?? 300, remaining));
+  }
+  throw new Error("The renderer did not establish a new runtime before the reload deadline.");
+}
+
 export async function watchAndReload(
-  mcp: VortexMcpClient,
+  mcp: ReloadClient,
   config: HarnessConfig,
   options: WatchOptions,
 ): Promise<void> {
+  assertStandaloneWatch(options);
+  const owner = requireNamedOwner(config.owner);
+  const source = options.source ?? extensionRoot();
+  const expected = expectedUserDataDir(config);
+  if (normalizedPath(path.join(options.liveDir, "userData")) !== normalizedPath(expected))
+    throw new ConfigError("The watch destination must be this configured cache's live profile.");
   const pollMs = options.pollMs ?? 400;
-  const debounceMs = options.debounceMs ?? 600;
   const emit = options.onEvent ?? ((): void => undefined);
+  let observed = captureExtensionInputs(source);
+  let stableSince = Date.now();
+  let applied: ExtensionInputs | undefined;
+  let failed: ExtensionInputs | undefined;
+  let waitingFor: string | undefined;
+  emit({ type: "watching", files: Object.keys(observed.files) });
 
-  const extFiles = extensionArtifacts();
-  const rendererFiles = rendererArtifacts(config);
-  const mainFiles = mainArtifacts(config);
-  emit({ type: "watching", extension: extFiles, renderer: rendererFiles });
-
-  let extPrint = fingerprintOf(extFiles);
-  let rendererPrint = fingerprintOf(rendererFiles);
-  let mainPrint = fingerprintOf(mainFiles);
-
-  const aborted = (): boolean => options.signal?.aborted === true;
-
-  while (!aborted()) {
-    await sleep(pollMs, options.signal);
-    if (aborted()) break;
-
-    if (mainFiles.length > 0) {
-      const nextMain = fingerprintOf(mainFiles);
-      const mainChanged = changed(mainPrint, nextMain);
-      if (mainChanged.length > 0) {
-        mainPrint = nextMain;
-        emit({ type: "main-changed", files: mainChanged });
-      }
+  while (options.signal?.aborted !== true) {
+    const next = captureExtensionInputs(source);
+    const edits = changed(observed, next);
+    if (edits.length > 0) {
+      observed = next;
+      stableSince = Date.now();
+      failed = undefined;
+      emit({ type: "changed", files: edits });
+    }
+    if (
+      (applied !== undefined && changed(applied, observed).length === 0) ||
+      (failed !== undefined && changed(failed, observed).length === 0) ||
+      Date.now() - stableSince < (options.debounceMs ?? 600)
+    ) {
+      await sleep(pollMs, options.signal);
+      continue;
     }
 
-    const nextExt = fingerprintOf(extFiles);
-    const nextRenderer = fingerprintOf(rendererFiles);
-    const extChanged = changed(extPrint, nextExt);
-    const rendererChanged = changed(rendererPrint, nextRenderer);
-    if (extChanged.length === 0 && rendererChanged.length === 0) continue;
-
-    emit({
-      type: "changed",
-      what: extChanged.length > 0 ? "extension" : "renderer",
-      files: [...extChanged, ...rendererChanged],
-    });
-
-    // Settle: keep waiting while the fingerprints are still moving, so a
-    // multi-file build produces one reload rather than several.
-    let settledExt = nextExt;
-    let settledRenderer = nextRenderer;
-    for (;;) {
-      await sleep(debounceMs, options.signal);
-      const againExt = fingerprintOf(extFiles);
-      const againRenderer = fingerprintOf(rendererFiles);
-      if (
-        changed(settledExt, againExt).length === 0 &&
-        changed(settledRenderer, againRenderer).length === 0
-      ) {
-        break;
-      }
-      settledExt = againExt;
-      settledRenderer = againRenderer;
-    }
-    extPrint = settledExt;
-    rendererPrint = settledRenderer;
-
+    const attempted = observed;
     const started = Date.now();
     try {
-      if (options.build === true) {
-        emit({ type: "building" });
-        await buildExtension();
-        extPrint = fingerprintOf(extFiles);
+      const loaded = await withLiveOperation(
+        config,
+        "watch extension cycle",
+        (context) =>
+          withOperations(
+            [extensionOutputResource(source)],
+            owner,
+            { context, leaseEnv: options.leaseEnv },
+            async (nested) => {
+              if (
+                options.signal?.aborted ||
+                changed(attempted, captureExtensionInputs(source)).length > 0
+              )
+                return false;
+              if (runtimeId(await readAutomationProfile(mcp, expected)) === undefined)
+                throw new Error("The running renderer has no runtime identity.");
+              emit({ type: "building" });
+              await buildExtension({
+                source,
+                owner,
+                context: nested,
+                leaseEnv: options.leaseEnv,
+                signal: options.signal,
+                runner: options.buildRunner,
+              });
+              // A bundler can read a mixture of files if the editor changes them mid-build.
+              if (
+                options.signal?.aborted ||
+                changed(attempted, captureExtensionInputs(source)).length > 0
+              )
+                return false;
+              let before = runtimeId(await readAutomationProfile(mcp, expected));
+              if (before === undefined)
+                throw new Error("The running renderer has no runtime identity.");
+              if (
+                options.signal?.aborted ||
+                changed(attempted, captureExtensionInputs(source)).length > 0
+              )
+                return false;
+              installMcpExtension(options.liveDir, source, {
+                owner,
+                context: nested,
+                leaseEnv: options.leaseEnv,
+              });
+              before = runtimeId(await readAutomationProfile(mcp, expected));
+              if (before === undefined)
+                throw new Error("The running renderer has no runtime identity.");
+              await mcp.call("ui_reload_renderer", {}, 3_000);
+              await waitForReload(mcp, before, options, expected);
+              return true;
+            },
+          ),
+        { leaseEnv: options.leaseEnv },
+      );
+      waitingFor = undefined;
+      if (loaded) {
+        applied = attempted;
+        emit({ type: "reloaded", elapsedMs: Date.now() - started });
       }
-
-      // Copy the rebuilt extension in before reloading, or the reload picks up
-      // the previous build and the change appears not to have taken.
-      if (extChanged.length > 0 || options.build === true) {
-        installMcpExtension(options.liveDir);
+    } catch (error) {
+      if (error instanceof ExtensionBuildCancelledError) return;
+      if (error instanceof ExtensionInputsChangedError) {
+        await sleep(pollMs, options.signal);
+        continue;
       }
-
-      const before = await mcp.call<{ runtimeId: string }>("automation_status");
-      await mcp.call("ui_reload_renderer");
-      // The renderer tears down and comes back; wait for MCP to answer again
-      // before reporting success, or the next command races the reload.
-      const deadline = Date.now() + 60_000;
-      for (;;) {
-        const after = await mcp
-          .call<{ runtimeId: string }>("automation_status", {}, 3_000)
-          .catch(() => undefined);
-        if (after !== undefined && after.runtimeId !== before.runtimeId) break;
-        if (Date.now() >= deadline)
-          throw new Error("The renderer did not reload within 60 seconds.");
-        await sleep(300, options.signal);
+      if (error instanceof LeaseHeldError) {
+        if (waitingFor !== error.message) emit({ type: "waiting", message: error.message });
+        waitingFor = error.message;
+        // Both wrappers have unwound: no partial acquisition is retained while waiting.
+        await sleep(options.retryMs ?? 1_000, options.signal);
+        continue;
       }
-      emit({ type: "reloaded", elapsedMs: Date.now() - started });
-    } catch (err) {
-      emit({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      if (!(error instanceof ExtensionBuildError)) throw error;
+      failed = attempted;
+      emit({
+        type: "error",
+        message: error.message + " Waiting for a source edit before rebuilding.",
+      });
     }
+    await sleep(pollMs, options.signal);
   }
 }
 

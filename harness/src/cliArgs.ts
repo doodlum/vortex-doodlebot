@@ -10,7 +10,7 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
   /** Every value of each string flag, for flags that may repeat (`--test a --test b`). */
   lists: Record<string, string[]>;
-  /** Everything after a bare `--` (the command for `lease run`), or a script's own arguments. */
+  /** The command for `lease run`/`evidence run`, or a script's own arguments. */
   passthrough: string[];
 }
 
@@ -71,6 +71,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   // separator makes the documented invocation work instead of printing help.
   const args = argv[0] === "--" ? argv.slice(1) : argv;
   const [command = "help", ...rest] = args;
+  const runsCommand = command === "lease" || command === "evidence";
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
   const lists: Record<string, string[]> = {};
@@ -106,16 +107,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     if (arg === "--") {
-      // `pnpm run ai:<script> -- --flag` forwards its separator after the command; only
-      // `lease run` gives it a meaning.
-      if (command !== "lease" || positional[0] !== "run") continue;
+      // Ordinary pnpm script separators are ignored; command wrappers preserve their tail.
+      if (!runsCommand || positional[0] !== "run") continue;
       passthrough.push(...rest.slice(i + 1));
       break;
     }
     if (!arg.startsWith("--")) {
-      // `lease run [flags] <command...>`: the command starts at its first word even without
+      // A wrapped command starts at its first word even without
       // `--`, which Windows PowerShell 5.1 strips from native command lines.
-      if (command === "lease" && positional.length === 1 && positional[0] === "run") {
+      if (runsCommand && positional.length === 1 && positional[0] === "run") {
         passthrough.push(...rest.slice(i));
         break;
       }
@@ -123,6 +123,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const body = arg.slice(2);
+    if (command === "watch" && body.split("=")[0] === "build")
+      throw new ConfigError("watch always builds extension source; remove obsolete --build.");
     const eq = body.indexOf("=");
     if (eq !== -1) {
       setValue(body.slice(0, eq), body.slice(eq + 1));

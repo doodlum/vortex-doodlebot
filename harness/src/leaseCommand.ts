@@ -5,9 +5,9 @@
  * Vortex's E2E suite by hand) are serialized with everything that does. The child gets
  * VORTEX_AI_OWNER, so kit commands inside it join the lease rather than refusing.
  */
-import { spawn } from "node:child_process";
-
 import { commandEnv } from "./source";
+import { abortOnSignals, runEvidenceProcess } from "./processRunner";
+import { claimOperations, inheritedOperation, type OperationContext } from "./operations";
 
 /**
  * Where the caller ran the command from. `pnpm run ai -- lease run …` starts the CLI in this
@@ -28,9 +28,11 @@ import {
   type LeaseEnv,
   type LeaseHeldError,
   type LeaseState,
+  requireNamedOwner,
 } from "./lease";
 
 export interface RunUnderLeaseOptions {
+  context?: OperationContext;
   command: string;
   args: string[];
   owner: string;
@@ -54,50 +56,63 @@ function quoteForShell(arg: string): string {
 
 /** Acquire, run with inherited stdio, release however it ends; resolves to its exit code. */
 export async function runUnderLease(options: RunUnderLeaseOptions): Promise<number> {
+  requireNamedOwner(options.owner);
   const held: HoldResult[] = [];
+  const context =
+    options.context ?? inheritedOperation(options.owner, process.env, options.leaseEnv);
+  let operation: ReturnType<typeof claimOperations> | undefined;
+  const releaseAll = (): void => {
+    operation?.release();
+    operation = undefined;
+    for (const hold of held.splice(0).toReversed()) hold.release();
+  };
   const holdAll = (): void => {
-    for (const resource of options.resources.slice(held.length)) {
-      held.push(
-        holdLease(resource, options.owner, {
-          ...options.leaseEnv,
-          purpose: options.purpose ?? `lease run: ${options.command} ${options.args.join(" ")}`,
-          onReclaim: options.onReclaim,
-        }),
-      );
+    try {
+      for (const resource of [...new Set(options.resources)].toSorted()) {
+        held.push(
+          holdLease(resource, options.owner, {
+            ...options.leaseEnv,
+            purpose: options.purpose ?? `lease run: ${options.command} ${options.args.join(" ")}`,
+            onReclaim: options.onReclaim,
+          }),
+        );
+      }
+      operation = claimOperations(options.resources, options.owner, {
+        context,
+        leaseEnv: options.leaseEnv,
+      });
+    } catch (error) {
+      releaseAll();
+      throw error;
     }
   };
-  const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-  let child: ReturnType<typeof spawn> | undefined;
-  // Ctrl+C reaches the child through the console; keep this process alive until the
-  // child has exited, so the lease is released after it rather than under it.
-  const onSignal = (signal: NodeJS.Signals): void => {
-    if (signal !== "SIGINT") child?.kill(signal);
-  };
+  let cancellation: ReturnType<typeof abortOnSignals> | undefined;
   try {
-    await waitForLease(holdAll, options.waitMs ?? 0, options.onWaiting);
-    signals.forEach((s) => process.on(s, onSignal));
+    await waitForLease(
+      holdAll,
+      context === undefined ? (options.waitMs ?? 0) : 0,
+      options.onWaiting,
+    );
+    cancellation = abortOnSignals();
     const shell = options.shell ?? process.platform === "win32";
-    return await new Promise<number>((resolve, reject) => {
-      child = spawn(
-        shell ? [options.command, ...options.args].map(quoteForShell).join(" ") : options.command,
-        shell ? [] : options.args,
-        {
-          cwd: callerCwd(options.cwd),
-          stdio: "inherit",
-          shell,
-          // A Vortex command (verify in a worktree) must not inherit the kit's pnpm 9.
-          env: {
-            ...commandEnv(callerCwd(options.cwd)),
-            ...options.env,
-            VORTEX_AI_OWNER: options.owner,
-          },
-        },
-      );
-      child.once("error", reject);
-      child.once("close", (code, signal) => resolve(code ?? (signal === null ? 1 : 128)));
+    const result = await runEvidenceProcess({
+      executable: shell
+        ? [options.command, ...options.args].map(quoteForShell).join(" ")
+        : options.command,
+      args: shell ? [] : options.args,
+      cwd: callerCwd(options.cwd),
+      shell,
+      stdin: "inherit",
+      env: { ...commandEnv(callerCwd(options.cwd)), ...options.env },
+      context: operation!.context,
+      leaseEnv: options.leaseEnv,
+      persistentResources: options.resources,
+      signal: cancellation.signal,
+      onOutput: (chunk) => process.stdout.write(chunk),
     });
+    return result.aborted ? 130 : (result.code ?? (result.signal === null ? 1 : 128));
   } finally {
-    signals.forEach((s) => process.removeListener(s, onSignal));
-    for (const hold of held.toReversed()) hold.release();
+    cancellation?.dispose();
+    releaseAll();
   }
 }

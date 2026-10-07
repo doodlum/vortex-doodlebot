@@ -24,7 +24,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 
 import { ConfigError } from "./errors";
 import { parseJson } from "./jsonFile";
@@ -35,6 +36,7 @@ export const INSTANCE_RESOURCE = "instance";
 export type LeaseMode = "implicit" | "explicit";
 
 export interface Lease {
+  acquisitionId: string;
   resource: string;
   owner: string;
   mode: LeaseMode;
@@ -80,6 +82,14 @@ export function resolveOwner(flag?: string): string {
   return value === undefined || value.trim() === "" ? ANONYMOUS_OWNER : value.trim();
 }
 
+/** Supported live operations never infer an anonymous worker. */
+export function requireNamedOwner(flag?: string): string {
+  const owner = resolveOwner(flag);
+  if (owner === ANONYMOUS_OWNER)
+    throw new ConfigError("A named owner is required: pass --owner <worker> or VORTEX_AI_OWNER.");
+  return owner;
+}
+
 /** The resource key for a Vortex checkout, the same however the path is spelled. */
 export function checkoutResource(dir: string): string {
   return `checkout:${normalizedPath(dir)}`;
@@ -93,10 +103,18 @@ export function isInstanceResource(resource: string): boolean {
 /** A path spelled the same however it was given: resolved, real, forward slashes. */
 export function normalizedPath(dir: string): string {
   let resolved = path.resolve(dir);
-  try {
-    resolved = fs.realpathSync.native(resolved);
-  } catch {
-    // A path that does not exist yet still gets a stable key.
+  let ancestor = resolved;
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      resolved = path.join(fs.realpathSync.native(ancestor), ...missing);
+      break;
+    } catch {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      missing.unshift(path.basename(ancestor));
+      ancestor = parent;
+    }
   }
   resolved = resolved.replace(/\\/g, "/").replace(/\/+$/, "");
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
@@ -136,10 +154,13 @@ export function evaluateLease(lease: Lease, env: LeaseEnv = {}): LeaseState {
   const holders = lease.holders.filter(isAlive);
   const instances = lease.instancePids.filter(isAlive);
   if (lease.mode === "explicit") {
+    // An idle reservation may expire; a running application must remain protected.
+    if (instances.length > 0)
+      return { lease, live: true, reason: `Vortex pid ${instances.join(", ")} still running` };
+    if (holders.length > 0)
+      return { lease, live: true, reason: `command pid ${holders.join(", ")} still running` };
     if (lease.expiresAt !== undefined && Date.parse(lease.expiresAt) <= now()) {
-      const running =
-        instances.length > 0 ? `; Vortex pid ${instances.join(", ")} still running` : "";
-      return { lease, live: false, reason: `expired at ${lease.expiresAt}${running}` };
+      return { lease, live: false, reason: `expired at ${lease.expiresAt}` };
     }
     if (lease.boundPid !== undefined && !isAlive(lease.boundPid)) {
       return { lease, live: false, reason: `bound process ${String(lease.boundPid)} exited` };
@@ -163,23 +184,43 @@ export function evaluateLease(lease: Lease, env: LeaseEnv = {}): LeaseState {
   return { lease, live: true, reason: `held by ${parts.join(" and ")}` };
 }
 
+const leaseSchema = z.strictObject({
+  acquisitionId: z.uuid(),
+  resource: z.string().min(1),
+  owner: z.string().min(1),
+  mode: z.enum(["implicit", "explicit"]),
+  purpose: z.string().optional(),
+  acquiredAt: z.iso.datetime(),
+  heartbeatAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime().optional(),
+  boundPid: z.number().int().positive().optional(),
+  holders: z.array(z.number().int().positive()),
+  instancePids: z.array(z.number().int().positive()),
+  host: z.string().min(1),
+});
+
 function readFile(file: string): Lease | undefined {
   let raw: string;
   try {
     raw = fs.readFileSync(file, "utf8");
-  } catch {
-    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new ConfigError(`Cannot read lease ${file}; inspect ownership before recovery.`, {
+      cause: error,
+    });
   }
   try {
-    const lease = parseJson<Lease>(raw);
-    // Other state lives in the lease directory too (slots.json): only a lease has these.
-    if (typeof lease.resource !== "string" || typeof lease.owner !== "string") return undefined;
-    lease.holders ??= [];
-    lease.instancePids ??= [];
+    const lease = leaseSchema.parse(parseJson<unknown>(raw));
+    if (fileFor(path.dirname(file), lease.resource) !== file)
+      throw new Error("resource does not match its lease filename");
     return lease;
-  } catch {
-    // A torn or hand-edited file: treat it as absent rather than blocking forever.
-    return undefined;
+  } catch (error) {
+    throw new ConfigError(
+      `Invalid lease ${file}; preserve it and inspect ownership before recovery.`,
+      {
+        cause: error,
+      },
+    );
   }
 }
 
@@ -209,32 +250,54 @@ function sleepSync(ms: number): void {
 export function withLeaseMutex<T>(dir: string, fn: () => T): T {
   fs.mkdirSync(dir, { recursive: true });
   const lock = path.join(dir, ".mutex");
+  const identity = JSON.stringify({ pid: process.pid, id: randomUUID() });
   const deadline = Date.now() + 10_000;
   for (;;) {
     try {
-      fs.closeSync(fs.openSync(lock, "wx"));
+      const fd = fs.openSync(lock, "wx");
+      try {
+        fs.writeFileSync(fd, identity);
+      } catch (error) {
+        fs.rmSync(lock, { force: true });
+        throw error;
+      } finally {
+        fs.closeSync(fd);
+      }
       break;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      // A mutex older than a few seconds belongs to a process that died mid-update.
-      try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > 5_000) fs.rmSync(lock, { force: true });
-      } catch {
-        // Removed by its owner meanwhile.
-      }
+      // Age cannot distinguish a dead owner from a paused process. Ambiguous mutexes
+      // require explicit recovery; competing reclaimers must not unlink a successor.
       if (Date.now() > deadline) {
-        throw new Error(`Timed out waiting for ${lock}; remove it if no doodlebot is running.`, {
-          cause: err,
-        });
+        throw new ConfigError(
+          `Timed out waiting for ${lock}; inspect its recorded process and lease state before explicit recovery.`,
+          { cause: err },
+        );
       }
       sleepSync(20);
     }
   }
+  let result!: T;
+  const failures: unknown[] = [];
   try {
-    return fn();
-  } finally {
-    fs.rmSync(lock, { force: true });
+    result = fn();
+  } catch (error) {
+    failures.push(error);
   }
+  try {
+    if (!fs.existsSync(lock) || fs.readFileSync(lock, "utf8") !== identity)
+      throw new ConfigError(`Lost mutex acquisition ${lock}; a replacement was left untouched.`);
+    fs.rmSync(lock);
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(
+      failures,
+      "Lease update and mutex cleanup failed; inspect recovery state.",
+    );
+  return result;
 }
 
 export class LeaseHeldError extends ConfigError {
@@ -248,6 +311,14 @@ export class LeaseHeldError extends ConfigError {
 
 function describeHeld(state: LeaseState, requestedBy: string): string {
   const { lease } = state;
+  if (lease.resource.startsWith("operation:"))
+    return (
+      `An independent operation is still running for ${lease.resource.slice("operation:".length)}` +
+      `${lease.purpose === undefined ? "" : ` (${lease.purpose})`}; refusing overlapping work.\n` +
+      `Independent commands are excluded even when they use the same named owner. ` +
+      `Wait for the known operation to finish; after interruption inspect its recorded child processes. ` +
+      `Retry the root operation after releasing partial holds. Execution contexts are only for intentional nested commands.`
+    );
   const instance = isInstanceResource(lease.resource);
   const what =
     lease.resource === INSTANCE_RESOURCE
@@ -314,6 +385,7 @@ export function acquireLease(
         if (existing.owner !== owner) throw new LeaseHeldError(state, owner);
         const joined: Lease = {
           ...existing,
+          acquisitionId: existing.acquisitionId,
           holders: [
             ...new Set([
               ...existing.holders.filter(env.isAlive),
@@ -336,6 +408,7 @@ export function acquireLease(
       reclaimed = state;
     }
     const lease: Lease = {
+      acquisitionId: randomUUID(),
       resource,
       owner,
       mode,
@@ -370,7 +443,7 @@ export function listLeases(env: LeaseEnv = {}): LeaseState[] {
     return [];
   }
   return names
-    .filter((name) => name.endsWith(".json"))
+    .filter((name) => name.endsWith(".json") && name !== "slots.json")
     .map((name) => readFile(path.join(resolved.dir, name)))
     .filter((lease): lease is Lease => lease !== undefined)
     .map((lease) => evaluateLease(lease, resolved));
@@ -384,11 +457,11 @@ function updateLease(
 ): Lease | undefined {
   const resolved = resolveEnv(env);
   const file = fileFor(resolved.dir, resource);
-  if (!fs.existsSync(file)) return undefined;
   return withLeaseMutex(resolved.dir, () => {
     const lease = readFile(file);
     if (lease === undefined) return undefined;
     const next = update(lease);
+    if (next === lease) return lease;
     if (next === undefined) fs.rmSync(file, { force: true });
     else writeFile(file, next);
     return next;
@@ -411,24 +484,104 @@ function pruned(lease: Lease, env: Required<LeaseEnv>): Lease | undefined {
  * Give up `pid`'s hold. An implicit lease with nothing else holding it is deleted; one
  * that still has a running Vortex stays, held by that Vortex, until `down`.
  */
-export function dropHolder(resource: string, pid: number, env: LeaseEnv = {}): void {
+export function dropHolder(
+  resource: string,
+  pid: number,
+  env: LeaseEnv = {},
+  acquisitionId?: string,
+): void {
   const resolved = resolveEnv(env);
   updateLease(resource, resolved, (lease) =>
-    pruned({ ...lease, holders: lease.holders.filter((p) => p !== pid) }, resolved),
+    acquisitionId !== undefined && lease.acquisitionId !== acquisitionId
+      ? lease
+      : pruned({ ...lease, holders: lease.holders.filter((p) => p !== pid) }, resolved),
   );
 }
 
-export function addInstancePid(resource: string, pid: number, env: LeaseEnv = {}): void {
-  updateLease(resource, env, (lease) => ({
-    ...lease,
-    instancePids: [...new Set([...lease.instancePids, pid])],
-  }));
+/** Register a known child so interruption of its wrapper does not expose its resources. */
+export interface LeaseIdentity {
+  resource: string;
+  owner: string;
+  acquisitionId: string;
 }
 
-export function removeInstancePid(resource: string, pid: number, env: LeaseEnv = {}): void {
+export function addHolder(identity: LeaseIdentity, pid: number, env: LeaseEnv = {}): void {
+  let registered = false;
+  updateLease(identity.resource, env, (lease) => {
+    if (
+      lease.owner !== identity.owner ||
+      lease.acquisitionId !== identity.acquisitionId ||
+      !evaluateLease(lease, env).live
+    )
+      throw new ConfigError(
+        `Lost ${identity.resource} acquisition while registering child ${pid}.`,
+      );
+    registered = true;
+    return { ...lease, holders: [...new Set([...lease.holders, pid])] };
+  });
+  if (!registered)
+    throw new ConfigError(`Cannot register child ${pid} on absent ${identity.resource}.`);
+}
+
+/** Conditional renewal: expiry/replacement is an error, never a new acquisition. */
+export function renewLease(
+  resource: string,
+  owner: string,
+  acquisitionId: string,
+  ttlMinutes: number,
+  env: LeaseEnv = {},
+): Lease {
   const resolved = resolveEnv(env);
-  updateLease(resource, resolved, (lease) =>
-    pruned({ ...lease, instancePids: lease.instancePids.filter((p) => p !== pid) }, resolved),
+  let renewed: Lease | undefined;
+  updateLease(resource, resolved, (lease) => {
+    if (
+      lease.owner !== owner ||
+      lease.acquisitionId !== acquisitionId ||
+      (lease.expiresAt !== undefined && Date.parse(lease.expiresAt) <= resolved.now()) ||
+      !evaluateLease(lease, resolved).live
+    )
+      throw new ConfigError(
+        `Lost ${resource} acquisition ${acquisitionId}; stop mutations and inspect leases and subprocesses before recovery.`,
+      );
+    const now = resolved.now();
+    renewed = {
+      ...lease,
+      heartbeatAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + ttlMinutes * 60_000).toISOString(),
+    };
+    return renewed;
+  });
+  if (renewed === undefined)
+    throw new ConfigError(
+      `Lost ${resource} acquisition ${acquisitionId}; no automatic reacquisition.`,
+    );
+  return renewed;
+}
+
+export function addInstancePid(identity: LeaseIdentity, pid: number, env: LeaseEnv = {}): void {
+  let registered = false;
+  updateLease(identity.resource, env, (lease) => {
+    if (
+      lease.owner !== identity.owner ||
+      lease.acquisitionId !== identity.acquisitionId ||
+      !evaluateLease(lease, env).live
+    )
+      throw new ConfigError(
+        `Lost ${identity.resource} acquisition while registering Vortex ${pid}.`,
+      );
+    registered = true;
+    return { ...lease, instancePids: [...new Set([...lease.instancePids, pid])] };
+  });
+  if (!registered)
+    throw new ConfigError(`Cannot register Vortex ${pid} on absent ${identity.resource}.`);
+}
+
+export function removeInstancePid(identity: LeaseIdentity, pid: number, env: LeaseEnv = {}): void {
+  const resolved = resolveEnv(env);
+  updateLease(identity.resource, resolved, (lease) =>
+    lease.owner !== identity.owner || lease.acquisitionId !== identity.acquisitionId
+      ? lease
+      : pruned({ ...lease, instancePids: lease.instancePids.filter((p) => p !== pid) }, resolved),
   );
 }
 
@@ -439,7 +592,7 @@ export interface ReleaseResult {
   /** The Vortex processes still running under the released lease. */
   stillRunning: number[];
   /**
-   * A checkout lease was not deleted because a Vortex still runs from it: the explicit hold
+   * A lease was not deleted because a Vortex still depends on it: the explicit hold
    * ended, and the lease stays, held by that Vortex, until it exits.
    */
   keptForRunning?: boolean;
@@ -452,18 +605,29 @@ export interface ReleaseResult {
 export function releaseLease(
   resource: string,
   owner: string,
-  options: LeaseEnv & { force?: boolean } = {},
+  options: LeaseEnv & { force?: boolean; acquisitionId?: string } = {},
 ): ReleaseResult {
   const resolved = resolveEnv(options);
   const file = fileFor(resolved.dir, resource);
-  if (!fs.existsSync(file)) return { released: false, reason: "not held", stillRunning: [] };
   return withLeaseMutex(resolved.dir, () => {
     const lease = readFile(file);
     if (lease === undefined) {
-      fs.rmSync(file, { force: true });
-      return { released: true, stillRunning: [] };
+      return { released: false, reason: "not held", stillRunning: [] };
     }
     const state = evaluateLease(lease, resolved);
+    if (
+      options.force !== true &&
+      options.acquisitionId !== undefined &&
+      (lease.acquisitionId !== options.acquisitionId ||
+        lease.owner !== owner ||
+        (lease.expiresAt !== undefined && Date.parse(lease.expiresAt) <= resolved.now()) ||
+        !state.live)
+    )
+      return {
+        released: false,
+        reason: `lost ${resource} acquisition ${options.acquisitionId}; inspect ownership before recovery`,
+        stillRunning: [],
+      };
     if (lease.owner !== owner && options.force !== true && state.live) {
       return {
         released: false,
@@ -472,9 +636,9 @@ export function releaseLease(
       };
     }
     const running = lease.instancePids.filter(resolved.isAlive);
-    if (options.force !== true && running.length > 0 && !isInstanceResource(lease.resource)) {
-      // A checkout Vortex is running from stays locked until that Vortex exits: releasing
-      // an explicit hold must not let someone rebuild or switch it underneath.
+    if (options.force !== true && running.length > 0) {
+      // Ending a reservation must neither expose a live app to another controller nor
+      // allow its checkout to be rewritten underneath it.
       writeFile(file, {
         ...lease,
         mode: "implicit",
@@ -538,16 +702,19 @@ export function releaseOwnerLeases(
 // ---------------------------------------------------------------------------
 
 /** Leases this process holds, with how many nested holds each has. */
-const heldHere = new Map<string, { resource: string; env: LeaseEnv; count: number }>();
+const heldHere = new Map<
+  string,
+  { resource: string; env: LeaseEnv; count: number; acquisitionId?: string }
+>();
 let exitHookInstalled = false;
 
 function installExitHook(): void {
   if (exitHookInstalled) return;
   exitHookInstalled = true;
   process.once("exit", () => {
-    for (const { resource, env } of heldHere.values()) {
+    for (const { resource, env, acquisitionId } of heldHere.values()) {
       try {
-        dropHolder(resource, process.pid, env);
+        dropHolder(resource, process.pid, env, acquisitionId);
       } catch {
         // Best effort at exit; a dead holder makes the lease stale anyway.
       }
@@ -571,8 +738,13 @@ export function holdLease(
 ): HoldResult {
   const result = acquireLease(resource, owner, { ...options, mode: "implicit", pid: process.pid });
   if (result.reclaimed !== undefined) options.onReclaim?.(result.reclaimed);
-  const key = `${resolveEnv(options).dir}|${resource}`;
-  const entry = heldHere.get(key) ?? { resource, env: options, count: 0 };
+  const key = `${resolveEnv(options).dir}|${resource}|${result.lease.acquisitionId}`;
+  const entry = heldHere.get(key) ?? {
+    resource,
+    env: options,
+    count: 0,
+    acquisitionId: result.lease.acquisitionId,
+  };
   entry.count++;
   heldHere.set(key, entry);
   installExitHook();
@@ -587,7 +759,7 @@ export function holdLease(
       entry.count--;
       if (entry.count > 0) return;
       heldHere.delete(key);
-      dropHolder(resource, process.pid, entry.env);
+      dropHolder(resource, process.pid, entry.env, entry.acquisitionId);
     },
   };
 }

@@ -16,24 +16,38 @@
  * It holds the instance lease and the checkout's lease for the whole run (lease.ts).
  * Summary, comparison against a baseline and patch handling are exported for unit tests.
  */
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { parseEnv } from "node:util";
+import { z } from "zod";
 
 import { REPO_ROOT } from "./config";
 import {
   checkoutResource,
-  holdLease,
+  withLeases,
   isInstanceResource,
   listLeases,
   processAlive,
-  resolveOwner,
-  type HoldResult,
+  requireNamedOwner,
   type LeaseEnv,
 } from "./lease";
+import { withCheckoutOperation } from "./checkoutOperation";
+import { inheritedOperation, withOperations, type OperationOptions } from "./operations";
+import {
+  abortOnSignals,
+  assertCurrentIdentity,
+  checkArtifact,
+  captureCheckoutIdentity,
+  checkoutIdentitySchema,
+  fileArtifact,
+  runEvidenceProcess,
+  artifactSchema,
+  sameIdentity,
+  type CheckoutIdentity,
+  type Artifact,
+} from "./evidence";
 
 /** Held for a whole vortex-e2e run, so two runs never overlap. */
 export const VORTEX_E2E_RESOURCE = "vortex-e2e";
@@ -310,6 +324,8 @@ export interface TestOutcome {
   /** Playwright's result status of the last attempt (passed, failed, timedOut, ...). */
   result?: string;
   error?: string;
+  /** Hash of the complete last-attempt failure, before display truncation. */
+  failureFingerprint?: string;
   durationMs?: number;
 }
 
@@ -394,6 +410,18 @@ export function outcomes(report: PlaywrightJsonReport): TestOutcome[] {
           status,
           result: last?.status,
           error,
+          failureFingerprint:
+            status === "failed"
+              ? sha256(
+                  Buffer.from(
+                    JSON.stringify({
+                      result: last?.status,
+                      error: last?.error,
+                      errors: last?.errors,
+                    }),
+                  ),
+                )
+              : undefined,
           durationMs: results.reduce((sum, r) => sum + (r.duration ?? 0), 0),
         });
       }
@@ -676,11 +704,34 @@ export interface Comparison {
   fixed: string[];
   /** In the baseline's results but not run now. */
   notRun: string[];
+  /** A passing baseline test now skipped (including credential exclusions). */
+  lostCoverage: string[];
+  /** Failing in both runs, but the failure evidence changed or was absent. */
+  changedFailures: string[];
+  metadataChanges: string[];
+}
+
+export interface E2eSelection {
+  specs: string[];
+  grep: string | null;
+  grepInvert: string | null;
+  configSha256: string;
+  fixturePatches: { id: string; sha256: string }[];
+  platform: string;
+  nodeVersion: string;
+  workers: 1;
+  retries: 0;
+  ci: true;
 }
 
 export interface VortexE2eReport {
   tool: "vortex-e2e";
-  schemaVersion: 1;
+  schemaVersion: 4;
+  kit: CheckoutIdentity;
+  kitAfter: CheckoutIdentity;
+  identity: CheckoutIdentity;
+  commandCwd: string;
+  runtimeFiles: Artifact[];
   checkout: string;
   headSha: string;
   owner: string;
@@ -690,6 +741,8 @@ export interface VortexE2eReport {
   command: string[];
   specs: string[];
   grep?: string;
+  selection: E2eSelection;
+  selectedTests: string[];
   accounts: Record<Account, boolean>;
   patches: (PatchResult & { restored: boolean })[];
   restore?: RestoreReport;
@@ -703,6 +756,161 @@ export interface VortexE2eReport {
   compare?: Comparison;
   reportFile?: string;
   playwrightReportFile?: string;
+}
+
+const strings = z.array(z.string());
+const digest = z.string().regex(/^[a-f0-9]{64}$/);
+const account = z.enum(["free", "premium"]);
+const outcomeSchema = z.strictObject({
+  id: z.string().min(1),
+  file: z.string(),
+  line: z.number().int().nonnegative(),
+  title: z.string(),
+  status: z.enum(["passed", "failed", "skipped", "flaky"]),
+  result: z.string().optional(),
+  error: z.string().optional(),
+  failureFingerprint: digest.optional(),
+  durationMs: z.number().nonnegative().optional(),
+});
+export const e2eReportSchema = z
+  .strictObject({
+    tool: z.literal("vortex-e2e"),
+    schemaVersion: z.literal(4),
+    kit: checkoutIdentitySchema,
+    kitAfter: checkoutIdentitySchema,
+    identity: checkoutIdentitySchema,
+    commandCwd: z.string().min(1),
+    runtimeFiles: z.array(artifactSchema),
+    checkout: z.string().min(1),
+    headSha: z.string().regex(/^[a-f0-9]{40}$/),
+    owner: z.string(),
+    startedAt: z.iso.datetime(),
+    durationMs: z.number().nonnegative(),
+    playwrightDurationMs: z.number().nonnegative().optional(),
+    command: strings,
+    specs: strings,
+    grep: z.string().optional(),
+    selection: z.strictObject({
+      specs: strings,
+      grep: z.string().nullable(),
+      grepInvert: z.string().nullable(),
+      configSha256: digest,
+      fixturePatches: z.array(z.strictObject({ id: z.string(), sha256: digest })),
+      platform: z.string(),
+      nodeVersion: z.string(),
+      workers: z.literal(1),
+      retries: z.literal(0),
+      ci: z.literal(true),
+    }),
+    selectedTests: z.array(z.string().min(1)).min(1),
+    accounts: z.strictObject({ free: z.boolean(), premium: z.boolean() }),
+    patches: z.array(
+      z.strictObject({
+        id: z.string(),
+        files: strings,
+        applied: z.boolean(),
+        alreadyPresent: z.boolean(),
+        restored: z.boolean(),
+      }),
+    ),
+    restore: z
+      .strictObject({
+        restored: z.boolean(),
+        mismatched: strings,
+        statusChanges: strings,
+        backup: z.string().optional(),
+      })
+      .optional(),
+    counts: z.strictObject({
+      total: z.number().int().nonnegative(),
+      passed: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+      skipped: z.number().int().nonnegative(),
+      flaky: z.number().int().nonnegative(),
+      credentialSkipped: z.number().int().nonnegative(),
+    }),
+    failures: z.array(
+      z.strictObject({
+        id: z.string(),
+        file: z.string(),
+        line: z.number().int().nonnegative(),
+        error: z.string().optional(),
+      }),
+    ),
+    credentialSkipped: z.array(
+      z.strictObject({
+        id: z.string(),
+        file: z.string(),
+        line: z.number().int().nonnegative(),
+        title: z.string(),
+        accounts: z.array(account).min(1),
+      }),
+    ),
+    outcomes: z.array(outcomeSchema),
+    globalErrors: strings,
+    playwrightExitCode: z.number().int().nullable(),
+    notes: strings,
+    compare: z
+      .strictObject({
+        baseline: z.string(),
+        baselineHead: z.string().regex(/^[a-f0-9]{40}$/),
+        regressions: z.array(
+          z.strictObject({
+            id: z.string(),
+            error: z.string().optional(),
+            baseline: z.enum([
+              "passed",
+              "failed",
+              "skipped",
+              "flaky",
+              "absent",
+              "credential-skipped",
+            ]),
+          }),
+        ),
+        preExisting: z.array(z.strictObject({ id: z.string(), error: z.string().optional() })),
+        fixed: strings,
+        notRun: strings,
+        lostCoverage: strings,
+        changedFailures: strings,
+        metadataChanges: strings,
+      })
+      .optional(),
+    reportFile: z.string().optional(),
+    playwrightReportFile: z.string().optional(),
+  })
+  .superRefine((report, ctx) => {
+    const expected = summarise(report.outcomes, report.credentialSkipped);
+    if (JSON.stringify(report.counts) !== JSON.stringify(expected.counts))
+      ctx.addIssue({ code: "custom", message: "counts disagree with outcomes" });
+    if (JSON.stringify(report.failures) !== JSON.stringify(expected.failures))
+      ctx.addIssue({ code: "custom", message: "failures disagree with outcomes" });
+    const ids = [...report.outcomes.map((o) => o.id), ...report.credentialSkipped.map((o) => o.id)];
+    if (
+      new Set(ids).size !== ids.length ||
+      new Set(report.selectedTests).size !== report.selectedTests.length
+    )
+      ctx.addIssue({ code: "custom", message: "duplicate test identities" });
+    if (
+      ids.length !== report.selectedTests.length ||
+      report.selectedTests.some((id) => !ids.includes(id))
+    )
+      ctx.addIssue({ code: "custom", message: "selected tests disagree with observed outcomes" });
+    if (report.identity.headSha !== report.headSha || report.identity.checkout !== report.checkout)
+      ctx.addIssue({ code: "custom", message: "source identity disagrees with report" });
+    if (
+      JSON.stringify(report.specs) !== JSON.stringify(report.selection.specs) ||
+      (report.grep ?? null) !== report.selection.grep
+    )
+      ctx.addIssue({ code: "custom", message: "selection metadata disagrees" });
+  });
+
+/** No adapter: evidence from an old or malformed report must be regenerated. */
+export function validateE2eReport(value: unknown): VortexE2eReport {
+  const result = e2eReportSchema.safeParse(value);
+  if (!result.success)
+    throw new VortexE2eError(`Invalid vortex-e2e report: ${result.error.message}`);
+  return result.data;
 }
 
 export function summarise(
@@ -726,8 +934,11 @@ export function summarise(
 }
 
 export function compareRuns(
-  current: Pick<VortexE2eReport, "outcomes" | "credentialSkipped">,
-  baseline: Pick<VortexE2eReport, "outcomes" | "credentialSkipped" | "headSha">,
+  current: Pick<VortexE2eReport, "outcomes" | "credentialSkipped" | "selection" | "accounts">,
+  baseline: Pick<
+    VortexE2eReport,
+    "outcomes" | "credentialSkipped" | "headSha" | "selection" | "accounts"
+  >,
   baselineFile: string,
 ): Comparison {
   const before = new Map(baseline.outcomes.map((o) => [o.id, o]));
@@ -741,12 +952,29 @@ export function compareRuns(
     preExisting: [],
     fixed: [],
     notRun: [],
+    lostCoverage: [],
+    changedFailures: [],
+    metadataChanges: [],
   };
+  for (const key of Object.keys(current.selection) as (keyof E2eSelection)[]) {
+    if (JSON.stringify(current.selection[key]) !== JSON.stringify(baseline.selection[key])) {
+      comparison.metadataChanges.push(`selection.${key}`);
+    }
+  }
+  for (const account of ["free", "premium"] as const) {
+    if (current.accounts[account] !== baseline.accounts[account])
+      comparison.metadataChanges.push(`accounts.${account}`);
+  }
   for (const outcome of current.outcomes) {
     const old = before.get(outcome.id);
     if (outcome.status === "failed") {
       if (old?.status === "failed") {
-        comparison.preExisting.push({ id: outcome.id, error: outcome.error });
+        if (
+          outcome.failureFingerprint !== undefined &&
+          outcome.failureFingerprint === old.failureFingerprint
+        ) {
+          comparison.preExisting.push({ id: outcome.id, error: outcome.error });
+        } else comparison.changedFailures.push(outcome.id);
       } else {
         comparison.regressions.push({
           id: outcome.id,
@@ -760,6 +988,14 @@ export function compareRuns(
     }
   }
   for (const old of baseline.outcomes) {
+    if (!now.has(old.id) && !nowSkipped.has(old.id)) comparison.notRun.push(old.id);
+    if (
+      old.status === "passed" &&
+      (now.get(old.id)?.status === "skipped" || nowSkipped.has(old.id))
+    )
+      comparison.lostCoverage.push(old.id);
+  }
+  for (const old of baseline.credentialSkipped) {
     if (!now.has(old.id) && !nowSkipped.has(old.id)) comparison.notRun.push(old.id);
   }
   return comparison;
@@ -833,6 +1069,10 @@ export function formatE2eReport(report: VortexE2eReport): string {
     }
     for (const p of c.preExisting) lines.push(`  pre-existing ${p.id}`);
     for (const f of c.fixed) lines.push(`  fixed ${f}`);
+    for (const id of c.notRun) lines.push(`  NOT RUN ${id}`);
+    for (const id of c.lostCoverage) lines.push(`  LOST COVERAGE ${id}`);
+    for (const id of c.changedFailures) lines.push(`  CHANGED FAILURE ${id}`);
+    for (const key of c.metadataChanges) lines.push(`  METADATA CHANGED ${key}`);
   }
   if (report.restore !== undefined && !report.restore.restored) {
     lines.push(
@@ -848,17 +1088,34 @@ export function formatE2eReport(report: VortexE2eReport): string {
 
 /** Exit status: failures (or, with a baseline, regressions), global errors, or a bad restore. */
 export function e2eExitCode(report: VortexE2eReport): number {
+  if (report.counts.passed + report.counts.failed + report.counts.flaky === 0) return 1;
   if (report.restore !== undefined && !report.restore.restored) return 1;
   if (report.globalErrors.length > 0) return 1;
-  if (report.compare !== undefined) return report.compare.regressions.length > 0 ? 1 : 0;
-  return report.counts.failed > 0 ? 1 : 0;
+  if (report.playwrightExitCode === null) return 1;
+  if (report.compare !== undefined) {
+    const c = report.compare;
+    if (
+      c.regressions.length +
+        c.notRun.length +
+        c.lostCoverage.length +
+        c.changedFailures.length +
+        c.metadataChanges.length >
+      0
+    )
+      return 1;
+    // A nonzero runner exit must be explained by reported failures, never accepted by default.
+    if (report.playwrightExitCode !== 0 && report.counts.failed === 0) return 1;
+    return 0;
+  }
+  return report.counts.failed > 0 || report.playwrightExitCode !== 0 ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
 // Running Playwright
 // ---------------------------------------------------------------------------
 
-export interface PlaywrightInvocation {
+export interface PlaywrightInvocation extends OperationOptions {
+  checkout: string;
   cwd: string;
   args: string[];
   env: NodeJS.ProcessEnv;
@@ -875,44 +1132,32 @@ export type PlaywrightRunner = (
 
 /** Playwright's CLI from the checkout's own install, run with this Node; no shell quoting. */
 export function playwrightRunner(stream: NodeJS.WritableStream): PlaywrightRunner {
-  return (invocation) =>
-    new Promise((resolve, reject) => {
-      let cli: string;
-      try {
-        const require = createRequire(path.join(invocation.cwd, "package.json"));
-        cli = path.join(path.dirname(require.resolve("@playwright/test/package.json")), "cli.js");
-      } catch {
-        reject(
-          new VortexE2eError(
-            `@playwright/test is not installed in ${invocation.cwd}. Run pnpm install in the checkout.`,
-          ),
-        );
-        return;
-      }
-      const child = spawn(process.execPath, [cli, ...invocation.args], {
-        cwd: invocation.cwd,
-        env: invocation.env,
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const abort = (): void => {
-        child.kill();
-      };
-      invocation.signal.addEventListener("abort", abort, { once: true });
-      const forward = (chunk: Buffer): void => {
+  return async (invocation) => {
+    let cli: string;
+    try {
+      const require = createRequire(path.join(invocation.cwd, "package.json"));
+      cli = path.join(path.dirname(require.resolve("@playwright/test/package.json")), "cli.js");
+    } catch {
+      throw new VortexE2eError(
+        `@playwright/test is not installed in ${invocation.cwd}. Run pnpm install in the checkout.`,
+      );
+    }
+    const result = await runEvidenceProcess({
+      ...invocation,
+      executable: process.execPath,
+      args: [cli, ...invocation.args],
+      persistentResources: [checkoutResource(invocation.checkout), VORTEX_E2E_RESOURCE],
+      onOutput: (chunk) => {
         if (!invocation.list) stream.write(chunk);
-      };
-      child.stdout.on("data", forward);
-      child.stderr.on("data", forward);
-      child.on("error", reject);
-      child.on("close", (code) => {
-        invocation.signal.removeEventListener("abort", abort);
-        resolve({ code });
-      });
+      },
     });
+    invocation.signal.throwIfAborted();
+    return { code: result.code };
+  };
 }
 
-export interface VortexE2eOptions {
+export interface VortexE2eOptions extends OperationOptions {
+  signal?: AbortSignal;
   checkout: string;
   artifactDir: string;
   specs?: string[];
@@ -925,7 +1170,7 @@ export interface VortexE2eOptions {
   runner?: PlaywrightRunner;
   leaseEnv?: LeaseEnv;
   onProgress?: (message: string) => void;
-  /** Install SIGINT/SIGTERM/SIGHUP handlers that restore and exit. Default true. */
+  /** Cancel known children and await exit before restoration. Default true. */
   handleSignals?: boolean;
 }
 
@@ -946,9 +1191,30 @@ function baseEnv(): NodeJS.ProcessEnv {
 }
 
 export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2eReport> {
+  const owner = requireNamedOwner(options.owner);
+  const context = options.context ?? inheritedOperation(owner, process.env, options.leaseEnv);
+  return withLeases([VORTEX_E2E_RESOURCE], owner, options.leaseEnv ?? {}, () =>
+    withOperations([VORTEX_E2E_RESOURCE], owner, { ...options, context }, (nested) =>
+      withCheckoutOperation(
+        path.resolve(options.checkout),
+        owner,
+        "vortex-e2e fixture patch",
+        {
+          ...options,
+          context: nested,
+          rewriting: true,
+        },
+        (checkoutContext) => runVortexE2eInside({ ...options, owner, context: checkoutContext }),
+      ),
+    ),
+  );
+}
+
+async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eReport> {
+  const kit = captureCheckoutIdentity(REPO_ROOT);
   const started = Date.now();
   const report = options.onProgress ?? ((): void => undefined);
-  const checkout = path.resolve(options.checkout);
+  const checkout = fs.realpathSync.native(path.resolve(options.checkout));
   const e2eDir = path.join(checkout, "packages", "e2e");
   if (!fs.existsSync(path.join(e2eDir, "playwright.config.ts"))) {
     throw new VortexE2eError(
@@ -959,7 +1225,16 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
     throw new VortexE2eError(`${checkout} is not a git checkout.`);
   }
   const headSha = (await git(checkout, ["rev-parse", "HEAD"])).trim();
-  const owner = resolveOwner(options.owner);
+  const owner = requireNamedOwner(options.owner);
+  const identity = captureCheckoutIdentity(checkout);
+  if (identity.dirty)
+    throw new VortexE2eError(
+      "E2E refuses uncommitted changes: a clean checkout identifies the tested source; keep local-diff checks separate.",
+    );
+  const runtimeFiles = ["main.cjs", "renderer.js"]
+    .map((file) => path.join(checkout, "src", "main", "build", file))
+    .filter((file) => fs.existsSync(file))
+    .map(fileArtifact);
   const runner = options.runner ?? playwrightRunner(process.stdout);
   const specs = (options.specs ?? []).map((spec) => {
     const abs = path.resolve(e2eDir, spec);
@@ -967,43 +1242,14 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
     return path.relative(e2eDir, inE2e).replace(/\\/g, "/");
   });
   const baseline =
-    options.compare === undefined ? undefined : readJsonFile<VortexE2eReport>(options.compare);
+    options.compare === undefined ? undefined : validateE2eReport(readJsonFile(options.compare));
   const notes: string[] = [];
 
-  const leases: HoldResult[] = [];
-  const onReclaim = (state: { lease: { owner: string; resource: string }; reason: string }): void =>
-    report(
-      `[lease] reclaimed stale ${state.lease.resource} lease from "${state.lease.owner}" (${state.reason})`,
-    );
-  leases.push(
-    // Its own lease, not a slot's instance: E2E runs wait for each other (they register OS
-    // protocol handlers and time animations), but harness instances in any slot keep running.
-    holdLease(VORTEX_E2E_RESOURCE, owner, {
-      ...options.leaseEnv,
-      purpose: "vortex-e2e",
-      onReclaim,
-    }),
-  );
   let session: PatchSession | undefined;
-  const controller = new AbortController();
-  const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-  const onSignal = (signal: NodeJS.Signals): void => {
-    controller.abort();
-    session?.restoreFiles();
-    for (const lease of leases.toReversed()) lease.release();
-    process.stderr.write(`[vortex-e2e] ${signal}: fixture files restored, leases released\n`);
-    process.exit(130);
-  };
-  if (options.handleSignals !== false) signals.forEach((s) => process.once(s, onSignal));
+  const cancellation = abortOnSignals(options.signal, options.handleSignals !== false);
 
   try {
-    leases.push(
-      holdLease(checkoutResource(checkout), owner, {
-        ...options.leaseEnv,
-        purpose: "vortex-e2e fixture patch",
-        onReclaim,
-      }),
-    );
+    cancellation.signal.throwIfAborted();
     const running = listLeases(options.leaseEnv)
       .filter((state) => isInstanceResource(state.lease.resource))
       .flatMap((state) => state.lease.instancePids)
@@ -1024,9 +1270,13 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
     const selection = [...specs, ...(options.grep === undefined ? [] : ["--grep", options.grep])];
     let rootDir = path.join(e2eDir, "src", "tests");
     const list = async (grepInvert: string | undefined): Promise<ListedTest[]> => {
+      cancellation.signal.throwIfAborted();
       const jsonFile = `${base}.list.json`;
       fs.rmSync(jsonFile, { force: true });
       const result = await runner({
+        checkout,
+        context: options.context,
+        leaseEnv: options.leaseEnv,
         cwd: e2eDir,
         args: [
           "test",
@@ -1038,11 +1288,12 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
         env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: jsonFile },
         jsonFile,
         list: true,
-        signal: controller.signal,
+        signal: cancellation.signal,
       });
+      cancellation.signal.throwIfAborted();
       const listed = readJson(jsonFile);
       fs.rmSync(jsonFile, { force: true });
-      if (result.code !== 0 && (listed.errors?.length ?? 0) > 0) {
+      if (result.code !== 0 || (listed.errors?.length ?? 0) > 0) {
         throw new VortexE2eError(
           `Listing the tests failed: ${listed.errors?.map((e) => firstLine(e.message)).join("; ") ?? ""}`,
         );
@@ -1089,7 +1340,10 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
     if (skipped.length < all.length) {
       // Check the exclusion does exactly what was computed before spending hours on it.
       const kept = await list(invert);
-      if (kept.length !== all.length - skipped.length) {
+      const expected = new Set(
+        all.filter((t) => !skipped.some((s) => s.id === t.id)).map((t) => t.id),
+      );
+      if (kept.length !== expected.size || kept.some((t) => !expected.has(t.id))) {
         throw new VortexE2eError(
           `The credential filter kept ${String(kept.length)} tests, expected ` +
             `${String(all.length - skipped.length)}. Not running with a filter that is wrong.`,
@@ -1098,13 +1352,17 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
       const jsonFile = `${base}.playwright.json`;
       report(`[vortex-e2e] running ${String(kept.length)} tests in ${e2eDir}`);
       const result = await runner({
+        checkout,
+        context: options.context,
+        leaseEnv: options.leaseEnv,
         cwd: e2eDir,
         args: command.slice(1),
         env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: jsonFile },
         jsonFile,
         list: false,
-        signal: controller.signal,
+        signal: cancellation.signal,
       });
+      cancellation.signal.throwIfAborted();
       playwrightExitCode = result.code;
       const json = readJson(jsonFile);
       results = outcomes(json);
@@ -1116,11 +1374,34 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
       notes.push("every selected test needs an absent account; Playwright was not started");
     }
 
+    const observed = [...results.map((r) => r.id), ...skipped.map((r) => r.id)];
+    if (new Set(observed).size !== observed.length)
+      globalErrors.push("duplicate test identities in run results");
+    for (const test of all)
+      if (!observed.includes(test.id))
+        globalErrors.push(`selected test missing from results: ${test.id}`);
+    for (const id of observed)
+      if (!all.some((t) => t.id === id)) globalErrors.push(`unselected test in results: ${id}`);
+
     const restore = await session.restoreAndVerify();
+    try {
+      assertCurrentIdentity(identity);
+      runtimeFiles.forEach((file) => checkArtifact(file));
+    } catch (error) {
+      globalErrors.push(`source/build identity changed during E2E: ${(error as Error).message}`);
+    }
     const { counts, failures } = summarise(results, skipped);
+    const kitAfter = captureCheckoutIdentity(REPO_ROOT);
+    if (!sameIdentity(kit, kitAfter))
+      globalErrors.push("Producing kit code changed during E2E; rerun with unchanged kit code.");
     const final: VortexE2eReport = {
       tool: "vortex-e2e",
-      schemaVersion: 1,
+      schemaVersion: 4,
+      kit,
+      kitAfter,
+      identity,
+      commandCwd: e2eDir,
+      runtimeFiles,
       checkout,
       headSha,
       owner,
@@ -1130,6 +1411,22 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
       command,
       specs,
       grep: options.grep,
+      selection: {
+        specs,
+        grep: options.grep ?? null,
+        grepInvert: options.grepInvert ?? null,
+        configSha256: sha256(fs.readFileSync(path.join(e2eDir, "playwright.config.ts"))),
+        fixturePatches: (options.patches ?? FIXTURE_PATCHES).map((p) => ({
+          id: p.id,
+          sha256: sha256(fs.readFileSync(p.file)),
+        })),
+        platform: process.platform,
+        nodeVersion: process.version,
+        workers: 1,
+        retries: 0,
+        ci: true,
+      },
+      selectedTests: all.map((t) => t.id),
       accounts,
       patches: session.results.map((p) => ({
         ...p,
@@ -1153,7 +1450,6 @@ export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2e
     return final;
   } finally {
     session?.restoreFiles();
-    signals.forEach((s) => process.removeListener(s, onSignal));
-    for (const lease of leases.toReversed()) lease.release();
+    cancellation.dispose();
   }
 }

@@ -5,13 +5,14 @@ description: Drive a real Vortex instance through its UI — read what is on scr
 
 # Driving Vortex
 
-You control Vortex through doodlebot's MCP tools. Read
-[KNOWLEDGE.md](../../../KNOWLEDGE.md) before debugging anything that looks
-impossible — most Vortex surprises are catalogued there.
+You control Vortex through doodlebot's MCP tools. Start with the task's scope and
+[knowledge routes](../../../harness/KNOWLEDGE-ROUTES.md). Search the relevant entries in
+[KNOWLEDGE.md](../../../KNOWLEDGE.md), then verify any proposed cause against current evidence.
 
 ## Get an instance up
 
-```bash
+```powershell
+$env:VORTEX_AI_OWNER = '<issue-worker>'
 pnpm run ai -- doctor --installed --sandbox
 pnpm run ai -- setup --installed --sandbox  # no game or account needed
 pnpm run ai -- tools --json                # all live input schemas
@@ -21,11 +22,16 @@ Use `setup --installed --oauth` for initial Nexus login; it waits and caches
 automatically. `up` reuses a matching working profile; `up --fresh` resets it.
 Without `--installed`, the managed `.vortex-src` clone takes precedence.
 Read [harness/AGENTS.md](../../../harness/AGENTS.md) and
+[AGENT-WORKFLOW.md](../../../harness/AGENT-WORKFLOW.md) for owner/slot isolation and explicit nested contexts, and
 [WORKFLOWS.md](../../../harness/WORKFLOWS.md) before starting. If a requested
-workflow cannot be completed with existing tools, implement the reusable missing
-capability, test it, update the instructions, and resume the original request.
+workflow needs an authorized missing capability, implement and test the reusable improvement
+under the kit lock, update its canonical instructions, and resume the original request.
+Follow the workflow's verification and promotion rules for new lessons.
 
 ## The loop
+
+Use supported harness commands for guarded ownership and operation exclusion. A raw MCP
+client holds bearer authority, not a harness lease; appoint one driver per renderer.
 
 1. `ui_snapshot` — what is on screen, with a `ref` per element
 2. `ui_click` / `ui_fill` / `ui_press_key` on a `ref`

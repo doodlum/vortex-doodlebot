@@ -8,8 +8,11 @@
  */
 import { loadConfig } from "../config";
 import { claimInstanceLease } from "../instance";
+import { CONTEXT_ENV } from "../operations";
 
 export default function globalSetup(): () => void {
+  // A recorded test run owns independent fixture operations; its parent retains its child hold.
+  delete process.env[CONTEXT_ENV];
   const lease = claimInstanceLease(loadConfig(), "ai:test");
   return () => lease.release();
 }

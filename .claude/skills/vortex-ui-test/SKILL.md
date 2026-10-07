@@ -6,17 +6,20 @@ description: Write or debug a Playwright test for Vortex's UI in this repo, driv
 # Writing a Vortex UI test
 
 Specs live in `harness/src/tests/`. Run them with `pnpm run ai:test`. Read
-`harness/AGENTS.md`, `KNOWLEDGE.md` and `harness/WORKFLOWS.md` first. Before
+`harness/AGENT-WORKFLOW.md` and use `harness/KNOWLEDGE-ROUTES.md` for the relevant
+manual, test guidance and confirmed pitfalls. Before
 changing Vortex, follow its own `AGENTS.md`, docs index, and relevant frontend,
 testing and design-system documentation. Extend the harness when a requested
 test needs a capability that is missing; verify the workflow after adding it.
 
 ## The shape of a test
 
-When reproducing upstream CI, run the failing spec with
-`pnpm run ai -- vortex-e2e --checkout <dir> --spec src/tests/<spec>.spec.ts`: CI's
-hidden-window mode (`CI=1`, `VORTEX_E2E_HEADED` unset), under the instance lease, with
-the fixture's startup race patched for the run only. Keep the failing report before
+When upstream E2E is requested and source mutation is authorized, run the failing spec with
+`pnpm run ai -- vortex-e2e --owner <worker> --checkout <dir> --spec src/tests/<spec>.spec.ts`:
+CI's hidden-window mode (`CI=1`, `VORTEX_E2E_HEADED` unset), under the E2E and checkout
+operation guards, with the fixture's startup race patched for the run only. Stop any app
+using that checkout first. If source is read-only, report this runner's mutation requirement
+instead of temporarily patching it. Keep the failing report before
 editing and rerun that same command afterward (`--compare <report>`). Our visible
 harness app alone does not reproduce CI's painting behavior. See `KNOWLEDGE.md`
 for the hidden-window animation issue and keep login/report-secret failures
@@ -41,8 +44,9 @@ test("a click through MCP changes what Playwright sees", async ({ mcp, vortexWin
 
 ## Fixtures
 
-All worker-scoped — launching Vortex costs minutes, and no test needs a pristine
-app per assertion.
+The kit's core fixtures are worker-scoped: they share an app within a worker and restore
+state between assertions. Tests needing a pristine lifecycle use their own cache and ports.
+This does not describe Vortex's separate upstream E2E fixture lifecycle.
 
 | Fixture        | What it is                                                  |
 | -------------- | ----------------------------------------------------------- |
@@ -74,8 +78,10 @@ app per assertion.
   exercise native wheel or browser zoom behavior. The opt-in `ai:test:zoom`
   script checks applied scaling and UI behavior, including every rendered frame
   during rapid zoom changes. Run it with `--signed-out` for an isolated anonymous
-  profile. `doodlebot record --ffmpeg <path> --seconds 15 --label demo` captures
-  real-time WebM clips while another MCP/CLI session drives the app.
+  profile. For an automated WebM demonstration, start `kit.recording.startRecording` and
+  perform the UI actions inside one guarded `doodlebot script` invocation, then stop recording
+  in `finally`. Standalone `record` holds the operation throughout and can capture human input;
+  a second independent CLI command is correctly refused during it.
 
 ## Panel-system regression
 

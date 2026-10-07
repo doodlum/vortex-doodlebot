@@ -42,6 +42,8 @@ import { resetDisposableGameData } from "./sandbox";
 import { importLogin } from "./loginImport";
 import { DEFAULT_CACHE_DIR } from "./paths";
 import { missingBuildOutputs } from "./source";
+import { withLiveOperation } from "./liveOperation";
+import type { OperationOptions } from "./operations";
 
 /**
  * Bumped when a change here makes previously-cached snapshots wrong (a different
@@ -160,7 +162,7 @@ export async function seedLogin(mcp: VortexMcpClient, apiKey: string): Promise<v
   }
 }
 
-export interface BootstrapOptions {
+export interface BootstrapOptions extends OperationOptions {
   /** Discard the live working directory and re-seed it from the snapshot. */
   fresh?: boolean;
   /** Rebuild the snapshot from cold even if a usable one exists. */
@@ -194,6 +196,18 @@ export async function bootstrap(
   config: HarnessConfig,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
+  return withLiveOperation(
+    config,
+    "bootstrap",
+    (context) => bootstrapInside(config, { ...options, context }),
+    options,
+  );
+}
+
+async function bootstrapInside(
+  config: HarnessConfig,
+  options: BootstrapOptions,
+): Promise<BootstrapResult> {
   const started = Date.now();
   const report = options.onProgress ?? ((): void => undefined);
   const configuredKey = config.apiKey?.trim();
@@ -223,11 +237,15 @@ export async function bootstrap(
   // An instance left over from an earlier run holds both the MCP port and the
   // working directory; every later step would fail on that rather than on
   // anything to do with what was asked for.
-  if (await stopStaleInstance(config)) {
+  if (await stopStaleInstance(config, options)) {
     report("stopped a Vortex instance left over from an earlier run");
   }
 
-  const builtAt = await ensureExtensionBuilt({ rebuild: options.rebuildExtension });
+  const builtAt = await ensureExtensionBuilt({
+    ...options,
+    owner: config.owner,
+    rebuild: options.rebuildExtension,
+  });
   report(`extension ready (${builtAt})`);
   report(`target: ${config.target.kind} — ${config.target.executable}`);
 
@@ -288,10 +306,15 @@ export async function bootstrap(
   // rebuilt since the snapshot was taken, and the appData layout must exist
   // before Vortex starts.
   prepareUserDataDir(live, config.target.appName);
-  installMcpExtension(live);
+  installMcpExtension(live, undefined, { ...options, owner: config.owner });
 
   report(`launching Vortex (${tier})`);
-  const instance = await launchVortex({ userDataDir: live, config, onProgress: report });
+  const instance = await launchVortex({
+    ...options,
+    userDataDir: live,
+    config,
+    onProgress: report,
+  });
   if (liveUsable && legacyMatch && liveMarker) {
     fs.writeFileSync(
       path.join(live, MARKER_FILE),
@@ -352,7 +375,19 @@ export async function bootstrap(
  */
 export async function captureLogin(
   config: HarnessConfig,
-  options: { onProgress?: (message: string) => void } = {},
+  options: OperationOptions & { onProgress?: (message: string) => void } = {},
+): Promise<string> {
+  return withLiveOperation(
+    config,
+    "capture login",
+    (context) => captureLoginInside(config, { ...options, context }),
+    options,
+  );
+}
+
+async function captureLoginInside(
+  config: HarnessConfig,
+  options: OperationOptions & { onProgress?: (message: string) => void },
 ): Promise<string> {
   const report = options.onProgress ?? ((): void => undefined);
   const live = liveDir(config);
@@ -376,7 +411,7 @@ export async function captureLogin(
   await requireOAuth(mcp);
 
   report("stopping Vortex so its state is flushed to disk");
-  await stopStaleInstance(config);
+  await stopStaleInstance(config, options);
 
   report("capturing the verified profile; refreshed OAuth credentials are cached separately");
   const login = loginDir(config);
@@ -421,10 +456,15 @@ async function buildSnapshot(
   const hasLogin = fs.existsSync(authCacheFile(config));
   if (hasLogin) report("cold: reusing the local OAuth cache with a clean profile");
   prepareUserDataDir(snapshot, config.target.appName);
-  installMcpExtension(snapshot);
+  installMcpExtension(snapshot, undefined, { ...options, owner: config.owner });
 
   report("cold: starting a blank Vortex");
-  const instance = await launchVortex({ userDataDir: snapshot, config, onProgress: report });
+  const instance = await launchVortex({
+    ...options,
+    userDataDir: snapshot,
+    config,
+    onProgress: report,
+  });
 
   let game: EnsureGameResult;
   try {
@@ -449,7 +489,7 @@ async function buildSnapshot(
 
     report("cold: quitting cleanly to flush state");
   } finally {
-    await instance.stop();
+    await instance.stop(options);
   }
 
   // The extension is reinstalled on every launch anyway, and leaving it out

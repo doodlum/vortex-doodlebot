@@ -12,11 +12,10 @@
  * Electron dies with its controlling script. The Playwright specs get their own
  * fixture (src/tests/fixtures.ts), because a test genuinely does want that.
  */
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 
 import {
@@ -26,18 +25,38 @@ import {
   type HarnessConfig,
 } from "./config";
 import { VortexMcpClient } from "./mcpClient";
+import {
+  buildExtension,
+  extensionOutputResource,
+  type ExtensionBuildOptions,
+} from "./extensionBuild";
+import {
+  extensionIsFresh,
+  replaceExtensionDirectory,
+  requireFreshExtension,
+  verifyExtensionGeneration,
+} from "./extensionGeneration";
+import {
+  ChildRegistrationError,
+  inheritedOperation,
+  trackOperationChild,
+  withOperationsSync,
+  type OperationOptions,
+} from "./operations";
+import { withLiveOperation } from "./liveOperation";
+import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
 import { instanceResource } from "./slots";
 import { preparePreload, verifyPreload } from "./mainPreload";
 import {
-  INSTANCE_RESOURCE,
   addInstancePid,
   checkoutResource,
   holdLease,
   removeInstancePid,
-  resolveOwner,
+  requireNamedOwner,
   type HoldResult,
   type LeaseEnv,
+  type LeaseIdentity,
 } from "./lease";
 import {
   ProductionModeError,
@@ -48,8 +67,6 @@ import {
   type ProductionStatus,
 } from "./productionMode";
 
-const execFileAsync = promisify(execFile);
-
 /**
  * Hold the machine-wide instance lease for the rest of this process (see lease.ts).
  *
@@ -57,13 +74,17 @@ const execFileAsync = promisify(execFile);
  * replace another's instance. Free or stale: taken. Same owner: joined. Another live
  * owner: LeaseHeldError, naming the holder and how to wait or release.
  */
+export interface InstanceLease extends HoldResult {
+  identities: readonly LeaseIdentity[];
+}
+
 export function claimInstanceLease(
   config: HarnessConfig,
   purpose: string,
   leaseEnv: LeaseEnv = {},
   options: { attach?: boolean } = {},
-): HoldResult {
-  const owner = resolveOwner(config.owner);
+): InstanceLease {
+  const owner = requireNamedOwner(config.owner);
   const held: HoldResult[] = [];
   const resources =
     options.attach === true ? attachedLeaseResources(config) : instanceLeaseResources(config);
@@ -86,7 +107,15 @@ export function claimInstanceLease(
     throw err;
   }
   const first = held[0]!;
-  return { ...first, release: () => held.toReversed().forEach((hold) => hold.release()) };
+  return {
+    ...first,
+    identities: held.map(({ lease }) => ({
+      resource: lease.resource,
+      owner: lease.owner,
+      acquisitionId: lease.acquisitionId,
+    })),
+    release: () => held.toReversed().forEach((hold) => hold.release()),
+  };
 }
 
 /**
@@ -115,6 +144,7 @@ export function attachedLeaseResources(config: HarnessConfig): string[] {
 
 interface InstanceRecord {
   pid: number;
+  leases: readonly LeaseIdentity[];
   /** The Vortex checkout it runs from, for a source build. */
   sourceDir?: string;
 }
@@ -141,20 +171,65 @@ export function runningInstance(config: HarnessConfig): InstanceRecord | undefin
 
 /** Record a launched Vortex on every lease it needs, so they outlive the launching command. */
 export function recordLaunchedPid(
-  config: HarnessConfig,
+  identities: readonly LeaseIdentity[],
   pid: number,
   leaseEnv: LeaseEnv = {},
 ): void {
-  for (const resource of instanceLeaseResources(config)) addInstancePid(resource, pid, leaseEnv);
+  for (const identity of identities) addInstancePid(identity, pid, leaseEnv);
 }
 
 /** Forget a Vortex that has exited, on every lease it was recorded on. */
 export function forgetLaunchedPid(
-  config: HarnessConfig,
+  identities: readonly LeaseIdentity[],
   pid: number,
   leaseEnv: LeaseEnv = {},
 ): void {
-  for (const resource of instanceLeaseResources(config)) removeInstancePid(resource, pid, leaseEnv);
+  for (const identity of identities) removeInstancePid(identity, pid, leaseEnv);
+}
+
+/** A failed launch registration must settle its exact child before dropping partial protection. */
+export async function registerLaunchedProcess(
+  child: ChildProcess,
+  identities: readonly LeaseIdentity[],
+  options: OperationOptions = {},
+): Promise<void> {
+  if (child.pid === undefined) return;
+  let releaseChild: (() => void) | undefined;
+  try {
+    if (options.context !== undefined)
+      releaseChild = trackOperationChild(options.context, child.pid, [], options.leaseEnv);
+    recordLaunchedPid(identities, child.pid, options.leaseEnv);
+  } catch (error) {
+    if (error instanceof ChildRegistrationError) releaseChild = error.release;
+    const failures = [error];
+    try {
+      child.kill("SIGKILL");
+      if (!(await waitForExit(child, 5_000)))
+        throw new Error(
+          `Vortex ${child.pid} survived failed registration; preserve its profile and inspect its recorded leases.`,
+          { cause: error },
+        );
+    } catch (stopError) {
+      // The known child keeps any successful ownership/operation registrations.
+      throw new AggregateError(
+        [...failures, stopError],
+        "Launch registration and child shutdown failed; protection retained.",
+        { cause: stopError },
+      );
+    }
+    try {
+      forgetLaunchedPid(identities, child.pid, options.leaseEnv);
+      releaseChild?.();
+    } catch (cleanupError) {
+      failures.push(cleanupError);
+    }
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Launch registration and cleanup failed.", {
+        cause: error,
+      });
+    throw error;
+  }
+  releaseChild?.();
 }
 
 export function authCacheFile(config: HarnessConfig): string {
@@ -169,7 +244,7 @@ export interface VortexInstance {
   process: ChildProcess;
   userDataDir: string;
   mcp: VortexMcpClient;
-  stop: (options?: { force?: boolean }) => Promise<void>;
+  stop: (options?: OperationOptions & { force?: boolean }) => Promise<void>;
 }
 
 /**
@@ -199,7 +274,12 @@ export function buildInstanceEnv(
   for (const [key, value] of Object.entries(process.env)) {
     // ELECTRON_RUN_AS_NODE would make the child start as a plain Node process
     // rather than an Electron app — inherited from a tsx parent otherwise.
-    if (key !== "ELECTRON_RUN_AS_NODE" && value !== undefined) env[key] = value;
+    if (
+      key !== "ELECTRON_RUN_AS_NODE" &&
+      key !== "VORTEX_AI_OPERATION_CONTEXT" &&
+      value !== undefined
+    )
+      env[key] = value;
   }
 
   env.ELECTRON_USERDATA = path.join(userDataDir, "userData");
@@ -252,32 +332,51 @@ export function prepareUserDataDir(userDataDir: string, appName: string): void {
  * Vortex loads user extensions from `<userData>/plugins/<id>`, and `<id>` must
  * match info.json's `id` or Vortex treats it as a different extension next run.
  */
-export function installMcpExtension(userDataDir: string, source = extensionRoot()): void {
-  const plugins = path.join(userDataDir, "userData", "plugins");
-  // A profile cached before the rename still holds the old folder: both would start a server.
-  for (const legacy of LEGACY_EXTENSION_IDS)
-    fs.rmSync(path.join(plugins, legacy), { recursive: true, force: true });
-  const target = path.join(plugins, MCP_EXTENSION_ID);
-  fs.mkdirSync(target, { recursive: true });
-  fs.cpSync(path.join(source, "dist"), target, { recursive: true });
-  fs.cpSync(path.join(source, "info.json"), path.join(target, "info.json"));
-
-  // Pin the extension to CommonJS.
-  //
-  // Node decides a .js file's module type from the NEAREST package.json up the
-  // tree. An instance directory living under a `"type": "module"` package (this
-  // harness is one) makes Node parse the extension's CommonJS bundle as ESM.
-  // That fails in the worst possible way: require() returns an empty namespace,
-  // the module body never runs, nothing throws, and Vortex reports only
-  // "corrupt extension, failed to initialize" with no hint that module
-  // resolution was the problem.
-  fs.writeFileSync(
-    path.join(target, "package.json"),
-    `${JSON.stringify({ name: MCP_EXTENSION_ID, type: "commonjs", main: "index.js" }, null, 2)}\n`,
+export function installMcpExtension(
+  userDataDir: string,
+  source = extensionRoot(),
+  options: OperationOptions & { owner?: string } = {},
+): void {
+  const owner = requireNamedOwner(options.owner);
+  withOperationsSync(
+    [extensionOutputResource(source)],
+    owner,
+    {
+      ...options,
+      context: options.context ?? inheritedOperation(owner, process.env, options.leaseEnv),
+    },
+    () => installExtensionInside(userDataDir, source),
   );
 }
 
-export class ExtensionMissingError extends Error {}
+function installExtensionInside(userDataDir: string, source: string): void {
+  const generation = requireFreshExtension(source);
+  const plugins = path.join(userDataDir, "userData", "plugins");
+  const target = path.join(plugins, MCP_EXTENSION_ID);
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const stage = fs.mkdtempSync(path.join(userDataDir, ".doodlebot-install-"));
+  try {
+    const stagedPlugin = path.join(stage, MCP_EXTENSION_ID);
+    fs.cpSync(path.join(source, "dist"), stagedPlugin, { recursive: true });
+    if (verifyExtensionGeneration(stagedPlugin).outputDigest !== generation.outputDigest)
+      throw new Error(
+        "Extension generation changed while copying; the installed plugin was preserved.",
+      );
+    requireFreshExtension(source);
+    replaceExtensionDirectory(stagedPlugin, target, userDataDir);
+    // Remove old IDs only after the complete new plugin has been published.
+    for (const legacy of LEGACY_EXTENSION_IDS)
+      fs.rmSync(path.join(plugins, legacy), { recursive: true, force: true });
+  } finally {
+    try {
+      fs.rmSync(stage, { recursive: true, force: true });
+    } catch {
+      process.stderr.write(
+        `Temporary extension copy retained at ${stage}; remove it after inspection.\n`,
+      );
+    }
+  }
+}
 
 async function assertPortAvailable(port: number): Promise<void> {
   const server = net.createServer();
@@ -296,31 +395,23 @@ async function assertPortAvailable(port: number): Promise<void> {
 }
 
 /** Ensure the extension is built, building it when needed. Returns this repo's root. */
-export async function ensureExtensionBuilt(options: { rebuild?: boolean } = {}): Promise<string> {
-  const source = extensionRoot();
-  const dist = path.join(source, "dist", "index.js");
-
-  const buildTime = fs.existsSync(dist) ? fs.statSync(dist).mtimeMs : 0;
-  const inputs = fs
-    .readdirSync(path.join(source, "src"), { recursive: true, encoding: "utf8" })
-    .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
-    .map((file) => path.join(source, "src", file));
-  inputs.push(path.join(source, "tsup.config.ts"), path.join(source, "package.json"));
-  if (options.rebuild === true || inputs.some((file) => fs.statSync(file).mtimeMs > buildTime)) {
-    const pnpmScript = process.env.npm_execpath;
-    await execFileAsync(
-      pnpmScript ? process.execPath : "pnpm",
-      pnpmScript ? [pnpmScript, "run", "build"] : ["run", "build"],
-      {
-        cwd: source,
-        shell: pnpmScript === undefined,
-        maxBuffer: 10 * 1024 * 1024,
-      },
-    );
-  }
-  if (!fs.existsSync(dist)) {
-    throw new ExtensionMissingError(`The extension build produced no ${dist}.`);
-  }
+export async function ensureExtensionBuilt(
+  options: ExtensionBuildOptions & { rebuild?: boolean } = {},
+): Promise<string> {
+  const owner = requireNamedOwner(options.owner);
+  const source = options.source ?? extensionRoot();
+  const needsBuild = (): boolean => options.rebuild === true || !extensionIsFresh(source);
+  const context = options.context ?? inheritedOperation(owner, process.env, options.leaseEnv);
+  const needed = withOperationsSync(
+    [extensionOutputResource(source)],
+    owner,
+    { ...options, context },
+    needsBuild,
+  );
+  if (needed) await buildExtension({ ...options, source, owner, context, needed: needsBuild });
+  withOperationsSync([extensionOutputResource(source)], owner, { ...options, context }, () =>
+    requireFreshExtension(source),
+  );
   return source;
 }
 
@@ -355,13 +446,18 @@ function pidFile(config: HarnessConfig): string {
   return path.join(config.cacheDir, "instance.pid");
 }
 
-function recordPid(config: HarnessConfig, pid: number | undefined): void {
+function recordPid(
+  config: HarnessConfig,
+  pid: number | undefined,
+  leases: readonly LeaseIdentity[],
+): void {
   if (pid === undefined) return;
   try {
     fs.mkdirSync(config.cacheDir, { recursive: true });
     fs.writeFileSync(pidFile(config), String(pid));
     const record: InstanceRecord = {
       pid,
+      leases,
       ...(config.target.kind === "dev" && config.target.sourceDir !== undefined
         ? { sourceDir: config.target.sourceDir }
         : {}),
@@ -393,9 +489,21 @@ function isAlive(pid: number): boolean {
  * but unreachable, and without it the next run fails on an EPERM that says
  * nothing about the real cause.
  */
-export async function stopStaleInstance(config: HarnessConfig): Promise<boolean> {
+export async function stopStaleInstance(
+  config: HarnessConfig,
+  options: OperationOptions = {},
+): Promise<boolean> {
+  return withLiveOperation(
+    config,
+    "stop harness instance",
+    () => stopStaleInside(config, options.leaseEnv),
+    options,
+  );
+}
+
+async function stopStaleInside(config: HarnessConfig, leaseEnv: LeaseEnv = {}): Promise<boolean> {
   // Refuses before touching anything when another owner holds the instance.
-  claimInstanceLease(config, "stop a harness instance");
+  claimInstanceLease(config, "stop a harness instance", leaseEnv);
   let stopped = false;
   const file = pidFile(config);
   const pid = fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8").trim()) : undefined;
@@ -429,16 +537,13 @@ export async function stopStaleInstance(config: HarnessConfig): Promise<boolean>
   fs.rmSync(file, { force: true });
   fs.rmSync(instanceRecordFile(config), { force: true });
   if (pid !== undefined && Number.isInteger(pid)) {
-    forgetLaunchedPid(config, pid);
-    // It may have run from another checkout than this command's configuration names.
-    if (record?.sourceDir !== undefined) {
-      removeInstancePid(checkoutResource(record.sourceDir), pid);
-    }
+    // Captured at launch, including its source checkout; never edit a successor's lease.
+    if (record !== undefined) forgetLaunchedPid(record.leases, pid, leaseEnv);
   }
   return stopped;
 }
 
-export interface LaunchOptions {
+export interface LaunchOptions extends OperationOptions {
   userDataDir: string;
   config: HarnessConfig;
   /** Progress and warnings, such as a development bundle under --production. */
@@ -490,9 +595,20 @@ export function launchStdio(logFd: number | undefined): {
  * screen, and every subsequent tool call would fail confusingly.
  */
 export async function launchVortex(options: LaunchOptions): Promise<VortexInstance> {
+  return withLiveOperation(
+    options.config,
+    "launch Vortex",
+    (context) => launchInside({ ...options, context }),
+    options,
+  );
+}
+
+async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
   const { userDataDir, config } = options;
   const { target } = config;
-  claimInstanceLease(config, "launch Vortex");
+  if (target.kind === "dev" && target.args[0] !== undefined && !fs.existsSync(target.executable))
+    target.executable = resolveDevElectron(target.args[0]);
+  const lease = claimInstanceLease(config, "launch Vortex", options.leaseEnv);
   installSandboxExtension(userDataDir, config);
   await assertPortAvailable(config.mcpPort);
   await assertPortAvailable(config.cdpPort);
@@ -526,9 +642,9 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
     if (logFd !== undefined) fs.closeSync(logFd);
   }
   child.unref();
-  recordPid(config, child.pid);
+  recordPid(config, child.pid, lease.identities);
   // A detached instance keeps the lease after this process exits, until `down`.
-  if (child.pid !== undefined) recordLaunchedPid(config, child.pid);
+  await registerLaunchedProcess(child, lease.identities, options);
 
   if (redirect !== undefined && preload !== undefined) {
     try {
@@ -585,9 +701,20 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
     process: child,
     userDataDir,
     mcp,
-    stop: (stopOptions = {}) => stopInstance(child, mcp, { ...stopOptions, config }),
+    stop: (stopOptions = {}) =>
+      withLiveOperation(
+        config,
+        "stop launched Vortex",
+        () =>
+          stopInstance(child, mcp, {
+            ...stopOptions,
+            leases: lease.identities,
+            leaseEnv: options.leaseEnv,
+          }),
+        stopOptions,
+      ),
   };
-  await checkProductionMode(instance, config, options.onProgress);
+  await checkProductionMode(instance, config, options.onProgress, options);
   return instance;
 }
 
@@ -599,6 +726,7 @@ async function checkProductionMode(
   instance: VortexInstance,
   config: HarnessConfig,
   report: ((message: string) => void) | undefined,
+  options: OperationOptions,
 ): Promise<void> {
   if (config.target.kind !== "dev" || !config.production) return;
   const sourceDir = config.target.sourceDir;
@@ -610,7 +738,9 @@ async function checkProductionMode(
   const status = await instance.mcp.call<ProductionStatus>("automation_status");
   const problem = productionProblem(status);
   if (problem === undefined) return;
-  await instance.stop().catch(() => instance.stop({ force: true }).catch(() => undefined));
+  await instance
+    .stop(options)
+    .catch(() => instance.stop({ ...options, force: true }).catch(() => undefined));
   throw new ProductionModeError(productionErrorMessage(problem));
 }
 
@@ -624,7 +754,12 @@ async function checkProductionMode(
 export async function stopInstance(
   child: ChildProcess,
   mcp: VortexMcpClient,
-  options: { force?: boolean; timeoutMs?: number; config?: HarnessConfig } = {},
+  options: {
+    force?: boolean;
+    timeoutMs?: number;
+    leases?: readonly LeaseIdentity[];
+    leaseEnv?: LeaseEnv;
+  } = {},
 ): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 20_000;
 
@@ -645,10 +780,8 @@ export async function stopInstance(
     if (!(await waitForExit(child, 5_000)))
       throw new Error("Vortex did not exit after forced shutdown.");
   }
-  if (child.pid !== undefined) {
-    if (options.config === undefined) removeInstancePid(INSTANCE_RESOURCE, child.pid);
-    else forgetLaunchedPid(options.config, child.pid);
-  }
+  if (child.pid !== undefined && options.leases !== undefined)
+    forgetLaunchedPid(options.leases, child.pid, options.leaseEnv);
 }
 
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {

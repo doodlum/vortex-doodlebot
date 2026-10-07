@@ -11,18 +11,17 @@
  * Vortex locks its worktree (`checkout:<dir>`), so a session's checkout can't be removed or
  * rebuilt by another one under it.
  */
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import { ConfigError } from "./errors";
-import { checkoutResource, readLease } from "./lease";
+import { checkoutResource, readLease, requireNamedOwner, normalizedPath } from "./lease";
+import { withCheckoutOperation } from "./checkoutOperation";
+import { withOperations, inheritedOperation, type OperationContext } from "./operations";
 import { REPO_ROOT } from "./paths";
 import { buildVortexSource, hasVortexSource, vortexSourceDir } from "./source";
 import { GENERATED_FILES, restoreChanged, saveFiles } from "./vortexBuild";
-
-const execFileAsync = promisify(execFile);
+import { abortOnSignals, runEvidenceProcess } from "./processRunner";
 
 export const WORKTREES_DIR = path.join(REPO_ROOT, ".vortex-worktrees");
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -36,15 +35,28 @@ export function worktreeDir(name: string): string {
   return path.join(WORKTREES_DIR, name);
 }
 
-async function git(args: string[], cwd?: string): Promise<string> {
+async function git(args: string[], cwd?: string, context?: OperationContext): Promise<string> {
+  const cancellation = abortOnSignals();
   try {
-    const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 16 * 1024 * 1024 });
-    return stdout.trim();
+    const result = await runEvidenceProcess({
+      executable: "git",
+      args,
+      cwd: cwd ?? process.cwd(),
+      context,
+      // Removal has an operation guard but no persistent checkout reservation.
+      persistentResources: [],
+      signal: cancellation.signal,
+    });
+    if (result.aborted) throw new Error("Git was interrupted; child exit confirmed.");
+    if (result.code !== 0) throw new Error(result.output.trim() || `exit ${result.code}`);
+    return result.stdout.trim();
   } catch (err) {
     const stderr = (err as { stderr?: string }).stderr?.trim();
     throw new ConfigError(`git ${args.join(" ")} failed${stderr ? `: ${stderr}` : ""}`, {
       cause: err,
     });
+  } finally {
+    cancellation.dispose();
   }
 }
 
@@ -100,6 +112,8 @@ export async function listWorktrees(): Promise<Worktree[]> {
 }
 
 export interface AddWorktreeOptions {
+  owner?: string;
+  context?: OperationContext;
   name: string;
   /** What to branch from. Default upstream/master, fetched first. */
   base?: string;
@@ -119,6 +133,24 @@ export interface AddWorktreeOptions {
 }
 
 export async function addWorktree(options: AddWorktreeOptions): Promise<Worktree> {
+  const owner = requireNamedOwner(options.owner);
+  const dir = worktreeDir(options.name);
+  return withOperations(
+    [`worktree-store:${normalizedPath(requireSource())}`],
+    owner,
+    { context: options.context ?? inheritedOperation(owner) },
+    (context) =>
+      withCheckoutOperation(
+        dir,
+        owner,
+        "provision worktree",
+        { context, rewriting: true },
+        (nested) => addWorktreeInside({ ...options, owner, context: nested }),
+      ),
+  );
+}
+
+async function addWorktreeInside(options: AddWorktreeOptions): Promise<Worktree> {
   const report = options.onProgress ?? ((): void => undefined);
   const source = requireSource();
   const dir = worktreeDir(options.name);
@@ -130,12 +162,16 @@ export async function addWorktree(options: AddWorktreeOptions): Promise<Worktree
   if (base.startsWith("upstream/") || base.startsWith("origin/")) {
     const remote = base.split("/")[0]!;
     report(`fetching ${remote}`);
-    await git(["-C", source, "fetch", remote]);
+    await git(["-C", source, "fetch", remote], undefined, options.context);
   }
   if (options.ref !== undefined) {
     report(`checking out ${options.ref} detached in ${dir}`);
     fs.mkdirSync(WORKTREES_DIR, { recursive: true });
-    await git(["-C", source, "worktree", "add", "--detach", dir, options.ref]);
+    await git(
+      ["-C", source, "worktree", "add", "--detach", dir, options.ref],
+      undefined,
+      options.context,
+    );
   } else {
     const branchExists = await git(["-C", source, "branch", "--list", branch]).then(
       (out) => out !== "",
@@ -150,6 +186,8 @@ export async function addWorktree(options: AddWorktreeOptions): Promise<Worktree
       branchExists
         ? ["-C", source, "worktree", "add", dir, branch]
         : ["-C", source, "worktree", "add", "-b", branch, dir, base],
+      undefined,
+      options.context,
     );
   }
 
@@ -158,7 +196,13 @@ export async function addWorktree(options: AddWorktreeOptions): Promise<Worktree
     // out with changes nobody made (and `remove` would then refuse it).
     const saved = saveFiles(dir, GENERATED_FILES);
     try {
-      await buildVortexSource({ dir, installOnly: options.build === false, onProgress: report });
+      await buildVortexSource({
+        dir,
+        owner: options.owner,
+        context: options.context,
+        installOnly: options.build === false,
+        onProgress: report,
+      });
     } finally {
       const restored = restoreChanged(dir, saved);
       if (restored.length > 0) report(`restored ${restored.join(", ")} (the build rewrote them)`);
@@ -174,7 +218,25 @@ export async function addWorktree(options: AddWorktreeOptions): Promise<Worktree
  * Remove a worktree; its branch stays. Refused while a Vortex runs from it or anyone holds
  * its checkout lock, and, without `force`, while it has uncommitted changes.
  */
-export async function removeWorktree(name: string, force = false): Promise<string> {
+export async function removeWorktree(
+  name: string,
+  force = false,
+  ownerFlag?: string,
+): Promise<string> {
+  const owner = requireNamedOwner(ownerFlag);
+  return withOperations(
+    [`worktree-store:${normalizedPath(requireSource())}`, checkoutResource(worktreeDir(name))],
+    owner,
+    { context: inheritedOperation(owner) },
+    (context) => removeWorktreeInside(name, force, context),
+  );
+}
+
+async function removeWorktreeInside(
+  name: string,
+  force: boolean,
+  context: OperationContext,
+): Promise<string> {
   const source = requireSource();
   const dir = worktreeDir(name);
   if (!fs.existsSync(dir)) throw new ConfigError(`There is no worktree ${dir}.`);
@@ -191,6 +253,10 @@ export async function removeWorktree(name: string, force = false): Promise<strin
         `${dir} has uncommitted changes; commit them, or pass --force to discard them:\n${changes}`,
       );
   }
-  await git(["-C", source, "worktree", "remove", ...(force ? ["--force"] : []), dir]);
+  await git(
+    ["-C", source, "worktree", "remove", ...(force ? ["--force"] : []), dir],
+    undefined,
+    context,
+  );
   return dir;
 }

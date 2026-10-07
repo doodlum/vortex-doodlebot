@@ -16,8 +16,8 @@
   },
   "type": "commonjs",
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsx harness/src/extensionBuild.ts",
+    "dev": "tsx harness/src/cli.ts watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p harness/tsconfig.json",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
@@ -49,8 +49,7 @@
     "ai:test:plugins-mod-link": "tsx harness/src/tests/plugins-mod-link.e2e.ts",
     "ai:test:plugins-page": "tsx harness/src/tests/plugins-page.e2e.ts",
     "ai:test:download-churn": "tsx harness/src/tests/download-churn.e2e.ts",
-    "ai:test:mods-scroll": "tsx harness/src/tests/mods-scroll.e2e.ts",
-    "install-plugin": "node scripts/install-local.mjs"
+    "ai:test:mods-scroll": "tsx harness/src/tests/mods-scroll.e2e.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.0.0",

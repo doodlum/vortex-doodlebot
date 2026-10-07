@@ -2,13 +2,17 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as evidence from "./evidence";
+import { REPO_ROOT } from "./paths";
 
 import {
   actionTypeOf,
   assignedFields,
   commentText,
+  completeNativeTestRun,
   computeSize,
   declaresOwnMember,
   defaultExportMentions,
@@ -30,6 +34,7 @@ import {
   resolveTestPath,
   revertHunksIn,
   runPreflight,
+  sha256,
   sizeCheck,
   stateReaders,
   symbolsViaPrivate,
@@ -38,7 +43,141 @@ import {
   type FileDiff,
   type PullRequestText,
   type TestRunner,
+  type TestRunResult,
 } from "./prPreflight";
+
+function reportedRun(
+  code: number,
+  output = "",
+  statuses: ("passed" | "failed" | "skipped" | "todo")[] = [code === 0 ? "passed" : "failed"],
+): TestRunResult {
+  const json = JSON.stringify({
+    numTotalTests: statuses.length,
+    numPassedTests: statuses.filter((status) => status === "passed").length,
+    numFailedTests: statuses.filter((status) => status === "failed").length,
+    numPendingTests: statuses.filter((status) => status === "skipped").length,
+    numTodoTests: statuses.filter((status) => status === "todo").length,
+    testResults: [{ assertionResults: statuses.map((status) => ({ status })) }],
+  });
+  return { code, output, reporter: { json, sha256: sha256(Buffer.from(json)) } };
+}
+
+describe("native control execution completeness", () => {
+  it("accepts complete passing and failing executions", () => {
+    expect(() => completeNativeTestRun(reportedRun(0))).not.toThrow();
+    expect(() => completeNativeTestRun(reportedRun(1))).not.toThrow();
+  });
+
+  it.each([
+    ["missing reporter", { code: 0, output: "passed" }],
+    ["empty execution", reportedRun(0, "", [])],
+    ["skipped regression", reportedRun(0, "", ["passed", "skipped"])],
+    ["todo regression", reportedRun(0, "", ["passed", "todo"])],
+    ["unexpected failing exit", { ...reportedRun(0), code: 1 }],
+    ["unexpected passing exit", { ...reportedRun(1), code: 0 }],
+    ["signal exit", { ...reportedRun(0), code: null }],
+    ["tampered reporter", { ...reportedRun(0), reporter: { json: "{}", sha256: "a".repeat(64) } }],
+    [
+      "malformed reporter",
+      { ...reportedRun(0), reporter: { json: "{", sha256: sha256(Buffer.from("{")) } },
+    ],
+  ])("rejects %s", (_label, result) => {
+    expect(() => completeNativeTestRun(result as TestRunResult)).toThrow();
+  });
+
+  it("rejects totals that conceal an omitted assertion", () => {
+    const result = reportedRun(0, "", ["passed", "skipped"]);
+    const report = JSON.parse(result.reporter!.json);
+    report.numTotalTests = 1;
+    report.numPendingTests = 0;
+    const json = JSON.stringify(report);
+    expect(() =>
+      completeNativeTestRun({ code: 0, reporter: { json, sha256: sha256(Buffer.from(json)) } }),
+    ).toThrow(/inconsistent/);
+  });
+});
+
+describe("native control with the installed Vitest runner", { timeout: 60_000 }, () => {
+  let root: string;
+  let repo: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "native-control-"));
+    repo = path.join(root, "repo");
+    fs.mkdirSync(repo);
+    run(repo, "init", "-q", "-b", "master");
+    run(repo, "config", "user.email", "test@example.test");
+    run(repo, "config", "user.name", "Test");
+    run(repo, "config", "core.autocrlf", "false");
+    write(repo, "package.json", '{"type":"module"}\n');
+    write(repo, ".gitignore", "node_modules/\n");
+    write(
+      repo,
+      "vitest.config.mjs",
+      `export default { cacheDir: ${JSON.stringify(path.join(root, "vitest-cache"))}, test: { globals: true, include: ['value.test.ts'] } };\n`,
+    );
+    // Delegate to the installed CLI without installing dependencies in this disposable checkout.
+    write(repo, "node_modules/vitest/package.json", '{"name":"vitest","version":"3.2.6"}\n');
+    write(
+      repo,
+      "node_modules/vitest/vitest.mjs",
+      `import ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "node_modules/vitest/dist/cli.js")).href)};\n`,
+    );
+    write(repo, "value.ts", "export const value = 1;\n");
+    run(repo, "add", ".");
+    run(repo, "commit", "-qm", "base");
+    run(repo, "checkout", "-qb", "fix");
+    write(repo, "value.ts", "export const value = 2;\n");
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it.each(["complete", "branch-skip", "reverted-skip", "branch-todo"] as const)(
+    "%s retains actual reporter evidence and restores exact branch bytes",
+    async (scenario) => {
+      const condition = scenario === "reverted-skip" ? "value === 1" : "value === 2";
+      const omission = scenario === "branch-todo" ? "todo" : "skip";
+      write(
+        repo,
+        "value.test.ts",
+        `import { value } from './value';\ntest('changed assertion', () => expect(value).toBe(2));\n${scenario === "complete" ? "" : `(${condition} ? test.${omission} : test)('required boundary', () => expect(true).toBe(true));\n`}`,
+      );
+      run(repo, "add", ".");
+      run(repo, "commit", "-qm", "fix");
+      const before = fs.readFileSync(path.join(repo, "value.ts"));
+      const report = await runPreflight({
+        checkout: repo,
+        base: "master",
+        tests: ["value.test.ts"],
+        revert: ["value.ts"],
+        owner: "native-control-test",
+        leaseEnv: { dir: path.join(root, "leases") },
+      });
+      const check = report.checks.find((item) => item.id === "revert")!;
+      expect(report.passed).toBe(false);
+      expect(check.data?.branchRuns).toHaveLength(1);
+      const branch = (check.data!.branchRuns as TestRunResult[])[0]!;
+      expect(branch.reporter?.sha256).toBe(sha256(Buffer.from(branch.reporter!.json)));
+      if (scenario === "complete") {
+        expect(check.status).toBe("inconclusive");
+        expect(check.data).toMatchObject({ restored: true, failureKind: "unclassified" });
+        const reverted = (check.data!.revertedRuns as TestRunResult[])[0]!;
+        expect(() => completeNativeTestRun(branch)).not.toThrow();
+        expect(() => completeNativeTestRun(reverted)).not.toThrow();
+        expect(reverted.code).toBe(1);
+      } else {
+        expect(check.status).toBe("fail");
+        expect(check.summary).toContain("execution is incomplete");
+        if (scenario === "reverted-skip") {
+          expect(check.data).toMatchObject({ restored: true });
+          expect(check.data?.revertedRuns).toHaveLength(1);
+        } else {
+          expect(check.data).toMatchObject({ restored: false, revertedRuns: [] });
+        }
+      }
+      expect(fs.readFileSync(path.join(repo, "value.ts"))).toEqual(before);
+      expect(run(repo, "status", "--porcelain")).toBe("");
+    },
+  );
+});
 
 const DIFF = `diff --git a/src/a.ts b/src/a.ts
 index 1111111..2222222 100644
@@ -590,7 +729,7 @@ describe("runPreflight on a git checkout", { timeout: 60_000 }, () => {
         ...tests,
         String(fs.existsSync(path.join(repo, "src/added"))),
       ]);
-      return { code: util.includes("Math.min") ? 0 : 1, output: "1 failed" };
+      return reportedRun(util.includes("Math.min") ? 0 : 1, "1 failed");
     };
 
   it("lists callers outside the diff and skips the revert check with --head", async () => {
@@ -608,6 +747,31 @@ describe("runPreflight on a git checkout", { timeout: 60_000 }, () => {
       "src/added/helper.ts:1",
     );
     expect(report.passed).toBe(true);
+    expect(report.schemaVersion).toBe(4);
+    expect(report.kit).toEqual(evidence.captureCheckoutIdentity(REPO_ROOT));
+    expect(report.kitAfter).toEqual(report.kit);
+  });
+
+  it("records and fails a producing-kit change across native preflight execution", async () => {
+    const capture = evidence.captureCheckoutIdentity;
+    const kit = capture(REPO_ROOT);
+    const changed = { ...kit, changesSha256: "f".repeat(64) };
+    let reads = 0;
+    const spy = vi
+      .spyOn(evidence, "captureCheckoutIdentity")
+      .mockImplementation((checkout, base) =>
+        checkout === REPO_ROOT ? (reads++ === 0 ? kit : changed) : capture(checkout, base),
+      );
+    try {
+      const report = await runPreflight({ checkout: repo, base: "master", skipRevert: true });
+      expect(
+        report.checks.every((check) => check.status !== "fail" && check.status !== "inconclusive"),
+      ).toBe(true);
+      expect(report).toMatchObject({ kit, kitAfter: changed, passed: false });
+      expect(report.notes.join(" ")).toContain("kit code changed during preflight");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("reverts non-test files, expects failure, and restores the branch byte for byte", async () => {
@@ -619,7 +783,9 @@ describe("runPreflight on a git checkout", { timeout: 60_000 }, () => {
       runner: fixAwareRunner(seen),
     });
     const revert = report.checks.find((c) => c.id === "revert");
-    expect(revert?.status).toBe("pass");
+    expect(revert?.status).toBe("inconclusive");
+    expect(report.passed).toBe(false);
+    expect(revert?.data).toMatchObject({ failureKind: "unclassified", restored: true });
     // Branch run, then reverted run: helper dir removed, test file kept.
     expect(seen).toEqual([
       ["", "src/util.test.ts", "true"],
@@ -633,7 +799,7 @@ describe("runPreflight on a git checkout", { timeout: 60_000 }, () => {
     const report = await runPreflight({
       checkout: repo,
       base: "master",
-      runner: async () => ({ code: 0, output: "ok" }),
+      runner: async () => reportedRun(0, "ok"),
     });
     expect(report.checks.find((c) => c.id === "revert")?.status).toBe("fail");
     expect(report.passed).toBe(false);
@@ -644,7 +810,7 @@ describe("runPreflight on a git checkout", { timeout: 60_000 }, () => {
     let calls = 0;
     const runner: TestRunner = async () => {
       if (++calls === 2) throw new Error("killed");
-      return { code: 0, output: "" };
+      return reportedRun(0);
     };
     await expect(runPreflight({ checkout: repo, base: "master", runner })).rejects.toThrow(
       "killed",
@@ -1125,11 +1291,11 @@ describe("--revert-hunk on a git checkout", { timeout: 60_000 }, () => {
       runner: async () => {
         const lib = fs.readFileSync(path.join(repo, "src/lib.ts"), "utf8");
         seen.push(lib);
-        return { code: lib.includes("return fast(1)") ? 0 : 1, output: "1 failed" };
+        return reportedRun(lib.includes("return fast(1)") ? 0 : 1, "1 failed");
       },
     });
     const revert = report.checks.find((c) => c.id === "revert");
-    expect(revert?.status).toBe("pass");
+    expect(revert?.status).toBe("inconclusive");
     expect(revert?.details.join("\n")).toContain("src/lib.ts: reverted 1 of 2 hunks");
     // The reverted run still had the helper: only the wiring was undone.
     expect(seen[1]).toContain("export function fast");
@@ -1143,7 +1309,7 @@ describe("--revert-hunk on a git checkout", { timeout: 60_000 }, () => {
       checkout: repo,
       base: "master",
       revertHunks: ["src/lib.ts:6"],
-      runner: async () => ({ code: 0, output: "" }),
+      runner: async () => reportedRun(0),
     });
     const revert = report.checks.find((c) => c.id === "revert");
     expect(revert?.status).toBe("fail");

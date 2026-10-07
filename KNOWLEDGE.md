@@ -1,16 +1,42 @@
 # Vortex behaviours worth knowing
 
 Non-obvious behaviours of Vortex and of this kit that fail silently, or with a message that
-points somewhere else. Read it before debugging something baffling.
+points somewhere else. Use [knowledge routes](harness/KNOWLEDGE-ROUTES.md) and search the
+relevant symptom or subsystem rather than loading the whole catalogue for every task.
 
-Each entry is symptom, cause, what to do. Add one when something non-obvious cost real time, and
-keep it timeless: no benchmark figures, run history or upstream PR status. Remove an entry when
-the code makes it obsolete. Edit it only under the kit lock (`kit lock`, `kit push`;
-harness/WORKFLOWS.md, "Changing the kit").
+Entries state symptom, confirmed cause, remedy, applicable scope and source/test evidence.
+A matching symptom is a lead to verify against the current revision. Keep measurements,
+incident history and unconfirmed explanations in task artifacts. Promote only verified,
+reviewed lessons under [the workflow](harness/AGENT-WORKFLOW.md#improve-from-verified-lessons)
+and kit lock. Correct disproved claims and remove obsolete workarounds; retain useful
+preventive tests. Existing undated entries require rechecking before a task relies on them.
 
 ## Extensions
 
 ### Harness and extension invariants that broke once
+
+The next three entries were checked during the 2026-10-07 workflow rework on kit base
+`df5d2feef23b2dce2134d1433d299fad612741cb` plus its identified local changes. Recheck the linked
+source/tests when using another revision.
+
+- A shared owner name joins ownership leases; it does not serialize independent commands.
+  Supported commands also take UUID operation guards. Pass an execution context only to
+  intentionally nested commands; give parallel workers distinct owners and slots.
+  Scope: supported harness operations in the 2026-10-07 workflow rework; raw clients are outside
+  these guards. Evidence: [operations.ts](harness/src/operations.ts),
+  [leaseCommand.ts](harness/src/leaseCommand.ts) and the same-owner/nested-process cases in
+  [operations.test.ts](harness/src/operations.test.ts).
+- Repeated E2E test IDs can fail for different causes, and passed tests can disappear or skip.
+  Reconcile selection, outcome and failure evidence before declaring readiness.
+  Scope: native Vortex E2E reports and final readiness in the 2026-10-07 workflow rework.
+  Evidence: `compareRuns`/`e2eReportSchema` in [vortexE2e.ts](harness/src/vortexE2e.ts),
+  [vortexE2e.test.ts](harness/src/vortexE2e.test.ts) and [readiness.test.ts](harness/src/readiness.test.ts).
+- Configuration must not require Electron's auto-installing module. Resolve paths without
+  side effects, then install only inside the guarded launch/provisioning operation.
+  Scope: source-target resolution in the 2026-10-07 workflow rework. Evidence: `resolveTarget` in
+  [config.ts](harness/src/config.ts), `peekDevElectron`/`resolveDevElectron` in
+  [electronRuntime.ts](harness/src/electronRuntime.ts), and the separate-process installation
+  exclusion checks in [electronRuntime.test.ts](harness/src/electronRuntime.test.ts).
 
 - A ref counter that restarts at `e1` lets an old ref hit a new element. Refs carry a renderer
   lifetime and never reuse a counter within it. Test that old refs are rejected.
@@ -726,8 +752,10 @@ JSON through `readJsonFile` (`harness/src/jsonFile.ts`), which strips it; new re
   of a PR body turns 🤖, "→" and "–" into `Ã°Å¸`-style mojibake, and GitHub keeps it. Edit bodies
   with Node (`fs.readFileSync(f, "utf8")`) or `-Encoding UTF8`, then grep the result for `Ã`.
   `Set-Content -Encoding utf8` also adds a BOM, which breaks `package.json` for pnpm.
-- The agent sandbox's Remove-Item guard reads `git rm` in a PowerShell command as a deletion, and
-  refuses the whole command, parts before it included. Run `git rm` through Bash.
+- If a sandbox deletion guard refuses a command, verify the resolved absolute target stays
+  within the authorized directory, then use a narrowly scoped native command (`Remove-Item
+-LiteralPath` for filesystem deletion). If the authorized action still needs host access,
+  request approved escalation; changing shells does not resolve the permission boundary.
 - `[IO.File]::ReadAllText` and other .NET calls resolve relative paths against the process's
   directory, not PowerShell's location: pass absolute paths.
 - The kit's ffmpeg (Playwright's build) can't decode PNG or WebP, so it can't assemble contact

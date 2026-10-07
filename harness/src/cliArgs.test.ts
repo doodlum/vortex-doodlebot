@@ -3,6 +3,24 @@ import { describe, expect, it } from "vitest";
 import { parseArgs } from "./cliArgs";
 
 describe("parseArgs", () => {
+  it("carries the original kit unlock acquisition separately from recovery force", () => {
+    expect(
+      parseArgs(["kit", "unlock", "--owner", "qa", "--acquisition", "original-id"]),
+    ).toMatchObject({
+      command: "kit",
+      positional: ["unlock"],
+      flags: { owner: "qa", acquisition: "original-id" },
+    });
+    expect(parseArgs(["kit", "unlock", "--owner", "qa", "--force"]).flags).toEqual({
+      owner: "qa",
+      force: true,
+    });
+  });
+  it.each(["--build", "--build=true", "--build=false"])("rejects obsolete watch %s", (flag) => {
+    expect(() => parseArgs(["watch", flag])).toThrow(/remove obsolete --build/);
+    expect(parseArgs(["source", "--build"]).flags.build).toBe(true);
+  });
+
   it("drops the separator pnpm forwards before the command", () => {
     expect(parseArgs(["--", "lease", "status"])).toMatchObject({
       command: "lease",
@@ -59,6 +77,40 @@ describe("parseArgs", () => {
     expect(parseArgs(["pr-preflight", "--test", "a", "--test", "b"]).lists.test).toEqual([
       "a",
       "b",
+    ]);
+  });
+
+  it.each([true, false])("preserves evidence command flags with separator=%s", (separator) => {
+    const parsed = parseArgs([
+      "evidence",
+      "run",
+      "--owner",
+      "collector",
+      "--checkout",
+      "C:/repo",
+      "--out",
+      "C:/evidence.json",
+      ...(separator ? ["--"] : []),
+      "node",
+      "check.cjs",
+      "--owner",
+      "child-value",
+      "--json",
+      "--reporter=json",
+    ]);
+    expect(parsed.flags).toEqual({
+      owner: "collector",
+      checkout: "C:/repo",
+      out: "C:/evidence.json",
+    });
+    expect(parsed.positional).toEqual(["run"]);
+    expect(parsed.passthrough).toEqual([
+      "node",
+      "check.cjs",
+      "--owner",
+      "child-value",
+      "--json",
+      "--reporter=json",
     ]);
   });
 });

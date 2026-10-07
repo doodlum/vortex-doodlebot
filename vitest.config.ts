@@ -3,6 +3,10 @@ import path from "node:path";
 
 import { defineConfig } from "vitest/config";
 
+// Unit workers have isolated owners and lease storage. The collecting parent still tracks
+// this process; its operation context must not be impersonated by independent test fixtures.
+delete process.env.VORTEX_AI_OPERATION_CONTEXT;
+
 export default defineConfig({
   resolve: {
     alias: {

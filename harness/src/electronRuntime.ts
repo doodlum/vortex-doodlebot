@@ -5,6 +5,19 @@ import { createRequire } from "node:module";
 import { ConfigError } from "./errors";
 import { acquireLease, releaseLease, LeaseHeldError } from "./lease";
 
+/** Configuration is pure: never require Electron's auto-installing module here. */
+export function peekDevElectron(mainDir: string): string {
+  const require = createRequire(path.join(mainDir, "package.json"));
+  const root = path.dirname(require.resolve("electron"));
+  const pathFile = path.join(root, "path.txt");
+  const name = fs.existsSync(pathFile)
+    ? fs.readFileSync(pathFile, "utf8").trim()
+    : process.platform === "win32"
+      ? "electron.exe"
+      : "electron";
+  return path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH ?? path.join(root, "dist"), name);
+}
+
 /** Electron's module can synchronously install its binary. Serialize across CLI processes. */
 export function resolveDevElectron(mainDir: string): string {
   const require = createRequire(path.join(mainDir, "package.json"));

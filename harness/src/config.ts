@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ConfigError } from "./errors";
-import { resolveDevElectron } from "./electronRuntime";
+import { peekDevElectron } from "./electronRuntime";
 import { resolveOwner } from "./lease";
 import { HARNESS_ROOT, REPO_ROOT } from "./paths";
 import { assignSlot, parseSlot, type SlotRequest, slotPaths } from "./slots";
@@ -189,7 +189,7 @@ export function resolveTarget(
     const resolved = fs.existsSync(mainDir) ? mainDir : devDir;
     return {
       kind: "dev",
-      executable: resolveDevElectron(resolved),
+      executable: peekDevElectron(resolved),
       args: [resolved],
       appName: "@vortex/main",
       sourceDir: path.resolve(resolved, "..", ".."),

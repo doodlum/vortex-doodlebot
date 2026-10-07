@@ -1,148 +1,126 @@
 ---
 name: vortex-dev
-description: Fix a bug in Vortex, add a feature to it, or reproduce and test a change in the real app. Use for any request about Vortex's own behaviour — "this is broken", "add X to the mods page", "does Y still happen" — as opposed to work on this MCP/automation suite itself. Covers getting the fork cloned and built, making the change, and verifying it in a running Vortex.
+description: Fix a bug in Vortex, add a feature, or reproduce and test an application change. Covers source setup, owned worktrees, scoped verification and production submission evidence. Use for Vortex application behavior; use the kit workflow for doodlebot itself.
 ---
 
-# Working on Vortex itself
+# Working on Vortex
 
-A request to fix, test or add something means **Vortex the application**, not
-this automation suite — unless the user explicitly says otherwise. Do the whole
-loop without asking: get the source, build it, run it, drive it, report what
-actually happened.
+Establish the user's target and scope first. Permission to change doodlebot does not authorize
+Vortex source edits. A read-only source constraint also excludes temporary fixture patches,
+revert controls and builds that rewrite that checkout. Continue authorized independent work
+and report a concrete missing permission or prerequisite when it blocks the requested outcome.
 
-## One-time: get the source
+Read [the agent workflow](../../../harness/AGENT-WORKFLOW.md) and use
+[knowledge routes](../../../harness/KNOWLEDGE-ROUTES.md) for relevant specialist sources.
+For Vortex changes, read its own `AGENTS.md`, applicable nested instructions, `CLAUDE.md`
+when present, `CONTRIBUTING.md` and `docs/README.md`. Its instructions govern a submission.
+UI work also needs the relevant frontend/testing guidance and supplied design.
 
-First read [the workflow guide](../../../harness/WORKFLOWS.md). After locating the
-checkout, read and follow **Vortex's own `AGENTS.md`, `CLAUDE.md` when present,
-and `docs/README.md`**, plus the task-specific documents they reference. These
-are authoritative for Vortex development; this skill is an automation aid.
-For UI features, load `docs/frontend.md`, `docs/testing.md`, and the applicable
-design-system and supplied design documents before implementing.
+## Prepare an owned checkout
 
-```bash
-pnpm run ai:source
+When source provisioning is authorized:
+
+```powershell
+$env:VORTEX_AI_OWNER = 'fix-123'
+pnpm run ai:source -- --no-build
+pnpm run ai -- worktree add fix-123 --owner fix-123
 ```
 
-Finds the operator's Vortex fork on GitHub, clones it to `.vortex-src/` inside
-this repo, wires up `upstream`, installs and builds. If they have no fork it
-stops and tells them how to make one — the suite builds _their_ fork, because
-you cannot push to `Nexus-Mods/Vortex`.
+`source --no-build` prepares the managed fork at `.vortex-src` without installing or building.
+It does not search the filesystem. `worktree add` creates the worker checkout and, by default,
+installs/builds it with its pinned toolchain. Reuse a suitable owned worktree where possible.
+Keep short names on Windows. Read-only specialists do not need extra checkouts or app slots.
 
-It never searches the filesystem for a Vortex checkout. `.vortex-src` is the
-only source tree, and it is gitignored.
+## Develop and exercise the change
 
-`source --no-build` clones for source inspection without installing or building.
-Checkout paths containing spaces are supported; Git runs without shell splitting.
-
-`pnpm run ai:doctor` reports whether it is there before anything else.
-
-## The loop
-
-```bash
-pnpm run ai:up            # drives .vortex-src automatically once it exists
-pnpm run ai:watch         # reload on rebuild, in a second shell
+```powershell
+pnpm run ai -- up --owner fix-123 --worktree fix-123 --slot auto --sandbox
+pnpm run ai -- down --owner fix-123 --worktree fix-123 --slot auto
+pnpm run ai -- build --owner fix-123 --checkout <worktree-path>
+pnpm run ai -- up --owner fix-123 --worktree fix-123 --slot auto --sandbox
 ```
 
-Then make the change in `.vortex-src/`, rebuild, and the running app picks it up.
+Keep the same owner, checkout, slot and fixture flags. Stop the app before changing its
+checkout or rebuilding output. Use Vortex's documented scoped non-writing checks while it
+is live. Its own development/HMR workflow has separate lifecycle rules; do not overwrite
+a live dev renderer with a production verify/build.
 
-| Change               | Rebuild                                              | Picked up by                      |
-| -------------------- | ---------------------------------------------------- | --------------------------------- |
-| Renderer (React, UI) | `pnpm nx run @vortex/renderer:build`                 | `ai:watch` → renderer reload      |
-| Main process         | `node src/main/build.mjs`                            | full restart (`ai:down && ai:up`) |
-| Release-parity build | `pnpm run ai -- build --checkout <dir> --production` | full restart; `up --production`   |
-| This extension       | `pnpm run build` (in this repo)                      | `ai:watch` → renderer reload      |
+| Change                          | Supported iteration                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Vortex renderer or main process | Stop, guarded checkout build, restart; follow current Vortex development guidance                                  |
+| Release-parity verification     | Guarded `build --production`, then `up --production`                                                               |
+| Doodlebot extension             | One `pnpm run ai:watch -- --owner <owner> --slot auto` against an owned running app, under kit write authorization |
 
-Nothing in the renderer can reload main — `watch` says so explicitly rather than
-reloading and appearing to do nothing.
+The doodlebot watcher observes doodlebot source only. It performs finite build/copy/reload
+cycles and confirms a new renderer lifetime; other commands can run between cycles.
+`pnpm run dev` is the same watcher, so do not run both. It does not rebuild Vortex.
 
-## Verifying a change
+For bugs, reproduce the original behavior and add an assertion that detects the claimed fix.
+For features, define acceptance criteria and exercise behavior, wiring and relevant UI states.
+For refactors, establish invariants and affected consumers. Use the
+[workflow state matrix](../../../harness/WORKFLOWS.md#width-height-and-state-matrix) where relevant;
+test width and height independently. Drive through the UI skill and observe the result
+independently; a tool's success return alone is insufficient.
 
-For bugs, reproduce first and add a regression assertion. For features and design
-implementation, state the acceptance criteria and test both behavior and visual
-fidelity. Exercise relevant empty, populated, loading, error, and modal states
-at different widths **and heights**, including equal-width/different-height
-cases. See the state matrix in `harness/WORKFLOWS.md`.
+If an authorized task needs a missing kit capability, develop the reusable improvement under
+the kit lock, test the affected contract and update its canonical instructions. Keep unverified
+lessons in task reports until the cause and scope are checked and reviewed.
 
-If the kit lacks a capability needed for the request, implement it in this repo,
-test it, and update the relevant instructions so later agents can reuse it.
+## Select verification by the affected contract
 
-Drive the real app rather than reasoning about the diff. See the
-`drive-vortex` skill for the snapshot → act → wait loop, and:
+Vortex's scoped unit tests run from the owning project directory:
 
-```bash
-pnpm run ai -- screenshot --label after
-pnpm run ai -- responsive --screenshots     # if the change touches layout
+```powershell
+Set-Location <worktree>/src/renderer
+pnpm exec vitest run <test-path>
 ```
 
-Unit tests are scoped from the owning project directory — the root `test`
-script runs the whole nx graph and cannot be narrowed:
+The root `test` script runs the whole nx graph. Full `pnpm run verify` is the final Vortex
+submission gate; stop the app using that checkout first. Preserve failures and explain whether
+they are regressions, known baseline failures or external blockers. Do not call a blocked gate
+passed. E2E runs only when requested under Vortex's instructions.
 
-```bash
-cd .vortex-src/src/renderer && pnpm exec vitest run <path>
-```
+Applicable `pr-preflight` discovers callers, changed-state readers and reducer dispatchers,
+and can test selected reverts. Pass a named owner and explicit checkout. Its discovery is
+heuristic; inspect indirect consumers and disposition warnings. A reverted test failure is
+inconclusive until its intended assertion is inspected. `--revert-hunk <file>:<line>` can
+isolate wiring in a file that also contains the new implementation. Use an appropriate
+feature/refactor control rather than forcing every task into a bug-revert test.
 
-Be honest about which suite ran. A full `pnpm run verify` in Vortex can fail for
-reasons that predate the change (broken bundled extensions with missing native
-modules); say so rather than reporting it as a regression or hiding it.
+For an existing PR, `pr-checks <pr>` reports exact-head checks and failed workflow steps;
+a test failure and artifact post-processing failure are different evidence. Branch QA does
+not require opening a PR first.
 
-For an upstream pull request, use `pnpm run ai -- pr-checks <pr>` before changing
-code. It reports the exact head and failed workflow steps, including whether the
-tests passed and only artifact post-processing failed.
+## Production submission and human responsibility
 
-`pnpm run ai:preflight` lists what the change can reach before review does: member uses
-of touched class members, every consumer of the enclosing class or component (default
-imports, `controls/api.ts` and `util/api.ts` re-exports, extensions importing from
-`vortex-api`), the readers of any class field whose assignment changed, and every dispatch of
-an action whose reducer handler changed. Callers count when they are outside the diff's hunks,
-even in a changed file. Give `--test` paths from the checkout root or from `--project-dir`.
-A changed private helper is followed to the exported code calling it ("via private testRef");
-`test-utils/` counts as test code. To show a test fails with only the wiring reverted, when the
-wiring is a call site in a file that also defines the new code, use `--revert-hunk <file>:<line>`.
+Follow [the submission gates](../../../harness/WORKFLOWS.md#before-a-vortex-pull-request-is-ready)
+and [the PR/reviewer brief](../../../harness/PULL-REQUESTS.md). Run scoped checks and independent
+QA before expensive final gates. UI/performance checks follow actual affected behavior;
+performance evidence needs comparable production runs and spread. Requested E2E needs a
+comparable baseline and complete outcome accounting.
 
-`build --production` runs the checkout's pinned pnpm with NODE_ENV=production for the build only,
-under the checkout's lock, and puts back `etc/vortex.api.md` and `etc/Dependency Report.md` if
-the build rewrote them. Don't set NODE_ENV in the shell: the sandbox refuses
-`Remove-Item Env:NODE_ENV` (`$env:NODE_ENV=$null` works).
+The human author must understand the final diff and its risks. Respect current contribution
+size/blast-radius guidance and obtain maintainer agreement for the work it reserves for
+discussion. Never run local signed packaging or infer merge/release authority from a green
+readiness report. Keep kit revision, Vortex source revision and runtime identity distinct.
 
-Sandbox runs (`--sandbox`, `--bethesda-sandbox`) don't seed an API key, so local installs
-don't wait on Nexus lookups (the key is kept out of Vortex's environment too);
-`--with-api-key` if a test needs one. Running Vortex from a checkout locks that checkout for
-the run, so another agent's rebuild of it is refused. For a one-off script
-against the kit, `doodlebot script <file.mts>` (see harness/AGENTS.md); `--owner` may come
-before or after the file. A session's leases: `lease acquire --owner <you> --checkout <dir>`
-takes the instance and the checkout together, and `lease release --owner <you>` releases both.
+Branch from the appropriate current Vortex base, not directly on `master`; `origin` is the
+fork and `upstream` is Nexus-Mods/Vortex. Commit, push and PR publication follow the user's
+actual authorization. Propagate existing permission accurately instead of asking again.
 
-## Before calling a PR ready
+## Multiple tasks and operational details
 
-Follow "Before a Vortex pull request is ready" in `harness/WORKFLOWS.md`:
+Use one accountable owner per logical issue, selective specialists and fresh independent QA.
+Parallel live workers need distinct owners/checkouts/slots; read-only readers can use the same
+identified source and saved snapshots. Give every worker a full scope/evidence/cleanup brief.
+Kit changes have one writer: lock, sync, edit, CI, commit, push, unlock. Renew the exact kit
+acquisition before expiry.
 
-- A/B in the real app with `--production` builds. `up` refuses to run unless the renderer
-  loaded production React; quote `automation_status.react` with the numbers.
-- `pnpm run verify` on the exact commit.
-- The E2E suite, against a master baseline.
-- An adversarial review by a separate agent, with its findings addressed.
+Sandbox runs do not seed an API key; use account-free fixtures unless the task needs Nexus.
+The account owner completes interactive login; private authorized caches can be reused.
+Never put tokens into reports. `build --production` sets production mode for that build and
+restores generated reports after the tracked child exits. A hard interruption requires
+inspection before recovery.
 
-Report each result in the PR.
-
-## More than one issue
-
-Don't fix a batch of reported issues in one context: one session or fresh subagent per issue, each
-with its own worktree and slot (`worktree add <name>`, then `--owner <name> --worktree <name>
---slot auto` on every command), and each PR reviewed by another fresh agent in a slot of its own.
-There is no orchestrator; other sessions may be running. Change this kit only under the kit lock
-(`kit lock`, `kit sync`, edit, `pnpm run ci`, commit, `kit push`, `kit unlock`). Time things only
-when `slots` shows no other instance running. See "Several agents at once" in
-`harness/WORKFLOWS.md`.
-
-## Git
-
-Branch from `master`; never commit to it. `origin` is the fork, `upstream` is
-`Nexus-Mods/Vortex` — push to `origin`. Don't commit, push or open a PR unless
-asked.
-
-## Before blaming your change
-
-`KNOWLEDGE.md` in this repo catalogues Vortex behaviours that fail _silently_ —
-an extension parsed as ESM, a game that will not activate, a snapshot that comes
-back empty. Several look exactly like a bug you just introduced. Check there
-first.
+Search the relevant [known pitfalls](../../../KNOWLEDGE.md), then check them against the
+current source and observed data. A familiar symptom is not proof of its historical cause.
