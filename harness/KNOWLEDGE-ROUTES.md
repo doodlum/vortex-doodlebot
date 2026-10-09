@@ -1,10 +1,11 @@
 # Knowledge routes
 
 Use one shared index, with focused reading paths and one canonical home per topic.
-The human API reference has a task index and authored session, runner, table, collection and result contracts. Its selected signature blocks derive from source; the exhaustive generated specialist inventory remains outside the human site. A human-only usability reviewer receives the frozen published pages, not this index or implementation code.
+Human procedures have one canonical route: first-session.md owns installation and the generated local test; setup.md owns real collection login, snapshots and the first install; benchmarks.md owns supplied-suite runs; adding-benchmarks.md owns custom authoring; table-fixtures.md owns game/Downloads/background bindings. Advanced app attachment and restart/pause controls belong in reference pages. Do not add parallel manual/setup versions of these guides. The human API reference has one task index and authored session, runner, table, collection and result contracts. Its selected signature blocks derive from source; the exhaustive generated specialist inventory remains outside the human site. A human-only usability reviewer receives the frozen published pages, not this index or implementation code.
 Specialists share verified facts and explicit contracts; they do not maintain separate,
 competing copies of the same knowledge. Their task notes and hypotheses remain local to
 the task until promoted under [the workflow](AGENT-WORKFLOW.md#improve-from-verified-lessons).
+The human CLI reference contains the command inventory and canonical guide links; full built-in help belongs in the machine reference, without creating another human onboarding route.
 
 ## Common context
 

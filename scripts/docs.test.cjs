@@ -102,7 +102,7 @@ test("paired documentation refuses drift and missing companions", () => {
     const missingHuman = run(fixture);
     assert.equal(missingHuman.status, 1);
     assert.match(output(missingHuman), /Lifecycle and authentication: update a mapped human page/);
-    changed("docs/guides/lifecycle.md", (body) => body + "\nSynthetic human companion.\n");
+    changed("docs/reference/sessions.md", (body) => body + "\nSynthetic human companion.\n");
     const paired = run(fixture);
     assert.equal(paired.status, 0, output(paired));
     git(fixture, ["add", "."]);
@@ -112,7 +112,7 @@ test("paired documentation refuses drift and missing companions", () => {
     git(fixture, ["reset", "--hard", "--quiet", baseline]);
 
     changed("harness/src/bootstrap.ts", (body) => body + "\n// Synthetic lifecycle change.\n");
-    changed("docs/guides/lifecycle.md", (body) => body + "\nSynthetic human companion.\n");
+    changed("docs/reference/sessions.md", (body) => body + "\nSynthetic human companion.\n");
     const missingAI = run(fixture);
     assert.equal(missingAI.status, 1);
     assert.match(output(missingAI), /Lifecycle and authentication: update a mapped AI/);
@@ -130,10 +130,13 @@ test("paired documentation refuses drift and missing companions", () => {
     assert.match(output(audience), /links to AI instructions/);
     git(fixture, ["restore", "."]);
 
-    fs.unlinkSync(path.join(fixture, "docs/guides/lifecycle.md"));
+    fs.unlinkSync(path.join(fixture, "docs/getting-started/setup.md"));
     const missingPage = run(fixture);
     assert.equal(missingPage.status, 1);
-    assert.match(output(missingPage), /Missing paired documentation: docs\/guides\/lifecycle\.md/);
+    assert.match(
+      output(missingPage),
+      /Missing paired documentation: docs\/getting-started\/setup\.md/,
+    );
   } finally {
     // mkdtemp supplies the exact owned root; never derive a delete target from repository input.
     assert.equal(path.dirname(fixture), os.tmpdir());
@@ -170,7 +173,7 @@ test("duplicate example filenames cannot hide an unchecked example", () => {
 
 test("example checking rejects an invented method on the human TypeScript API", () => {
   const file = "docs/getting-started/first-session.md";
-  const original = extractExample(root, file, "first-test.mts");
+  const original = extractExample(root, file, "my-first-test.mts");
   const code = original.replace("vortex.seedMods", "vortex.inventedCall");
   assert.notEqual(code, original, "The control must actually change the example");
   assert.ok(

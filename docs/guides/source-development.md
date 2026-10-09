@@ -6,4 +6,4 @@ If you are changing Vortex itself, Doodlebot can manage a clone of your Vortex f
 
 Create a worktree for a source change with `pnpm run ai -- worktree add <name>`. Keep source-build tests separate from released-installer comparisons: development instrumentation and React mode can change timings.
 
-The benchmark API deliberately targets released Vortex. Use the lower-level harness when you need a source app. [App sessions](lifecycle.md) explains manual session management, and the [CLI reference](../reference/cli.md) lists target options.
+The benchmark API deliberately targets released Vortex. Use the lower-level harness when you need a source app. [App sessions](../reference/sessions.md#attach-to-an-existing-app) explains manual session management, and the [CLI reference](../reference/cli.md) lists target options.

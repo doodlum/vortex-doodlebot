@@ -27,7 +27,9 @@ If you use a different Python executable, set `DOODLEBOT_DOCS_PYTHON` to its pat
 
 Run `pnpm run docs:serve` and open the local address it prints. Check the page at desktop and narrow widths. Try code copy, follow the main task links, and verify that the page tells a reader what to do and what result to expect.
 
-Keep navigation focused on practical tasks and make code examples easy to copy.
+Give each task one guide and one main run path. Get started owns installation and the generated local test; Run a collection owns game preparation, login, snapshots and the first real install; Run benchmarks owns catalog selection and comparisons; Write a benchmark owns custom authoring. Link to the owning guide instead of repeating its procedure. Keep API options and advanced app controls in the reference, and table-specific fixture recipes in Prepare table fixtures. A copyable benchmark should start in one file; split it only when a reader actually needs reusable cases or configuration.
+
+The human CLI reference lists commands and links to these guides. Keep the complete built-in help in the machine reference rather than publishing another first-run procedure.
 
 ## Write examples people can run
 

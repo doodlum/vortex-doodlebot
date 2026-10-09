@@ -4,7 +4,6 @@ Look up an option or method while writing a test. If you are starting from scrat
 
 | Area                                  | What to look up                                                |
 | ------------------------------------- | -------------------------------------------------------------- |
-| [TypeScript API](script-api.md)       | Choose the right API for a task                                |
 | [Sessions](sessions.md)               | App lifetime, local fixtures, Playwright access and assertions |
 | [Benchmark runner](runner.md)         | Cases, repeats, selection and reports                          |
 | [Tables](tables.md)                   | Common actions and their required starting state               |

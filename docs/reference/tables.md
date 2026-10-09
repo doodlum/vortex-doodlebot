@@ -2,7 +2,7 @@
 
 Get a table with `vortex.table("mods")`, `"downloads"`, `"plugins"`, or `"load-order"`. Actions open the page, check starting state, operate the UI, verify the effect and record timing. Do not wrap them in `measure()`.
 
-Mods and Downloads support generated data. Plugins and Load Order need real game data and [game-specific controls](../testing/adding-benchmarks.md#t2-install-real-data-before-testing-game-tables).
+Mods and Downloads support generated data. Plugins and Load Order need real game data and [game-specific controls](../testing/table-fixtures.md#t2-install-real-data-before-testing-game-tables).
 
 ## open and rows
 
@@ -182,4 +182,4 @@ await vortex.table("mods").search({
 });
 ```
 
-DOM reads support `"text"`, `"texts"`, `"count"`, `"value"`, and `"attribute"`; attribute reads also need `attribute`. Use one observation source and an `equals` value matching its shape. See [action recipes](../testing/adding-benchmarks.md#table-actions-and-outcomes).
+DOM reads support `"text"`, `"texts"`, `"count"`, `"value"`, and `"attribute"`; attribute reads also need `attribute`. Use one observation source and an `equals` value matching its shape. See [action recipes](#explicit-actions).

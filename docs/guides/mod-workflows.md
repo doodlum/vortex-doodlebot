@@ -43,4 +43,4 @@ This archive's `Data/textures` destination belongs to the disposable test game. 
 
 ## Collections
 
-Real collection runs need [OAuth and download access](../getting-started/authentication.md). Use the [benchmark runner](../testing/benchmarks.md) with a pinned revision, cache mode, and explicit game fixture. See the [proposal matrix](../testing/proposal.md) for intended real-data coverage.
+Real collection runs need [OAuth and download access](../getting-started/setup.md). Use the [benchmark runner](../testing/benchmarks.md) with a pinned revision, cache mode, and explicit game fixture. See the [proposal matrix](../testing/proposal.md) for intended real-data coverage.

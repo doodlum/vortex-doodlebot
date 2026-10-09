@@ -30,7 +30,7 @@ The unattended real-game runner also requires a QA-only Windows account or test 
 
 ## Collection login or download fails
 
-Complete [OAuth setup](getting-started/authentication.md). API keys alone cannot authenticate collections. The unattended collection runner requires Premium download access.
+Complete [OAuth setup](getting-started/setup.md). API keys alone cannot authenticate collections. The unattended collection runner requires Premium download access.
 
 Check whether the pinned revision and all required files are still available. Browser login, CAPTCHA, missing entitlement, or an unavailable service is an external blocker. Save the exact failed setup step or download reason; do not turn it into a Vortex regression.
 
@@ -62,4 +62,4 @@ Failed tests preserve the disposable workspace so you can inspect logs and files
 
 For a manually managed session, use the same owner, slot, cache, and target options for setup and scripts. A token rejection or connection failure often means the script is connecting to a different session. Close and restart the intended test session with those same options.
 
-`pnpm run ai -- doctor --installed --sandbox` checks the lower-level local setup. [App sessions](guides/lifecycle.md) explains that workflow.
+`pnpm run ai -- doctor --installed --sandbox` checks the lower-level local setup. [App sessions](reference/sessions.md#attach-to-an-existing-app) explains that workflow.

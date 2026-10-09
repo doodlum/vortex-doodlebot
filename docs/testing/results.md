@@ -24,7 +24,7 @@ Look inside each repeat's `evidence` array for its cache preparation entry. A co
 
 Each measurement retains `wallMs`, `excludedMs`, and `activeMs`. Collection reports also contain phase events and excluded wait/pause intervals. Phase durations can overlap; do not add them to reconstruct total time.
 
-Each repeat has a separate `warnings` array. A warning keeps its source, message, timestamp and original severity, including Vortex notices originally reported as errors. Allowing warnings only permits a pass when Vortex confirms a fully installed collection and the final functional checks pass. Unresolved failed members always fail. The current collection cases set `warningsAsErrors: false`; set it to `true` to fail on any warning, even if the collection later finishes. Earlier strict runs keep their original policy and result.
+Each repeat has a separate `warnings` array. A warning keeps its source, message, timestamp and original severity, including Vortex notices originally reported as errors. Collection runs use the warning policy saved by [setup](../getting-started/setup.md). Allowing warnings only permits a pass when Vortex confirms a fully installed collection and the final functional checks pass. Strict policy (`warningsAsErrors: true`) fails on any warning, even if installation later finishes. Unresolved failed members always fail. Earlier reports keep their original policy and result.
 
 Doodlebot records failed install calls and does not retry them. A case that explicitly tests retries must keep every failed attempt in its evidence, even when a later attempt succeeds. Successful performance samples repeat only until the first failed or blocked repeat.
 

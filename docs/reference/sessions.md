@@ -138,3 +138,27 @@ Calls an [app tool](mcp-tools.md). Arguments default to an empty object; timeout
 `vortex.assert(condition, message)` fails when the condition is false. Node and Playwright assertions also work. `vortex.block(reason)` throws `BenchmarkBlocked` for missing prerequisites; the runner records a blocked result.
 
 `measurements`, `phases`, `warnings`, and `evidence` retain observations. [Options and results](results.md) explains them. Use the runner to write a report automatically.
+
+## Attach to an existing app
+
+Use this only when you want to keep Vortex open between scripts. Ordinary tests use `withVortex()` and need no connection setup.
+
+Choose one owner and use the same instance settings throughout:
+
+```powershell
+$env:VORTEX_AI_OWNER = 'interactive-test'
+pnpm run ai -- setup --installed --sandbox
+pnpm run ai -- script attached-app.mts --installed --sandbox
+pnpm run ai -- down --installed --sandbox
+```
+
+Save the attachment script at the repository root:
+
+```typescript title="attached-app.mts"
+import { loadConfig, clientFor } from "./harness/src/kit";
+
+const client = clientFor(loadConfig());
+console.log(await client.call("vortex_query", { selector: "activeGameId" }));
+```
+
+The script runner supplies the connection settings. The final `down` command closes Vortex. A new setup restores its prepared profile and discards the previous session's changes. Advanced target/slot settings are in [configuration](configuration.md) and [CLI commands](cli.md).

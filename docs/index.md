@@ -1,28 +1,16 @@
 # Test Vortex with TypeScript
 
-Doodlebot is a test toolkit for Vortex. You write a TypeScript script or test, run it on Windows, and inspect the result. It starts a separate Vortex profile, gives your code access to the app and its UI, and saves measurements, screenshots, and reports.
+Doodlebot starts a separate Vortex profile, lets your TypeScript tests operate the app, and closes it afterward. Use it to reproduce a UI problem, check mod installation and deployment, or compare performance between Vortex releases. No LLM is required.
 
-Use it to check an installation or deployment, reproduce a UI problem, or compare the performance of two Vortex releases. You can begin with a disposable local game and generated mods, without a Nexus account. Real collection tests use Nexus downloads and a game fixture you supply.
+Start with [Get started](getting-started/first-session.md). It takes you from installation to a working local test, without a Nexus account or commercial game.
 
-You need a released Vortex installation, Node.js, and pnpm. You do not need an LLM, a modified Vortex build, or Vortex's source code.
+| What you want to do                        | Guide                                               |
+| ------------------------------------------ | --------------------------------------------------- |
+| Install a pinned Nexus collection          | [Run a collection](getting-started/setup.md)        |
+| Run the supplied performance cases         | [Run benchmarks](testing/benchmarks.md)             |
+| Add your own timed test                    | [Write a benchmark](testing/adding-benchmarks.md)   |
+| Check a UI action                          | [Drive the UI](guides/ui-automation.md)             |
+| Check a mod's deployed files               | [Install and deploy a mod](guides/mod-workflows.md) |
+| Understand a failed run or compare timings | [Read results](testing/results.md)                  |
 
-## Start with a small test
-
-1. [Install Doodlebot](getting-started/installation.md).
-2. [Write your first TypeScript test](getting-started/first-session.md).
-3. Adapt it to [a UI check](guides/ui-automation.md) or [a mod workflow](guides/mod-workflows.md).
-
-For a walkthrough that creates an example or prepares a real game and collection, use [guided setup](getting-started/setup.md). For repeated timings, start with [a local benchmark](testing/benchmarks.md#try-one-local-smoke-case).
-
-## Choose the work you want to do
-
-| Task                                            | Guide                                           |
-| ----------------------------------------------- | ----------------------------------------------- |
-| Check a button, search, or table                | [Drive the UI](guides/ui-automation.md)         |
-| Install an archive and check the deployed files | [Test a mod workflow](guides/mod-workflows.md)  |
-| Measure collections and large tables            | [Performance proposal](testing/proposal.md)     |
-| Add a measurement to a suite                    | [Add a benchmark](testing/adding-benchmarks.md) |
-| Diagnose a failed run                           | [Troubleshooting](troubleshooting.md)           |
-| Contribute code or tests                        | [Development](contributing.md)                  |
-
-The [reference](reference/index.md) explains the session, table and benchmark APIs and their options.
+The [reference](reference/index.md) explains methods and options. The [performance plan](testing/proposal.md) defines required coverage and the difference between generated data, genuine downloads and cached real files.

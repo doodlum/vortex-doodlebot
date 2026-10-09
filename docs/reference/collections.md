@@ -125,6 +125,92 @@ export interface SkyrimSnapshotOptions {
 
 ## Installing and checking
 
-In a real session, `addCollection()` installs once, `deploy()` deploys and `verifyReady()` checks configured files. B1–B5 supply the complete workflow, including native UI completion. [Collection benchmarks](../testing/benchmarks.md) explains cold/warm preparation, optionals, warnings and failure evidence.
+In a real session, `addCollection()` installs once, `deploy()` deploys and `verifyReady()` checks configured files. B1–B5 supply the complete workflow, including native UI completion. [Run a collection](../getting-started/setup.md) covers preparation and install policy; [results](../testing/results.md) explains warnings and failure evidence.
 
 Pause/resume belongs in explicit pause tests or operator controls. It cannot recover failed members. Ordinary automation performs no recovery.
+
+## Restart a real collection from scratch
+
+Close the game and finish or stop the previous benchmark first. Use a [prepared collection](../getting-started/setup.md) and a new output folder:
+
+```typescript title="restart-collection.mts"
+import fs from "node:fs";
+import path from "node:path";
+import { restartCollectionBenchmark } from "./harness/benchmarks/index";
+import { exploratoryManifest } from "./benchmarks/config";
+import { preparedCollection } from "./benchmarks/setup";
+
+const machine = exploratoryManifest();
+const outputDir = "harness/.artifacts/gts-clean-restart";
+const manifest = {
+  ...machine,
+  profile: { ...machine.profile, account: "premium" as const },
+  collection: preparedCollection("C2"),
+};
+
+await restartCollectionBenchmark({ manifest, outputDir }, async (vortex) => {
+  await vortex.collectionMeasure(async () => {
+    await vortex.addCollection();
+    await vortex.deploy();
+  });
+  await vortex.verifyReady();
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(outputDir, "evidence.json"),
+    JSON.stringify(
+      {
+        scope: "One exploratory cold install; no approved baseline",
+        measurements: vortex.measurements,
+        evidence: vortex.evidence,
+      },
+      null,
+      2,
+    ),
+  );
+});
+```
+
+After preparing C2 with setup, run `pnpm exec tsx restart-collection.mts`. C2's revision comes from the checked-in pin. This performs real Nexus downloads and installs the collection into a fresh copy of the real game; it can take hours and needs space for archives, staging and deployment.
+
+The restart checks every snapshot file, creates a new Vortex profile with an empty download cache, and sets maximum download threads before the clock starts. Old modded game copies and failed-run evidence stay separate. It does not repair or overwrite the Steam installation. A dirty snapshot is rejected; make a fresh snapshot from a known clean installation instead.
+
+On the QA account, Skyrim's INIs, their `.base`/`.baked` copies, `Plugins.txt` and `loadorder.txt` are backed up and checked before removal. Saves and `ContentCatalog.txt` stay in place. Cyberpunk's reset covers `UserSettings.json`. Other games need a reset adapter before a clean restart is supported. Backups remain in `outputDir/game-settings-backups`, with `backup.json` recording their original locations. They are private recovery files. The reset remains in effect after the run; to recover old settings, close Vortex and the game and copy the backed-up files to those recorded locations.
+
+An existing session can be passed as `previous` after its work has settled; restart closes it and retains its workspace. Another running real benchmark for the same account/game blocks the restart. To reset settings for each real repeat in `runBenchmarks()`, add `cleanStart: true` to its options.
+
+## Pause and resume downloads
+
+While a real collection is installing, the session exposes `pauseDownloads()` and `resumeDownloads()`. For example, an application can call these from its Pause and Resume controls:
+
+```typescript
+import type { BenchmarkSession } from "./harness/benchmarks/index";
+
+export async function pauseUntilResume(
+  vortex: BenchmarkSession,
+  waitForResume: () => Promise<void>,
+): Promise<void> {
+  const progress = await vortex.downloadProgress();
+  console.log(progress.active, progress.paused, progress.finished, progress.receivedBytes);
+  await vortex.pauseDownloads();
+  // Returns after scheduling has stopped and no download bytes are growing.
+  try {
+    await waitForResume(); // Your application's Resume control.
+  } finally {
+    await vortex.resumeDownloads();
+  }
+}
+```
+
+An automated control can poll `downloadProgress()` until `active > 0` before testing Pause. `receivedBytes` counts the bytes reported by Vortex, including partial transfers; it is not an estimate of the final collection size.
+
+Pause controls the exclusively owned benchmark profile's whole download queue. Resume starts the collection's own driver with the account's maximum download threads. It does not mean the collection has finished: keep awaiting the original `addCollection()` operation. A paused install still has its original timeout. Keep pause/resume outside timed baseline runs; this control does not silently subtract the pause from a measurement.
+
+The restart promise also includes teardown checks. Treat the operation as successful only when that promise resolves. For failures before the callback, catch the returned promise and save its error message; the error includes the retained workspace location. Inside the callback, a `finally` block can save partial measurements and evidence if installation fails.
+
+## Custom collection manifests
+
+The supplied pins use `preparedCollection()`. For another collection/store, a directly written manifest must supply the pinned revision URL, game/engine, expected member count, private `authCache`, clean `gameFixture`, `allowGameFixtureCopy: true`, `dedicatedWindowsAccount: true` and a meaningful `ready` condition. The unattended runner still requires Premium and a test machine/account. File hashes prove copy integrity, not source cleanliness or Steam provenance.
+
+Set `warningsAsErrors` explicitly when writing a manifest: the SDK defaults to strict warnings when omitted, while prepared collection choices use the policy saved by setup. Required and selected optional members must finish under either policy. A lower-level install using allowed warnings also needs its final completion-verification callback; member counts alone do not prove success.
+
+For a login-only integration rather than a benchmark, the app CLI supports `pnpm run ai -- setup --installed --oauth` with a named `VORTEX_AI_OWNER`. Finish the browser login in its isolated Vortex and keep the same cache/instance settings for later commands. Normal collection work uses the single [collection guide](../getting-started/setup.md).

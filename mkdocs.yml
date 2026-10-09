@@ -48,35 +48,36 @@ validation:
 nav:
   - Get started:
       - What Doodlebot does: index.md
-      - Install: getting-started/installation.md
-      - First TypeScript test: getting-started/first-session.md
-      - Guided setup: getting-started/setup.md
-      - Collection login: getting-started/authentication.md
-  - Performance:
-      - Run a benchmark: testing/benchmarks.md
-      - Collection and table proposal: testing/proposal.md
-      - Add a case or configuration: testing/adding-benchmarks.md
+      - Install and run your first test: getting-started/first-session.md
+  - Guides:
+      - Run a collection: getting-started/setup.md
+      - Run benchmarks: testing/benchmarks.md
+      - Write a benchmark: testing/adding-benchmarks.md
+      - Prepare table fixtures: testing/table-fixtures.md
       - Read and compare results: testing/results.md
-  - Practical tasks:
       - Drive the UI: guides/ui-automation.md
       - Install and deploy a mod: guides/mod-workflows.md
       - Save a screenshot: guides/capture.md
       - Call app tools: guides/calling-tools.md
-      - Write automated tests: testing/integration.md
-  - Help:
-      - Troubleshooting: troubleshooting.md
-      - Development: contributing.md
-      - Security and privacy: security.md
-      - Credits: credits.md
+  - Test plan:
+      - Collection and table coverage: testing/proposal.md
   - Reference:
       - Overview: reference/index.md
-      - TypeScript API: reference/script-api.md
       - Sessions: reference/sessions.md
       - Benchmark runner: reference/runner.md
       - Tables: reference/tables.md
-      - Collection setup: reference/collections.md
+      - Collection setup and controls: reference/collections.md
       - Options and results: reference/results.md
       - CLI commands: reference/cli.md
       - App tools: reference/mcp-tools.md
       - Configuration: reference/configuration.md
       - Package scripts: reference/package-scripts.md
+  - Help:
+      - Troubleshooting: troubleshooting.md
+      - Security and privacy: security.md
+      - Credits: credits.md
+  - Development:
+      - Contribute to Doodlebot: contributing.md
+      - Run repository checks: testing/running.md
+      - Extend the Playwright suite: testing/integration.md
+      - Write unit tests: testing/unit.md

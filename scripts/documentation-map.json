@@ -10,7 +10,8 @@
         "docs/testing/benchmarks.md",
         "docs/testing/adding-benchmarks.md",
         "docs/testing/proposal.md",
-        "docs/testing/results.md"
+        "docs/testing/results.md",
+        "docs/testing/table-fixtures.md"
       ],
       "ai": ["harness/reference/script-api.md", "harness/reference/package-scripts.md"]
     },
@@ -48,8 +49,8 @@
         "^harness/src/(instance|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
       ],
       "human": [
-        "docs/guides/lifecycle.md",
-        "docs/getting-started/authentication.md",
+        "docs/reference/sessions.md",
+        "docs/getting-started/setup.md",
         "docs/security.md",
         "docs/troubleshooting.md"
       ],
@@ -61,8 +62,8 @@
         "^harness/src/(kit|mcpClient|cdp|uiDriver|uiSession|localMod|deployment|collections|largeLibrary|tableProbes|collectionScale|offlineCollection|profiling|recording|slowDownload|downloadServer|vortexLog|jsonFile)\\.ts$"
       ],
       "human": [
-        "docs/reference/script-api.md",
-        "docs/guides/scripting.md",
+        "docs/reference/index.md",
+        "docs/getting-started/first-session.md",
         "docs/guides/mod-workflows.md",
         "docs/testing/benchmarks.md"
       ],
@@ -108,10 +109,10 @@
       "name": "Harness implementation coverage",
       "sources": ["^harness/src/[^/]+\\.ts$"],
       "human": [
-        "docs/reference/script-api.md",
+        "docs/reference/index.md",
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
-        "docs/guides/lifecycle.md",
+        "docs/reference/sessions.md",
         "docs/guides/parallel-sessions.md",
         "docs/testing/running.md"
       ],

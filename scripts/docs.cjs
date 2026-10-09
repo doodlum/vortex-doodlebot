@@ -251,14 +251,15 @@ result(
     ) +
     mcpBody,
 );
-const cliBody = `## Command inventory\n\n${inventory.cli.commands.map((name) => "- `" + name + "`").join("\n")}\n\n## Full help\n\n\`\`\`text\n${inventory.cli.help.trim()}\n\`\`\`\n`;
+const cliInventory = `## Command inventory\n\n${inventory.cli.commands.map((name) => "- `" + name + "`").join("\n")}\n`;
+const cliBody = `${cliInventory}\n## Full help\n\n\`\`\`text\n${inventory.cli.help.trim()}\n\`\`\`\n`;
 result(
   "docs/reference/cli.md",
   "# CLI reference\n\n" +
     banner(
-      "Run commands from the repository root with `pnpm run ai -- <command>`. [Setup](../getting-started/first-session.md), [configuration](configuration.md) and the task guides explain how to use these commands. The text below is generated from the CLI’s own help and dispatch branches, not a separately maintained list.",
+      "Use [Get started](../getting-started/first-session.md) for your first test and [Run a collection](../getting-started/setup.md) for game snapshots and login. This inventory is generated from the CLI’s help and dispatch branches. Run lower-level commands from the repository root with `pnpm run ai -- <command>`; `pnpm run ai -- help` shows their current syntax and flags. See [configuration](configuration.md) for environment options.",
     ) +
-    cliBody,
+    cliInventory,
 );
 result(
   "harness/reference/cli.md",

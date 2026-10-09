@@ -16,4 +16,4 @@ Real game benchmarks additionally require a QA-only Windows account or test mach
 
 Screenshots, traces, logs, and state output can include account names, file paths, or unrelated UI content. Check them before sharing. Do not place tokens, OAuth credentials, or API keys in TypeScript source, reports, or commits.
 
-Local synthetic tests need no account and do not need credentials. Real collection access is described in [login setup](getting-started/authentication.md).
+Local synthetic tests need no account and do not need credentials. Real collection access is described in [login setup](getting-started/setup.md).

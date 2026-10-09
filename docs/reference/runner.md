@@ -68,7 +68,7 @@ export interface RunOptions {
 | `repeats`    | Defaults to three. One is a smoke check, not a baseline.         |
 | `cleanStart` | Verify real snapshots and reset supported settings after backup. |
 
-See [a complete custom case](../testing/adding-benchmarks.md#a-small-custom-case) and [reading reports](../testing/results.md).
+See [a complete custom case](../testing/adding-benchmarks.md#write-and-run-one-case) and [reading reports](../testing/results.md).
 
 ## Supplied catalog commands
 
