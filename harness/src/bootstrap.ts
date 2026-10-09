@@ -21,6 +21,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { ChildProcess } from "node:child_process";
 
 import { ConfigError, MCP_EXTENSION_ID, type HarnessConfig } from "./config";
 import { ensureGameManaged, type EnsureGameResult } from "./gameSetup";
@@ -163,6 +164,12 @@ export async function seedLogin(mcp: VortexMcpClient, apiKey: string): Promise<v
 }
 
 export interface BootstrapOptions extends OperationOptions {
+  /** Observe every spawned cold/live process before readiness checks. */
+  onProcessSpawn?: (child: ChildProcess) => void;
+  /** Keep an explicitly copied real game intact when resetting its profile.
+   * Default reset behavior remains appropriate for generated disposable games.
+   */
+  preserveGameFixture?: boolean;
   /** Discard the live working directory and re-seed it from the snapshot. */
   fresh?: boolean;
   /** Rebuild the snapshot from cold even if a usable one exists. */
@@ -290,6 +297,7 @@ async function bootstrapInside(
       config.gamePath !== undefined &&
       path.resolve(config.gamePath).toLowerCase() === path.resolve(bethesda.gamePath).toLowerCase();
     if (
+      options.preserveGameFixture !== true &&
       resetDisposableGameData(
         config,
         isBethesdaSandbox

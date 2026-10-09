@@ -86,6 +86,47 @@ pnpm run ai -- login-import --cache-dir D:\other-cache [--from D:\bench-cache] [
 
 ## Run and reset
 
+Real benchmark native lifecycle: `harness/benchmarks/index.ts` exports `createGameSnapshot`,
+`verifyGameSnapshot`, `resetGameSettings`, and `restartCollectionBenchmark`. Restart requires a
+versioned SHA256 snapshot, uses a fresh private profile/game/archive cache, backs up and resets
+supported account settings, and configures maximum download threads before the cold install.
+`runBenchmarks({cleanStart:true,...})` applies the same reset to real repeats. The `previous`
+session option is only for settled benchmark work and preserves the prior workspace.
+`BenchmarkSession.pauseDownloads()` verifies no active or growing transfer; `resumeDownloads()`
+resumes the collection driver. These controls do not alter timing exclusions or installation timeouts.
+`downloadProgress()` exposes actual queue counts and received bytes without archive URLs; finished
+archives alone do not prove that collection installation/deployment completed.
+Real `BenchmarkSession.addCollection()` additionally verifies the selected collection's stock
+install driver reaches review with post-processing finished and its visible progress panel gone.
+The collection coordinator keeps dialog/FOMOD automation alive through this boundary. A finished
+driver with a persistent progress panel fails with retained UI evidence; an unobservable driver
+blocks. Do not resume skipped optional members, hide the UI, or patch Vortex to obtain a pass.
+The selected page must be visible and driver fields readable. Completed-driver render settling
+has a 30-second grace inside the overall installation timeout; each add attempt resets verification.
+The read-only `inspectCollectionCompletion` helper records driver state and panel counts.
+`createSkyrimSnapshot({source,destination,edition})` prepares base or paid-AE snapshots from one clean Steam source, excludes paid files only from the base copy and refuses incomplete paid inventory before an AE copy. Steam is untouched.
+GTS qdurkx revision 118 has two configurations: C2/base skips optional rules and rejects paid
+Creation files; C2-AE/anniversary installs optionals and requires all 74 stock Creation plugins
+and their main BSA archives. `gtsCollection(edition,paths)` selects the matching policy.
+`skyrimEdition` and `optionalMods` must agree before launch. Both variants require a verified
+clean snapshot, UI completion and deployed bytes; selected optionals must be installed and enabled.
+The coordinator persists optional rules with stock `addModRule` before starting the driver,
+reapplies the choice if released Vortex regenerates that exact pinned manifest's rules, and
+keeps its finish-dialog policy consistent through both passes. `collection_status.optionalSelected`
+counts explicit `ignored:false` rules; absent flags do not prove the AE choice. Never ignore
+required members; changed member counts or collection identity fail the run.
+Collection timing uses `watch_state_changes` scalar deltas, not whole state snapshots. It preserves
+all changed member IDs, ignores byte-progress churn, drains up to four pages of 128 entries per
+listener each cycle and drains remaining pages at stop. Sequence gaps, subscription failures and
+projection errors invalidate timings without aborting install verification. No invalid/partial
+phase timings are published; the benchmark is blocked unless an install error makes it failed.
+
+The shared game-settings lease tracks each cold/live child at spawn and stays protected on failed
+shutdown. Independent same-owner resets are excluded by operation guards; reset refuses live Vortex.
+Human procedure and recovery: [clean restart](../docs/testing/benchmarks.md#restart-a-real-collection-from-scratch).
+Snapshots establish file integrity, not arbitrary source provenance. Supply a known clean game,
+close the game first, preserve saves/purchased catalogs, and never reset the Steam installation.
+
 ```powershell
 pnpm run ai -- up --installed --sandbox
 pnpm run ai -- down
@@ -579,6 +620,16 @@ cache (Documents moved by a `NODE_OPTIONS=--require` preload, `mainPreload.ts`).
   `reviewDialogsFor(mcp, id)`.
 
 ### Where a collection install is
+
+Collection startup observes the exact current driver before any resume or Install Now action. A newly added manifest uses stock did-install-mod -> driver.query; wait for its queued preparation and ownership instead of dispatching resume. Idle means a found collectionless driver at prepare or completed review, with preparing===false; only an existing manifest in that state can receive one resume. Dispatch failures propagate including Already installing text. Queued or unobservable preparation waits/fails within the startup deadline, including the final observation before clicking. A foreign current collection is refused even at review. The startup wait mounts the requested view at most once, bounds missing/queued-driver observation to 60 seconds inside the overall deadline, and clicks Install Now only at the exact owned query step. Completion verification remains separate; lastCollectionId alone does not establish active ownership.
+
+Native `collection` and benchmark `addCollection()` never recover errors or retry failed actions. Collection notices (title and message, including warning notices), exact native failed session members and unresolved selected failed downloads are recorded as warnings. `installCollection({warningsAsErrors:true})` fails on any warning; the lower-level default permits warnings only after all selected members and the final completion boundary pass. A warning-bearing install without a supplied final functional/UI completion verifier fails conservatively; driver counters alone cannot prove the visible completion boundary. The native CLI supplies the stock completion-view verifier, prints warnings as they occur and supports --warnings-as-errors. Any remaining failed session/member record at completion fails regardless of policy. The SDK defaults a directly written manifest to strict mode when the option is omitted; the current catalog factories explicitly set `warningsAsErrors:false`, retaining warnings while requiring final functional/UI completion. A machine configuration can opt into strict warnings with `warningsAsErrors:true`. Repeats expose separate warnings with original severity and evidence records the policy. Catalog startup cases verify functional readiness before and after restart, outside the startup timing window. `collection_download_failures` uses the stock matcher without changing failed state. Normal dialogs/FOMOD steps advance the requested installation; failed UI actions propagate once and are not retried. An absent dialog is a normal waiting observation; a rejected host confirmation predicate inspects another candidate without clicking. Watcher errors during teardown cannot turn a failed action into success. Failed SDK install calls remain in evidence before throwing. Planned repeats stop on the first failure/block; an explicit retry case must retain every failed attempt. Timing errors remain separate and publish no invalid phases.
+
+The completion poll fails immediately on an owned native review dialog whose text begins with the Collection installation incomplete heading. A match later in the body or a mod name does not establish failure; DOM text may concatenate the heading and body without whitespace. It requires a found review driver with current collectionId equal to the pinned manifest and strong dialog attribution (driver or collection-prop); a present session must match both collection and game. installDone=false is normal at this failed review. Review/postprocessing=false alone does not prove finalization has settled. Selected optional failure also terminates when the matching session has only terminal statuses, a failed recommends witness and unsatisfied selected optional rules. Pending/unknown statuses prevent that optional inference. Warning evidence is recorded before the failure; the detector performs no resume, retry, dismissal or selection repair.
+
+The concurrent dialog watcher reads the exact owned native review and collection status before any COMPLETE review action. It blocks terminal failures independently of warningsAsErrors, allowing the completion poll to retain warnings and throw. With optionalMods=install it can start only one optional round; after that click its review policy permits Done only, and blocks every review answer while selected optionals remain unsatisfied. A settled installed-but-unsatisfied observation without a failed-member witness stays open until the existing timeout, rather than being retried or dismissed. Final successful completion clicks Done only. Tests run the actual watcher with autoAnswer=true, including failures appearing between its 1.5-second polls and the coordinator's 5-second polls.
+
+Matching active session failed records block COMPLETE review clicks even if every collection rule is satisfied. The completion coordinator checks failed session/download records before returning satisfied counts, rechecks them before any final dialog dismissal or verifyCompletion call, and checks again afterward. Historical notifications may be warnings; remaining owned failed records never qualify as functional completion. Foreign session failures are not attributed to this collection.
 
 `collection_install_state` (`doodlebot call collection_install_state`, cheap to poll) reads
 Vortex's private `InstallDriver` through the React fiber tree; when a build stops passing its

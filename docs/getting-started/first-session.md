@@ -1,73 +1,34 @@
-# Your first session
+# Your first TypeScript test
 
-This walkthrough opens released Vortex with a disposable fake game, reads its state and
-saves a screenshot. It needs no installed game or Nexus account.
+After [installation](installation.md), save this as `first-test.mts` at the repository root:
 
-## Open the sandbox
+```typescript title="first-test.mts"
+import assert from "node:assert/strict";
+import { withVortex } from "./harness/benchmarks/index";
 
-Run from the Doodlebot repository root in PowerShell:
+await withVortex({}, async (vortex) => {
+  const gameId = await vortex.call<string | null>("vortex_query", {
+    selector: "activeGameId",
+  });
+  assert.ok(gameId, "Expected a managed test game");
 
-```powershell
-$env:VORTEX_AI_OWNER = 'operator'
-$env:VORTEX_AI_INSTALLED = '1'
-pnpm run ai -- doctor --installed --sandbox
-pnpm run ai -- setup --installed --sandbox
+  await vortex.seedMods(3);
+  await vortex.openPage("Mods");
+  await vortex.page.locator("#table-mods").waitFor();
+  console.log("Vortex opened its Mods page for", gameId);
+});
 ```
 
-Setup creates a reusable baseline profile, installs the Doodlebot extension in it and
-opens Vortex with the fake `vortexaisandbox` game. Setup prints the MCP endpoint; `up` also
-prints connection instructions containing the bearer token. Keep that token private.
-The default ports are MCP 3701 and CDP 9222; slots use other ports.
-
-The first launch can take several minutes while the harness prepares the profile and
-activates the game. Once the MCP endpoint responds, you can inspect the app. If a fatal
-dialog appears, keep the logs and use [troubleshooting](../troubleshooting.md), even if the
-endpoint responds: the dialog may reveal a startup failure elsewhere in Vortex.
-
-## Inspect the app
+Run it in PowerShell:
 
 ```powershell
-pnpm run ai -- status --installed --sandbox
-pnpm run ai -- tools --json --installed --sandbox
-pnpm run ai -- snapshot --installed --sandbox
-pnpm run ai -- call list_profiles --installed --sandbox
-pnpm run ai -- screenshot --label first-session --installed --sandbox
+pnpm exec tsx first-test.mts
 ```
 
-`tools` lists the tools and input schemas available in this running app. `snapshot`
-returns visible UI nodes with references, roles, labels and values. `list_profiles` returns
-structured profile information. `screenshot` prints the saved image path.
+Vortex opens in a separate test profile, the test generates three local mods and checks that a game is active and the Mods table is visible, and the app closes. An assertion or Playwright failure makes the script exit unsuccessfully.
 
-If you want to click an element, first inspect the current snapshot and use its real ref:
+`withVortex(options, test)` manages the app's lifetime. Empty options select a released Vortex and an anonymous disposable game. An empty Mods page has no table, so this test seeds three tiny local mods before checking it. The callback receives `vortex.call()` for app operations and `vortex.page` for normal Playwright checks. `openPage("Mods")` opens the Mods page.
 
-```powershell
-pnpm run ai -- click --ref '<ref-from-the-current-snapshot>' --installed --sandbox
-pnpm run ai -- snapshot --installed --sandbox
-```
+Use `.mts` for scripts so you can use imports and top-level `await`. Examples in these guides assume a file at the repository root; adjust relative imports if you put it elsewhere.
 
-Replace the placeholder with a reference from your snapshot. References can expire after a
-new snapshot or renderer reload. See [UI automation](../guides/ui-automation.md) for more
-about keeping each inspection and action together.
-
-## Stop and reopen
-
-```powershell
-pnpm run ai -- down --installed --sandbox
-pnpm run ai -- up --installed --sandbox
-pnpm run ai -- down --installed --sandbox
-```
-
-`down` waits for confirmed app exit. `up` reuses the working profile when it still matches.
-Keep the same owner, target, game and slot/cache across commands. Wait for confirmed app exit
-before deleting a profile or releasing ownership, so a running process cannot keep writing to it.
-
-## Decide what to do next
-
-- [Install a local test mod](../guides/mod-workflows.md) and inspect its deployed bytes.
-- [Write a real-app test](../testing/integration.md) to make the workflow repeatable.
-- [Connect an assistant](../llms/connecting.md) to explore or debug the app with you.
-- [Run a benchmark](../testing/benchmarks.md) with a reproducible workload.
-
-A disposable profile isolates app data. It does not by itself guarantee an anonymous account:
-a new slot or non-default cache may copy an existing saved login. The core test fixtures
-explicitly prevent that. Read [accounts and login](authentication.md) when account isolation matters.
+Next, [install a local archive and check its files](../guides/mod-workflows.md), or [run a timed benchmark](../testing/benchmarks.md). For suites of automated checks, use the [Playwright fixtures](../testing/integration.md).

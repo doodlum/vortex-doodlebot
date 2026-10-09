@@ -1,6 +1,18 @@
 {
   "groups": [
     {
+      "name": "Human benchmark SDK and proposal cases",
+      "sources": ["^harness/benchmarks/", "^benchmarks/"],
+      "human": [
+        "docs/getting-started/first-session.md",
+        "docs/testing/benchmarks.md",
+        "docs/testing/adding-benchmarks.md",
+        "docs/testing/proposal.md",
+        "docs/testing/results.md"
+      ],
+      "ai": ["harness/reference/script-api.md", "harness/reference/package-scripts.md"]
+    },
+    {
       "name": "MCP and renderer tools",
       "sources": ["^src/.*\\.ts$"],
       "human": [

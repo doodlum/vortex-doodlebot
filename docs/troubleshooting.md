@@ -1,78 +1,65 @@
 # Troubleshooting
 
-Run `pnpm run ai -- doctor` with the same target/owner/slot flags as the failed session.
-Keep the original command, error, app logs and runtime details before changing the setup;
-they help distinguish the original problem from a new one introduced during diagnosis.
+Start with the first error and the preserved output directory. A benchmark's `blocked` reason often identifies a missing prerequisite; its `failed` reason usually identifies an operation or assertion to investigate.
 
-## No Vortex or the wrong runtime
+## Vortex cannot be found
 
-Install Vortex or set `VORTEX_AI_EXE` to its actual executable. Set
-`VORTEX_AI_INSTALLED=1` / `--installed` to choose it explicitly when a managed source checkout
-exists. Folder redirection needs a source runtime. Keep the source-only guard in place
-because a packaged runtime would write to real user folders.
+Install a released Vortex, or pass its executable explicitly:
 
-## Missing extension or stale tools
-
-Install dependencies and run `pnpm run build` from the Doodlebot root under the appropriate
-kit ownership. Restart the owned app or use a guarded extension reload. Read the current
-`tools --json` output and `automation_status`. Reload invalidates
-UI refs and changes the runtime ID.
-
-## `Cannot find module './common'` in a packaged app
-
-An installed Vortex placed underneath a directory with an inherited `package.json` containing
-`"type": "module"` can have its CommonJS plugins misclassified, even when the files exist
-inside `app.asar`. This was confirmed for the official 2.8.0 app installed beneath Doodlebot's
-ESM harness directory.
-
-Prefer an installation outside that ESM package scope. For an authorized disposable install
-inside it, a package boundary at the installation root can explicitly set CommonJS:
-
-```json
-{ "private": true, "type": "commonjs" }
+```typescript
+await withVortex({ executable: "D:/Apps/Vortex/Vortex.exe" }, async (vortex) => {
+  // Test the app here.
+});
 ```
 
-Correct the installation's package scope rather than editing Vortex's source or packed bundle.
-Keep the fatal dialog and renderer stack, then rerun startup and the app health check after
-the correction. A CLI or UI assertion may pass while the fatal error remains. This remedy
-applies to the confirmed package-scope condition; investigate other missing-module errors separately.
+Do not point this option at a source Electron runtime. The benchmark API uses released Vortex builds.
 
-## MCP does not answer
+## The script does not start
 
-Confirm the app is running, the owner/slot ports match and the endpoint ends in `/mcp`.
-Check the bearer header. Inspect startup and renderer errors; slow or blocked renderer work
-can delay MCP. Check the surrounding errors before attributing a connection reset to login.
+Run `pnpm install` from the repository root. Use Node.js 20.19 or newer and pnpm 9.15.0. Save scripts using top-level `await` as `.mts`, and run them with `pnpm exec tsx filename.mts`.
 
-## Stale or ambiguous UI references
+Examples import paths relative to a file at the repository root. If you moved a file, update its imports.
 
-Take a fresh scoped snapshot, inspect truncation and select a current actionable node.
-Use the new reference after another snapshot or reload. For ambiguous labels, add a role,
-test ID or narrower scope; the driver leaves the choice to you when several nodes match.
+## A benchmark is blocked by TBD
 
-## Lease or operation contention
+Fill in `manifest.profile` with the actual conditions of the run. The proposal's approved hardware, bandwidth, collections, revisions, and targets remain undecided; do not invent them. An exploratory machine profile should be described as exploratory.
 
-Use `lease status`, `kit status` and `slots` to inspect the live owner and original acquisition.
-Independent commands with the same owner still conflict. Stop known child operations and
-confirm app exit before releasing ownership. Inspect the reservation and processes before
-attempting forced recovery; another task may still be using them.
+For real runs, confirm the collection engine and mod count, pinned revision URL, source game fixture, readiness check, and account profile.
 
-## OAuth or collection failure
+The unattended real-game runner also requires a QA-only Windows account or test machine and `collection.dedicatedWindowsAccount: true`. Stock game-support extensions can write that account's Documents and LocalAppData; a copied game fixture alone does not isolate those writes.
 
-Check presence with `auth-status`, complete sign-in yourself and save the authorized cache.
-Presence is not proof of live-server validity. Check exact revision, network/service errors
-and download entitlement. A new slot can inherit another saved login; use the core fixtures
-when verifying anonymously. [Authentication](getting-started/authentication.md) explains the boundaries.
+## Collection login or download fails
 
-## Bad performance comparisons
+Complete [OAuth setup](getting-started/authentication.md). API keys alone cannot authenticate collections. The unattended collection runner requires Premium download access.
 
-Inspect the actual React build, workload size/shape, layout, viewport and cold/warm state.
-Use the same React mode for both sides: development-source and production-release timings
-cannot isolate a code regression. Repeat comparable baseline and candidate runs sequentially; retain
-outliers and omissions. See [benchmarks](testing/benchmarks.md).
+Check whether the pinned revision and all required files are still available. Browser login, CAPTCHA, missing entitlement, or an unavailable service is an external blocker. Save the exact failed setup step or download reason; do not turn it into a Vortex regression.
 
-## Test setup failure
+## A table action is blocked
 
-An import, compile or fixture error leaves the intended behavior untested. Use the appropriate
-config, installed selection and pinned package manager; list selected tests before launching
-when selection is uncertain. Preserve failed profiles/logs until processes have exited.
-Report core failures separately from deliberately opt-in Vortex regressions and measurements.
+A control must exist, be visible and enabled, and uniquely match the selector. Its expected effect must differ from the starting value. An already-sorted list, already-selected row, or zero-scroll-range table can make an action a no-op.
+
+Inspect the actual page with `vortex.page`, save a [screenshot](guides/capture.md), and update the fixture or selector. Plugins and Load Order need their game's real installed data and an explicit table mapping.
+
+A missing game-specific page is not covered by a synthetic Mods table.
+
+## Installation completes but deployment fails
+
+Installing stages files; it does not put them into the game directory. Enable the intended mods, wait for installers to finish, and deploy. [The local archive example](guides/mod-workflows.md) checks the deployed bytes.
+
+An installer dialog can keep a mod in the installing state. A game directory deployed by another Vortex instance can also block deployment. Use a clean private fixture; do not purge a normal game installation just to get a test past an error.
+
+## UI timing is noisy
+
+Use a visible desktop and keep viewport, zoom, generated data, storage, and background activity fixed. Run comparisons sequentially. Screenshots, video, and CPU profiling add work; collect them separately from the baseline unless included deliberately.
+
+Check repeat spread, cold/warm cache mode, network changes, and security scanning. Read the [measurement limits](testing/results.md) before interpreting a difference.
+
+## The app or fixture remains after failure
+
+Failed tests preserve the disposable workspace so you can inspect logs and files. Successful runs close the app and remove that workspace. A cleanup failure means app shutdown could not be confirmed; retain the reported path and diagnose the running process before removing its files.
+
+## Advanced existing-session problems
+
+For a manually managed session, use the same owner, slot, cache, and target options for setup and scripts. A token rejection or connection failure often means the script is connecting to a different session. Close and restart the intended test session with those same options.
+
+`pnpm run ai -- doctor --installed --sandbox` checks the lower-level local setup. [App sessions](guides/lifecycle.md) explains that workflow.

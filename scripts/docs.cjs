@@ -133,6 +133,20 @@ function api() {
     ["cdp", "cdp.ts"],
     ["instance", "instance.ts"],
     ["jsonFile", "jsonFile.ts"],
+    ["benchmarks.types", "../benchmarks/types.ts"],
+    ["benchmarks.runner", "../benchmarks/runner.ts"],
+    ["benchmarks.session", "../benchmarks/session.ts"],
+    ["benchmarks.gameFixtures", "../benchmarks/gameFixtures.ts"],
+    ["benchmarks.gameSettings", "../benchmarks/gameSettings.ts"],
+    ["benchmarks.collectionCompletion", "../benchmarks/collectionCompletion.ts"],
+    ["benchmarks.skyrimEdition", "../benchmarks/skyrimEdition.ts"],
+    ["benchmarks.tables", "../benchmarks/tables.ts"],
+    ["proposal.types", "../../benchmarks/types.ts"],
+    ["proposal.config", "../../benchmarks/config.ts"],
+    ["proposal.collections", "../../benchmarks/collections.ts"],
+    ["proposal.catalog", "../../benchmarks/catalog.ts"],
+    ["proposal.workloads", "../../benchmarks/workloads.ts"],
+    ["proposal.runner", "../../benchmarks/runner.ts"],
   ]);
   for (const statement of entry.statements) {
     if (
@@ -146,7 +160,7 @@ function api() {
       );
   }
   return [...modules].map(([name, file]) => {
-    const relative = "harness/src/" + file;
+    const relative = path.posix.normalize("harness/src/" + file);
     const sf = source(relative);
     const symbols = [];
     for (const node of sf.statements) {
@@ -372,16 +386,6 @@ if (!write) {
     if (/\]\([^)]*(?:AGENTS\.md|AGENT-WORKFLOW\.md|KNOWLEDGE-ROUTES\.md|\/\.claude\/)/.test(body))
       errors.push(
         `${path.relative(root, file)} links to AI instructions; explain the operation for human readers instead.`,
-      );
-  }
-  for (const file of ["doodlebot-banner.svg", "doodlebot-logo.svg", "OFL-Manrope.txt"]) {
-    if (
-      !fs
-        .readFileSync(path.join(root, "assets", file))
-        .equals(fs.readFileSync(path.join(root, "docs/assets", file)))
-    )
-      errors.push(
-        `docs/assets/${file} differs from the approved assets/${file}; sync the public copy.`,
       );
   }
 }

@@ -1,48 +1,19 @@
-# Architecture and limits
+# How Doodlebot connects to Vortex
 
-Doodlebot has two parts. An extension inside Vortex's renderer exposes state and UI through
-MCP tools. A Node/TypeScript harness outside the app prepares profiles, starts and stops
-processes, manages builds, drives CDP and supplies test fixtures and evidence reports.
+A TypeScript test controls a released Vortex app through two connections.
 
-```mermaid
-flowchart TB
-  Human[Human operator] --> CLI[CLI and scripts]
-  Human --> LLM[External LLM client]
-  LLM --> MCP[Loopback Streamable HTTP MCP]
-  CLI --> Guard[Supported operation guards]
-  Guard --> Life[Launch, stop, profiles and builds]
-  Guard --> MCP
-  Guard --> CDP[CDP renderer and window control]
-  MCP --> Ext[Doodlebot extension]
-  CDP --> Renderer[Vortex renderer]
-  Ext --> Renderer
-  Life --> App[Released Vortex or authorized source target]
-  Renderer --> State[State, actions, extensions and visible UI]
-```
+The Doodlebot extension runs inside Vortex and exposes state, actions, and UI controls through a local MCP server. The harness starts Vortex with a separate test profile and connects to its renderer through Chrome DevTools Protocol. Playwright uses that renderer connection for user input and visible assertions.
 
-## Why use the real app?
+The benchmark API puts these pieces behind `withVortex()` and `runBenchmarks()`. Your callback receives the app client and Playwright page. The wrapper prepares a disposable workspace and closes the app after the callback.
 
-Real-app tests catch problems in archive installation, React input handling, deployed files
-and renderer reload that pure-logic mocks cannot establish. The core integration fixtures
-run a released app and check results independently through Playwright and the filesystem.
-The extension keeps working against stock Vortex; main-process/window capabilities stay in
-the harness rather than requiring a Vortex patch.
+## Why use both connections?
 
-## Reflected APIs
+Vortex state tells you which mods are installed or enabled. The renderer shows whether a page or control actually changed. Files show whether deployment wrote the expected content. Choose the observation that answers the test's question.
 
-`vortex_describe` discovers selectors, action creators, extension APIs, events and methods.
-`vortex_query` reads state or selectors. `vortex_dispatch` invokes available writes when
-enabled by a bearer token. Verified hints explain known positional arguments and caveats.
-An API missing from those hints may still be callable, but needs investigation before use. Scoped inventories
-avoid enormous raw-state responses.
+The extension does not need a patched Vortex. Operations needing access outside the renderer, such as launch and screenshots, are performed by the harness.
 
-## Ownership boundaries
+## Limits of a fixture
 
-Leases reserve app caches and source checkouts; operation guards exclude supported
-conflicting commands for their duration. Known child processes retain protection until exit.
-Kit publication is serialized by a separate writer reservation.
+A disposable local game is enough to test archive installation, basic deployment, and generated lists. It cannot prove that a real collection downloads successfully or that a game-specific plugin parser accepts real data.
 
-These controls work when callers use the supported harness paths. Raw MCP/CDP, manual
-Git/filesystem operations and external builders do not automatically participate, so the
-controls are not a security sandbox. Direct clients must coordinate their operations and
-stay within the permitted task.
+Real collection benchmarks copy a supplied game fixture and require OAuth, a pinned collection revision, download access, and a QA-only Windows account. Game-support extensions can still write that account's Documents and LocalAppData; the SDK does not erase them. Engine-specific pages need that game's installed data and actual controls. See [the performance plan](testing/proposal.md).

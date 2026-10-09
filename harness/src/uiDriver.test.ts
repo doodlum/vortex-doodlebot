@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { McpError, type VortexMcpClient } from "./mcpClient";
 import {
   DialogClickError,
   clickByName,
   advanceFomod,
+  autoAdvanceFomods,
   clickInsideDialog,
   findNodes,
   findOne,
@@ -101,6 +102,34 @@ describe("target matching", () => {
 });
 
 describe("advanceFomod", () => {
+  it("propagates a failed FOMOD action and never attempts it again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { mcp } = fakeMcp({ [NAV]: [node("Next")] });
+      const original = mcp.call.bind(mcp);
+      let clicks = 0;
+      vi.spyOn(mcp, "call").mockImplementation(async (tool, args) => {
+        if (tool === "ui_click") {
+          clicks++;
+          throw new Error("Fixture FOMOD action failure");
+        }
+        return original(tool, args);
+      });
+      const result = autoAdvanceFomods(mcp, {
+        signal: new AbortController().signal,
+        pollMs: 1,
+      }).then(
+        () => undefined,
+        (error) => error,
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(String(await result)).toContain("Fixture FOMOD action failure");
+      expect(clicks).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
   it("clicks the last nav button, whatever the step happens to call it", async () => {
     // Vortex labels the forward action after the step, so it is "Default
     // Settings" on one mod and "Next" on the next. Matching on the label is
@@ -160,6 +189,18 @@ function answerTo(text: string, policies = DEFAULT_DIALOG_POLICIES): string | un
 }
 
 describe("dialogPolicies", () => {
+  it("keeps optional selection consistent throughout both install passes", () => {
+    const title = "Collection installation complete";
+    const skip = dialogPolicies({ optionalMods: "skip" }).find((policy) =>
+      policy.match.test(title),
+    )!;
+    const install = dialogPolicies({ optionalMods: "install" }).find((policy) =>
+      policy.match.test(title),
+    )!;
+    expect(skip.button).toEqual(/^(no thanks|done)$/i);
+    expect(install.button).toEqual(/^(install optional mods|done)$/i);
+    expect((install.button as RegExp).test("No Thanks")).toBe(false);
+  });
   const purgePrompt = PURGE_PROMPT;
 
   it("refuses the purge by default", () => {
@@ -247,6 +288,23 @@ function dialogMcp(
 }
 
 describe("autoAnswerDialogs", () => {
+  it("defers a matching review to the operation coordinator while its state guard refuses", async () => {
+    const { mcp, clicked } = dialogMcp();
+    const controller = new AbortController();
+    let ready = false;
+    const answering = autoAnswerDialogs(mcp, {
+      signal: controller.signal,
+      pollMs: 1,
+      canAnswer: async () => ready,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(clicked).toHaveLength(0);
+    ready = true;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    controller.abort();
+    await answering;
+    expect(clicked).toContain("r4");
+  });
   it("answers a dialog whose text is joined differently from the snapshot's", async () => {
     const { mcp, clicked } = dialogMcp();
     const controller = new AbortController();
@@ -270,14 +328,13 @@ describe("autoAnswerDialogs", () => {
     expect(fullSnapshots()).toBe(0);
   });
 
-  it("still finds dialogs through a snapshot on an extension without ui_active_dialogs", async () => {
+  it("fails observation when ui_active_dialogs is unavailable", async () => {
     const { mcp, clicked } = dialogMcp(undefined, { withDialogTool: false });
     const controller = new AbortController();
     const answering = autoAnswerDialogs(mcp, { signal: controller.signal, pollMs: 1 });
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await expect(answering).rejects.toThrow("not found");
     controller.abort();
-    await answering;
-    expect(clicked).toContain("r4");
+    expect(clicked).toHaveLength(0);
   });
 
   it("never confirms deleted links, whose default deletes the staging files", async () => {

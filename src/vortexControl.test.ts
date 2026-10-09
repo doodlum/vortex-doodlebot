@@ -34,6 +34,19 @@ vi.mock("@nexusmods/vortex-api", () => ({
   },
   util: {
     renderModName: vi.fn((mod: { id: string }) => mod.id),
+    findModByRef: vi.fn(
+      (reference: { id: string }, mods: Record<string, unknown>) => mods[reference.id],
+    ),
+    findDownloadByRef: vi.fn(
+      (
+        reference: { tag: string },
+        downloads: Record<string, { state?: string; modInfo?: { referenceTag?: string } }>,
+      ) =>
+        Object.entries(downloads).find(
+          ([, file]) => file.state !== "failed" && file.modInfo?.referenceTag === reference.tag,
+        )?.[0],
+    ),
+    renderModReference: vi.fn((reference: { id: string }) => reference.id),
     getVortexPath: vi.fn(() => "C:\\fake\\userData"),
     writeFileAtomic: vi.fn(async () => undefined),
     toPromise: vi.fn(
@@ -82,6 +95,9 @@ import {
   listRuntimeErrors,
   listUnsolvedConflicts,
   pollListener,
+  watchStateChanges,
+  collectionStatus,
+  collectionDownloadFailures,
   queryStatePath,
   querySelector,
   restartVortex,
@@ -195,6 +211,195 @@ describe("vortexControl: reflection", () => {
 
     expect(queryStatePath(api, ["nope", "deeper"])).toBeUndefined();
   });
+});
+
+describe("projected state listeners", () => {
+  function observer(fields: Record<string, string[]> = { state: ["state"] }) {
+    let callback!: (previous: unknown, current: unknown) => void;
+    const api = fakeApi();
+    (api as unknown as { onStateChange: unknown }).onStateChange = (
+      _path: string[],
+      cb: typeof callback,
+    ) => {
+      callback = cb;
+    };
+    const { listenerId } = watchStateChanges(api, ["persistent", "downloads", "files"], fields);
+    return {
+      listenerId,
+      change: (previous: unknown, current: unknown) => callback(previous, current),
+    };
+  }
+  it("retains every changed member beyond 200, without copying large metadata", () => {
+    const { listenerId, change } = observer();
+    const records = Object.fromEntries(
+      Array.from({ length: 2100 }, (_, i) => [
+        `mod-${i}`,
+        { state: "started", metadata: "x".repeat(10000) },
+      ]),
+    );
+    vi.spyOn(Date, "now").mockReturnValueOnce(1234);
+    change({}, records);
+    const poll = pollListener(listenerId);
+    expect(poll.entries[0]!.receivedAt).toBe(1234);
+    const after = poll.entries[0]!.args[1] as Record<string, unknown>;
+    expect(Object.keys(after)).toHaveLength(2100);
+    expect(after["mod-2099"]).toEqual({ state: "started" });
+    expect(JSON.stringify(poll).length).toBeLessThan(200000);
+  });
+  it("does not advance sequence for byte progress or unrelated metadata", () => {
+    const { listenerId, change } = observer();
+    change({ a: { state: "started", received: 0 } }, { a: { state: "started", received: 1024 } });
+    expect(pollListener(listenerId)).toEqual({ entries: [], lastSeq: 0 });
+    change({ a: { state: "paused" } }, {});
+    expect(pollListener(listenerId).entries[0]!.args).toEqual([
+      { a: { state: "paused" } },
+      { a: null },
+    ]);
+  });
+  it("pages without skipping queued entries and exposes sequence gaps after overflow", () => {
+    const { listenerId, change } = observer();
+    for (let i = 0; i < 510; i++) change({}, { a: { state: String(i) } });
+    const first = pollListener(listenerId, 0, 16);
+    expect(first.entries).toHaveLength(16);
+    expect(first.entries[0]!.seq).toBe(11);
+    expect(first.lastSeq).toBe(26);
+    expect(pollListener(listenerId, first.lastSeq, 16).entries[0]!.seq).toBe(27);
+    expect(() => pollListener(listenerId, 0, 0)).toThrow("limit");
+  });
+  it.each(["object", "size"])(
+    "reports unsupported projection through polling instead of silently dropping it: %s",
+    (kind) => {
+      const { listenerId, change } = observer();
+      if (kind === "object") change({}, { a: { state: { nested: "not scalar" } } });
+      else
+        change(
+          {},
+          Object.fromEntries(
+            Array.from({ length: 600 }, (_, i) => [i, { state: "x".repeat(4096) }]),
+          ),
+        );
+      expect(() => pollListener(listenerId)).toThrow(
+        kind === "object" ? "must be scalar" : "2 MiB",
+      );
+    },
+  );
+  it("rejects unsafe observation paths before registering a callback", () => {
+    expect(() => watchStateChanges(fakeApi(), ["__proto__"], { state: ["state"] })).toThrow(
+      "scalar field paths",
+    );
+  });
+});
+
+it("attributes only failed transfers for unresolved selected members through the stock matcher", () => {
+  const api = fakeApi();
+  const rules = [
+    { type: "requires", reference: { id: "installed", tag: "old-failure" } },
+    { type: "requires", reference: { id: "missing", tag: "required" } },
+    {
+      type: "requires",
+      reference: { id: "ignored-required", tag: "ignored-required" },
+      ignored: true,
+    },
+    { type: "recommends", reference: { id: "selected", tag: "selected" }, ignored: false },
+    { type: "recommends", reference: { id: "skipped", tag: "skipped" }, ignored: true },
+    { type: "recommends", reference: { id: "unspecified", tag: "unspecified" } },
+  ];
+  const files = Object.fromEntries(
+    [
+      "old-failure",
+      "required",
+      "ignored-required",
+      "selected",
+      "skipped",
+      "unspecified",
+      "unrelated",
+    ].map((tag) => [
+      tag,
+      { state: "failed", modInfo: { referenceTag: tag }, urls: ["private URL"] },
+    ]),
+  );
+  (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+    persistent: {
+      mods: {
+        skyrimse: {
+          collection: { id: "collection", type: "collection", rules },
+          installed: { id: "installed", state: "installed" },
+        },
+      },
+      downloads: { files },
+    },
+  });
+  vi.mocked(selectors.activeProfile).mockReturnValue({
+    id: "p",
+    gameId: "skyrimse",
+    name: "QA",
+    features: {},
+    lastActivated: 0,
+    modState: { installed: { enabled: true, enabledTime: 0 } },
+  });
+  expect(collectionDownloadFailures(api, "skyrimse", "collection")).toEqual([
+    { downloadId: "required", reference: "missing" },
+    { downloadId: "selected", reference: "selected" },
+  ]);
+  expect(util.findDownloadByRef).toHaveBeenCalledWith(rules[1]!.reference, {
+    required: { ...files.required, state: "finished" },
+  });
+  expect(files.required!.state).toBe("failed");
+  expect(() => collectionDownloadFailures(api, "skyrimse", "not-a-collection")).toThrow(
+    "No collection",
+  );
+  vi.mocked(selectors.activeProfile).mockReset();
+});
+
+it("checks optional members through the stock matcher, installed state and active profile", () => {
+  const api = fakeApi();
+  const required = { type: "requires", reference: { id: "required" } };
+  const optional = { type: "recommends", reference: { id: "optional" }, ignored: false };
+  const mods = {
+    collection: { id: "collection", type: "collection", rules: [required, optional] },
+    required: { id: "required", state: "installed" },
+    optional: { id: "optional", state: "installing" },
+  };
+  (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+    persistent: { mods: { skyrimse: mods } },
+  });
+  vi.mocked(selectors.activeProfile).mockReturnValue({
+    id: "profile",
+    gameId: "skyrimse",
+    name: "Unit profile",
+    features: {},
+    lastActivated: 0,
+    modState: {
+      required: { enabled: true, enabledTime: 0 },
+      optional: { enabled: true, enabledTime: 0 },
+    },
+  });
+  expect(collectionStatus(api, "skyrimse")[0]).toMatchObject({
+    complete: true,
+    required: 1,
+    optional: 1,
+    optionalSatisfied: 0,
+    optionalIgnored: 0,
+    optionalSelected: 1,
+  });
+  mods.optional.state = "installed";
+  expect(collectionStatus(api, "skyrimse")[0]!.optionalSatisfied).toBe(1);
+  optional.ignored = true;
+  expect(collectionStatus(api, "skyrimse")[0]!.optionalIgnored).toBe(1);
+  expect(collectionStatus(api, "skyrimse")[0]!.optionalSelected).toBe(0);
+  vi.mocked(selectors.activeProfile).mockReturnValue({
+    id: "profile",
+    gameId: "skyrimse",
+    name: "Unit profile",
+    features: {},
+    lastActivated: 0,
+    modState: {
+      required: { enabled: true, enabledTime: 0 },
+      optional: { enabled: false, enabledTime: 0 },
+    },
+  });
+  expect(collectionStatus(api, "skyrimse")[0]!.optionalSatisfied).toBe(0);
+  vi.mocked(selectors.activeProfile).mockReset();
 });
 
 describe("vortexControl: profiles", () => {

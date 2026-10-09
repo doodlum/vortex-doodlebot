@@ -27,6 +27,7 @@ export { readJsonFile, parseJson } from "./jsonFile";
 
 export * as bethesda from "./bethesdaSandbox";
 export * as collectionScale from "./collectionScale";
+export * as collectionDownloads from "./collectionDownloads";
 export * as deployment from "./deployment";
 export * as downloads from "./downloadServer";
 export * as largeLibrary from "./largeLibrary";

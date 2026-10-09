@@ -1,62 +1,52 @@
-# Accounts and login
+# Sign in for real collections
 
-You can inspect the UI, install local archives and test deployment without a Nexus account.
-For live collections, sign in through Nexus OAuth. An API key cannot replace that login.
+Local archives, generated mod lists, UI checks, and screenshots work without an account. Real Nexus collections need OAuth login. A personal API key alone does not authenticate collections.
 
-## Sign in once
-
-```powershell
-$env:VORTEX_AI_OWNER = 'operator'
-$env:VORTEX_AI_INSTALLED = '1'
-pnpm run ai -- setup --installed --sandbox --oauth
-```
-
-Complete the browser login yourself, including any MFA or captcha. The command waits for
-credentials, saves them and verifies they survive a fresh start. Service access is a
-separate check: a saved login may still be rejected by a Nexus endpoint. If you use
-`--no-wait`, the command returns while login is pending. Finish later with:
+## Save a login
 
 ```powershell
-pnpm run ai -- auth-status --installed --sandbox
-pnpm run ai -- save-login --installed --sandbox
+$env:VORTEX_AI_OWNER = 'my-tests'
+pnpm run ai -- setup --installed --oauth
 ```
 
-`auth-status` prints presence booleans rather than credentials. `save-login` verifies OAuth,
-stops the app cleanly and captures the baseline. Reopen with `up` afterward.
+In the isolated Vortex window, click **Log in** and complete the browser login yourself. Setup waits for the login, caches it locally, and verifies that a fresh test profile can restore it. Wait for `Setup complete` before running collection tests.
 
-## What gets cached
+You can check the result in TypeScript:
 
-The private cache contains a baseline profile, a working profile and saved OAuth. The baseline
-is reusable app/game setup; the saved OAuth is maintained separately so fresh restores can
-retain newer credentials. Vortex performs token refresh; Doodlebot saves observed rotations.
-Logout removes the saved credentials rather than silently restoring them at the next launch.
+```typescript
+import assert from "node:assert/strict";
+import { clientFor, loadConfig } from "./harness/src/kit";
 
-Do not commit private caches, copy credentials into prompts or publish raw profile backups.
-The normal cache directories are ignored by Git; you must protect custom paths yourself.
-
-## Reuse a login deliberately
-
-```powershell
-pnpm run ai -- login-import --from 'C:\path\to\source-cache' --cache-dir 'C:\path\to\destination-cache' --owner operator
+const vortex = clientFor(loadConfig());
+const auth = await vortex.call<{
+  oauthPresent: boolean;
+  oauthRefreshable: boolean;
+}>("nexus_auth_status");
+assert.ok(auth.oauthPresent && auth.oauthRefreshable, "Complete OAuth setup first");
 ```
 
-Pass a source cache directory. Existing destination credentials are preserved unless you
-explicitly pass `--force`. Stop the destination app before changing its saved login.
+## Before an unattended collection run
 
-**New slots and non-default cache directories may inherit the default cache's saved login**
-when they have no OAuth cache file. A slot is not an account boundary. Subsequent refreshes
-belong to each copy and can diverge. For account-free automated tests, use the supplied core
-fixtures: they write a null OAuth cache before bootstrap. Do not assume a new directory is logged out.
+Check that the collection revision is pinned and available, you have access to every required download, and your account supports the download flow you intend to measure. The performance proposal suggests Premium for unattended runs; the agreed account profile is still **TBD**.
 
-## Live collections
+You also need an appropriate game fixture and enough space for downloads, staging, and deployment. A generated local mod list cannot stand in for a real collection or engine-specific installer.
 
-Unattended Nexus downloads require the appropriate account entitlement, normally Premium,
-as well as network access and cached OAuth. A collection URL selects a specific revision.
-Check download dialogs and service responses when deciding whether an install completed.
-Account requirements and service errors can prevent it. See [mod workflows](../guides/mod-workflows.md).
+Run real game cases in a QA-only Windows account or test machine. The runner copies the game fixture and isolates the Vortex profile, but a released game's support extension may still write that account's Documents and LocalAppData. Confirm that condition with `collection.dedicatedWindowsAccount: true`. The default session leaves those per-user folders in place. `cleanStart: true` or `restartCollectionBenchmark()` backs up and resets only the supported allowlisted settings files; saves and purchased-content catalogs remain. See [clean restart](../testing/benchmarks.md#restart-a-real-collection-from-scratch).
 
-## Verify persistence separately from service access
+Browser login, unavailable downloads, and account restrictions are prerequisites to resolve. If they prevent a run, record it as blocked with the reason instead of treating it as a Vortex timing result.
 
-`pnpm run ai:test:oauth` checks credential persistence with the operator's sandbox login and
-leaves that instance running. `pnpm run ai:test:nexus` is the separate live-service collection
-check. Neither belongs in the account-free fast gate. See [running checks](../testing/running.md).
+Keep credentials in the local cache or the gitignored `harness/.env`. Do not copy them into test source or reports. See [security and privacy](../security.md).
+
+## Use the cache in a manifest
+
+After setup completes, find the cached OAuth file for the installed app:
+
+```typescript title="login-cache.mts"
+import { loadConfig, resolveTarget } from "./harness/src/config";
+import { authCacheFile } from "./harness/src/instance";
+
+const config = loadConfig({ target: resolveTarget({ preferInstalled: true }) });
+console.log(authCacheFile(config));
+```
+
+Run `pnpm exec tsx login-cache.mts` with the same cache settings as login setup. Put the printed path in your real collection manifest's `authCache`. This prints the file's location, not the credentials. Keep the file private.

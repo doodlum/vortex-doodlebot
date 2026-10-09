@@ -22,6 +22,7 @@ export default defineConfig({
   // One at a time: the tools under test resize the real window and the MCP
   // server binds a fixed port, neither of which survives parallel workers.
   workers: 1,
+  retries: 0,
   fullyParallel: false,
   // A cold bootstrap plus an Electron launch is minutes, not seconds.
   timeout: 60_000,

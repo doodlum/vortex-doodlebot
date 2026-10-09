@@ -40,7 +40,7 @@ import {
 import { VortexMcpClient } from "./mcpClient";
 import { requireRunning } from "./runningProfile";
 import { formatReport, runResponsiveSweep, viewportList } from "./responsive";
-import { captureScreenshot } from "./cdp";
+import { attachToRenderer, captureScreenshot, type RendererHandle } from "./cdp";
 import { startRecording } from "./recording";
 import {
   formatPullRequestChecks,
@@ -283,6 +283,7 @@ Driving a running instance
                          work; returns once they finish (run it in the background)
     --count <n> --seconds <n> --stagger <s>   (defaults 1, 30, 0)
   collection <url>       Install exact Nexus collection/revision using OAuth
+    --warnings-as-errors Fail on any collection warning; warnings are printed by default
   deploy                 Deploy enabled mods for the active game
     --purge              Permit purging a foreign deployment in a disposable game
   purge                  Remove files recorded in this game's deployment manifest
@@ -851,11 +852,46 @@ async function main(): Promise<number> {
           throw new ConfigError(`collection needs a collection to install, e.g.
   doodlebot collection https://next.nexusmods.com/fallout4/collections/<slug>`);
         }
-        const result = await installCollection(mcp, target, {
-          onProgress: (m) => log(`  ${m}`),
-        });
+        let renderer: RendererHandle | undefined;
+        let result;
+        let installFailed = false;
+        let rendererCleanupFailure: { error: unknown } | undefined;
+        try {
+          result = await installCollection(mcp, target, {
+            warningsAsErrors: flags["warnings-as-errors"] === true,
+            onWarning: (warning) =>
+              log(
+                `  Warning [${warning.source}; original ${warning.originalSeverity}]: ${warning.message}`,
+              ),
+            onProgress: (m) => log(`  ${m}`),
+            verifyCompletion: async (modId, timeoutMs) => {
+              renderer = await attachToRenderer(config);
+              const { waitForCollectionCompletion } =
+                await import("../benchmarks/collectionCompletion");
+              await waitForCollectionCompletion(renderer.page, modId, {
+                timeoutMs,
+                onObservation: () => undefined,
+              });
+            },
+          });
+        } catch (error) {
+          installFailed = true;
+          throw error;
+        } finally {
+          try {
+            await renderer?.close();
+          } catch (error) {
+            rendererCleanupFailure = { error };
+            if (installFailed)
+              log(
+                `  Renderer cleanup also failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+          }
+        }
+        if (rendererCleanupFailure) throw rendererCleanupFailure.error;
         log("");
         log(`Installed collection ${result.ref.slug} (${result.ref.gameId})`);
+        if (result.warnings.length > 0) log(`  Passed with ${result.warnings.length} warning(s)`);
         log(`  mod id: ${result.modId ?? "unknown"}`);
         log(
           `  required mods installed: ${String(result.modCount)}/${String(result.expectedModCount)}`,

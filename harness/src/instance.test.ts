@@ -224,6 +224,36 @@ describe("the leases a running Vortex needs", () => {
     }
   });
 
+  it("settles the exact child before rejecting a failed spawn observer", async () => {
+    env = { dir: path.join(dir, "leases"), isAlive: processAlive };
+    const config = devConfig();
+    const hold = claimInstanceLease(config, "observed launch", env);
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    try {
+      await expect(
+        registerLaunchedProcess(child, hold.identities, {
+          leaseEnv: env,
+          onProcessSpawn: () => {
+            throw new Error("shared game lease registration failed");
+          },
+        }),
+      ).rejects.toThrow("shared game lease registration failed");
+      expect(processAlive(child.pid!)).toBe(false);
+      for (const identity of hold.identities)
+        expect(readLease(identity.resource, env)!.lease.instancePids).toEqual([]);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, "exit");
+        child.kill("SIGKILL");
+        await exited;
+      }
+      hold.release();
+    }
+  });
+
   it("for a command attaching to a running Vortex, are its checkout, not the configured one", () => {
     const config = installedConfig();
     expect(attachedLeaseResources(config)).toEqual([instance()]);

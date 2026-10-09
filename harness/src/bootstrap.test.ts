@@ -4,10 +4,28 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { captureLogin, liveDir, loginDir, readMarker, snapshotDir } from "./bootstrap";
+import { bootstrap, captureLogin, liveDir, loginDir, readMarker, snapshotDir } from "./bootstrap";
 import type { HarnessConfig } from "./config";
 import { requireOAuth } from "./auth";
-import { stopStaleInstance } from "./instance";
+import { authCacheFile, stopStaleInstance } from "./instance";
+
+vi.mock("./liveOperation", () => ({
+  withLiveOperation: (
+    _config: unknown,
+    _name: string,
+    run: (context: unknown) => Promise<unknown>,
+  ) => run(undefined),
+}));
+vi.mock("./gameSetup", () => ({
+  ensureGameManaged: vi.fn(
+    async (_mcp: unknown, gameId: string, { gamePath }: { gamePath: string }) => ({
+      gameId,
+      gamePath,
+      activated: true,
+      alreadyKnown: false,
+    }),
+  ),
+}));
 
 vi.mock("./auth", () => ({
   requireOAuth: vi.fn(async () => ({ oauthPresent: true, oauthRefreshable: true })),
@@ -19,6 +37,12 @@ vi.mock("./auth", () => ({
 vi.mock("./instance", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./instance")>()),
   stopStaleInstance: vi.fn(async () => false),
+  ensureExtensionBuilt: vi.fn(async () => "unit fixture"),
+  installMcpExtension: vi.fn(),
+  launchVortex: vi.fn(async () => ({
+    mcp: { call: vi.fn(async () => ({ oauthPresent: true })) },
+    stop: vi.fn(async () => undefined),
+  })),
 }));
 
 const roots: string[] = [];
@@ -44,6 +68,31 @@ function fakeConfig(): HarnessConfig {
 afterEach(() => {
   vi.clearAllMocks();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe("real copied game preservation", () => {
+  it.each([false, true])(
+    "preserveGameFixture=%s retains masters only when explicitly requested",
+    async (preserveGameFixture) => {
+      const config = fakeConfig();
+      config.gamePath = path.join(config.cacheDir, "game");
+      const data = path.join(config.gamePath, "Data");
+      fs.mkdirSync(data, { recursive: true });
+      fs.writeFileSync(path.join(data, "Skyrim.esm"), "copied game master fixture bytes");
+      fs.writeFileSync(
+        path.join(data, "Skyrim - Textures.bsa"),
+        "copied game archive fixture bytes",
+      );
+      fs.writeFileSync(authCacheFile(config), "null");
+      await bootstrap(config, { fresh: true, preserveGameFixture });
+      expect(fs.existsSync(path.join(data, "Skyrim.esm"))).toBe(preserveGameFixture);
+      expect(fs.existsSync(path.join(data, "Skyrim - Textures.bsa"))).toBe(preserveGameFixture);
+      if (preserveGameFixture)
+        expect(fs.readFileSync(path.join(data, "Skyrim.esm"), "utf8")).toBe(
+          "copied game master fixture bytes",
+        );
+    },
+  );
 });
 
 describe("captureLogin", () => {

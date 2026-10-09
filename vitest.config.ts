@@ -18,7 +18,12 @@ export default defineConfig({
   test: {
     environment: "node",
     // harness/**/*.spec.ts are Playwright e2e and deliberately not matched.
-    include: ["src/**/*.test.ts", "harness/src/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "harness/src/**/*.test.ts",
+      "harness/benchmarks/**/*.test.ts",
+      "benchmarks/**/*.test.ts",
+    ],
     // Unit tests must never take or read the machine-wide instance lease (lease.ts).
     env: {
       VORTEX_AI_LEASE_DIR: path.join(os.tmpdir(), "vortex-ai-unit-test-leases"),

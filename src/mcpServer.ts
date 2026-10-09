@@ -182,7 +182,7 @@ function registerDiscoveryTools(server: McpServer, api: IExtensionApi): void {
     "automation_status",
     {
       description:
-        "Identify this renderer lifetime and isolated harness profile. runtimeId changes after renderer reload; userDataDir is null outside the harness. `paths` are the per-user folders Vortex resolved (documents, localAppData) — what a Bethesda game's INI files and plugins.txt are written under — so a harness can refuse to manage a game unless they are its own sandbox copies. `nodeEnv` is the renderer's NODE_ENV; `react.build` is which React build the renderer actually loaded (production, development, or unknown), read from the module cache — the harness refuses a --production run unless it is production. Contains no credentials.",
+        "Identify this renderer lifetime, running Vortex version, and isolated harness profile. runtimeId changes after renderer reload; userDataDir is null outside the harness. `paths` are the per-user folders Vortex resolved (documents, localAppData) — what a Bethesda game's INI files and plugins.txt are written under — so a harness can refuse to manage a game unless they are its own sandbox copies. `nodeEnv` is the renderer's NODE_ENV; `react.build` is which React build the renderer actually loaded (production, development, or unknown), read from the module cache — the harness refuses a --production run unless it is production. Contains no credentials.",
       inputSchema: z.object({}),
     },
     async () => ({
@@ -196,6 +196,7 @@ function registerDiscoveryTools(server: McpServer, api: IExtensionApi): void {
           nodeEnv: process.env.NODE_ENV ?? null,
           // What React actually loaded, which is what decides rendering speed
           react: loadedReactBuild(),
+          vortexVersion: util.getApplication().version,
         }),
       ],
     }),
@@ -364,6 +365,18 @@ function registerModInventoryTools(server: McpServer, api: IExtensionApi): void 
     },
     async ({ gameId }) => ({
       content: [jsonText(control.collectionStatus(api, gameId))],
+    }),
+  );
+
+  server.registerTool(
+    "collection_download_failures",
+    {
+      description:
+        "Failed download IDs for unresolved selected collection members, matched by Vortex's own reference matcher. Required ignored members and skipped optionals are excluded. No URLs or credentials are returned. A failed transfer alone does not establish a recoverable cause.",
+      inputSchema: z.object({ gameId: z.string(), collectionModId: z.string() }),
+    },
+    async ({ gameId, collectionModId }) => ({
+      content: [jsonText(control.collectionDownloadFailures(api, gameId, collectionModId))],
     }),
   );
 
@@ -1137,14 +1150,29 @@ function registerWriteTools(server: McpServer, api: IExtensionApi): void {
   );
 
   server.registerTool(
+    "watch_state_changes",
+    {
+      description:
+        "Observe changes to named scalar fields in a state dictionary or array. Captures only changed records and emission timestamps, including records beyond the first 200. Other metadata and byte-progress churn are not retained. Returns listenerId for poll_listener. Entries are limited to 2 MiB; the ring retains at most 500 entries or 16 MiB (oldest dropped). Projection errors fail polling; sequence gaps mean evidence was lost. Requires a write-enabled server; restart clears subscriptions.",
+      inputSchema: z.object({
+        path: z.array(z.string()).min(1).max(12),
+        fields: z.record(z.string(), z.array(z.string()).min(1).max(12)),
+      }),
+    },
+    async ({ path, fields }) => ({
+      content: [jsonText(control.watchStateChanges(api, path, fields))],
+    }),
+  );
+
+  server.registerTool(
     "poll_listener",
     {
       description:
-        "Read back what a persistent listener registered via vortex_dispatch (onStateChange/" +
+        "Read back what a persistent listener registered via watch_state_changes or vortex_dispatch (onStateChange/" +
         "onAsync/registerProtocol/registerRepositoryLookup) has captured. Non-destructive — " +
         "repeated polling with the same `since` returns the same entries; the listener's own " +
         "ring buffer (capped at 500 firings, oldest dropped) is what bounds memory, not " +
-        "draining on read. Pass back the returned `lastSeq` as the next call's `since` to get " +
+        "draining on read. Use limit for bounded response pages. Pass back the returned `lastSeq` as the next call's `since` to get " +
         "only what's arrived since. Returns immediately even with zero new entries — this is " +
         "a poll, not a blocking wait; call it again later rather than expecting it to hang " +
         "until something happens. Listeners don't survive a Vortex restart. Worked example " +
@@ -1164,10 +1192,20 @@ function registerWriteTools(server: McpServer, api: IExtensionApi): void {
           .optional()
           .default(0)
           .describe("Only return entries after this seq (e.g. a previous call's lastSeq)"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .default(500)
+          .describe(
+            "Maximum entries in this response. lastSeq advances only through delivered entries; poll again to drain pages.",
+          ),
       }),
     },
-    async ({ listenerId, since }) => ({
-      content: [jsonText(control.pollListener(listenerId, since))],
+    async ({ listenerId, since, limit }) => ({
+      content: [jsonText(control.pollListener(listenerId, since, limit))],
     }),
   );
 
@@ -1533,6 +1571,19 @@ function registerUiWriteTools(server: McpServer, api: IExtensionApi): void {
           .describe(
             "Throw when the element is hidden or disabled. Defaults to true — turning it off " +
               "is for deliberately testing that a disabled control does nothing.",
+          ),
+        confirmation: z
+          .object({
+            titleSuffix: z.string().min(1),
+            question: z.string().min(1),
+            button: z.string().min(1),
+            alternative: z.string().min(1),
+          })
+          .optional()
+          .describe(
+            "Recheck a Bootstrap modal title suffix, exact direct-body question and its two " +
+              "direct-footer buttons immediately before clicking. Nested curator prose cannot " +
+              "satisfy the question. Refuses changed, ambiguous or disabled confirmations.",
           ),
       }),
     },

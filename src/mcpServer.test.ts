@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 vi.mock("@nexusmods/vortex-api", () => ({
   log: vi.fn(),
+  util: { getApplication: () => ({ version: "2.8.0" }) },
 }));
 
 vi.mock("./vortexControl", () => ({
@@ -131,6 +132,23 @@ describe("mcpServer HTTP gating", () => {
 
   afterAll(() => {
     server.close();
+  });
+
+  it("reports the running Vortex version for benchmark evidence", async () => {
+    const res = await request({
+      headers: jsonHeaders,
+      body: {
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: { name: "automation_status", arguments: {} },
+      },
+    });
+    expect(res.status).toBe(200);
+    const line = res.body.split("\n").find((item) => item.startsWith("data: "));
+    const response = JSON.parse(line!.slice(6));
+    const status = JSON.parse(response.result.content[0].text);
+    expect(status.vortexVersion).toBe("2.8.0");
   });
 
   it("returns 404 for any path other than /mcp", async () => {

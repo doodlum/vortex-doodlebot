@@ -1,53 +1,17 @@
-# Save test reports
+# Keep a useful test report
 
-A useful report lets someone else understand and repeat your check: what you tested, which
-revision and app you used, how you set up the fixture, and what happened. Save failures and
-measurements with those conditions. A command that exits successfully may still leave parts
-of the workflow untested.
+A useful report lets another person understand what failed and repeat the same test. Save the case ID, inputs, Vortex version, expected result, observed result, and the files that show it.
 
-## Identify source and runtime separately
+For a small script, save its relevant output alongside a screenshot. For performance work, the [benchmark runner](../testing/benchmarks.md) writes structured results, repeat statistics, and any comparison you requested.
 
-```powershell
-pnpm run ai -- evidence identity --checkout 'C:\path\to\subject' --base '<baseline-ref>'
-pnpm run ai -- evidence runtime --kind installed --label 'Vortex 2.8.0' 'C:\Apps\Vortex\Vortex.exe' 'C:\Apps\Vortex\resources\app.asar'
-```
+## Separate timing from correctness
 
-An identity records commit/diff hashes; a runtime identity records the files the app actually
-used. Record the Doodlebot revision, the revision you are testing and the runtime separately.
-Source hashes alone cannot establish that a binary was built from that source.
+A deployment duration does not prove the files deployed correctly. Include a file or UI assertion in the case. A failed or blocked case should explain the assertion or missing prerequisite; it should not produce an apparently successful performance result.
 
-## Record an actual command
+## Keep the context
 
-```powershell
-pnpm run ai -- evidence run --owner verification --checkout 'C:\path\to\subject' --base '<baseline-ref>' --out 'C:\task\ci.json' -- pnpm run ci
-```
+Record the collection revision and cache mode for real downloads. Record the generated row count and files per mod for synthetic tests. Keep hardware, storage, bandwidth, security settings, and starting state fixed between comparisons.
 
-Choose a new output path; existing reports are retained rather than overwritten. The report
-captures execution, output, exit/signal, cancellation and before/after identities. Add
-`--runtime runtime.json` for app checks. To record counts, use a newly produced reporter file
-with `--test-report <json> --test-format vitest|playwright`. The structured reporter file
-supplies counts that a plain log cannot.
+Use [screenshots](capture.md) to explain visual problems. CPU profiles can help explain a slowdown after you reproduce it; profiling itself adds overhead, so collect it in a separate diagnostic run.
 
-For example, when the subject is this toolkit and the current directory is its root:
-
-```powershell
-pnpm run ai -- evidence run --owner verification --checkout . --base HEAD --out 'C:\task\unit.json' --test-report 'C:\task\vitest.json' --test-format vitest -- pnpm exec vitest run --reporter=json --outputFile='C:\task\vitest.json'
-```
-
-## Read outcomes honestly
-
-- A nonzero command can fail in setup, import or the intended assertion; distinguish them.
-- A skipped, empty or filtered selection cannot prove the omitted behavior works.
-- Preserve the first failed run and explain a later retry, fixture change or correction.
-- Benchmarks need comparable baseline/candidate workload and multiple runs, not just an exit code.
-- Core Vortex logs must be checked for unrecoverable main and renderer errors before fixture cleanup.
-
-## Readiness manifests
-
-`readiness --manifest <json>` checks a report against the current versioned evidence schema,
-including identities, required gates, controls and complete outcomes. `--json` returns the
-report. You still need to run the checks and review what their results mean. Build the manifest
-from actual task reports, using the implementation's exported schema and repository tests
-for its format. See [helper reference](../reference/script-api.md) for execution helpers and the
-[source schema](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/readiness.ts)
-for the complete manifest contract.
+Before sharing an artifact, check for account information, credentials, personal paths, or unrelated content. See [security and privacy](../security.md).

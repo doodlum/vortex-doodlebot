@@ -650,6 +650,68 @@ export interface ClickOptions extends ActionTarget {
   modifiers?: Array<"Alt" | "Control" | "Meta" | "Shift">;
   /** Throw if the element is not visible/enabled. Defaults to true. */
   requireActionable?: boolean;
+  /** Recheck an app-owned Bootstrap confirmation in the same renderer action as the click. */
+  confirmation?: {
+    titleSuffix: string;
+    question: string;
+    button: string;
+    alternative: string;
+  };
+}
+
+function assertDialogConfirmation(
+  el: Element,
+  expected: NonNullable<ClickOptions["confirmation"]>,
+): void {
+  function reject(): never {
+    throw new Error("Dialog confirmation rejected: the app-owned question or footer changed.");
+  }
+  const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
+  const rendered = (node: Element): boolean => {
+    if (!hasRenderedBox(node)) return false;
+    for (
+      let ancestor: Element | null = node;
+      ancestor !== null;
+      ancestor = ancestor.parentElement
+    ) {
+      if (!isVisible(ancestor)) return false;
+    }
+    return true;
+  };
+  const modal = el.closest('[role="dialog"], .modal.in, .modal.show, dialog[open]');
+  if (modal === null || !isVisible(modal)) reject();
+  const content = modal.querySelector(":scope > .modal-dialog > .modal-content");
+  if (content === null) reject();
+  const titles = content.querySelectorAll(":scope > .modal-header > .modal-title");
+  const questions = Array.from(content.querySelectorAll(":scope > .modal-body > p"));
+  const footerButtons = Array.from(content.querySelectorAll(":scope > .modal-footer > button"));
+  const buttons = footerButtons.filter(
+    (button) => normalize(accessibleName(button)) === expected.button,
+  );
+  const alternatives = footerButtons.filter(
+    (button) => normalize(accessibleName(button)) === expected.alternative,
+  );
+  const title = titles[0];
+  const alternative = alternatives[0];
+  if (
+    titles.length !== 1 ||
+    title === undefined ||
+    !normalize(title.textContent ?? "").endsWith(expected.titleSuffix) ||
+    questions.filter(
+      (question) =>
+        rendered(question) && normalize(question.textContent ?? "") === expected.question,
+    ).length !== 1 ||
+    buttons.length !== 1 ||
+    buttons[0] !== el ||
+    alternatives.length !== 1 ||
+    alternative === undefined ||
+    footerButtons.length !== 2 ||
+    isDisabled(el) ||
+    !rendered(el) ||
+    !rendered(alternative) ||
+    isDisabled(alternative)
+  )
+    reject();
 }
 
 const BUTTON_CODES = { left: 0, middle: 1, right: 2 } as const;
@@ -669,6 +731,9 @@ export function click(options: ClickOptions): { ref?: string; role: string; name
   if (requireActionable) assertActionable(el, "click");
 
   scrollIntoView(el);
+  // Curator prose is nested in the modal body, outside these direct app-owned
+  // paragraphs. Validate after scrolling and before dispatching any input.
+  if (options.confirmation !== undefined) assertDialogConfirmation(el, options.confirmation);
 
   const rect = el.getBoundingClientRect();
   const clientX = Math.round(rect.left + rect.width / 2);
@@ -1309,7 +1374,7 @@ export function readConsole(
   if (options.levels !== undefined && options.levels.length > 0) {
     entries = entries.filter((e) => options.levels?.includes(e.level) === true);
   }
-  const dropped = consoleBuffer.length > 0 && since > 0 && consoleBuffer[0].seq > since + 1;
+  const dropped = since > 0 && (consoleBuffer[0]?.seq ?? 0) > since + 1;
   return {
     entries: entries.slice(-limit),
     lastSeq: consoleSeq,

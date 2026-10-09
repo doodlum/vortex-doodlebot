@@ -103,3 +103,13 @@ A task is complete only when its result is verified, or a concrete external bloc
 Conventional Commits. Don't commit, push or open a PR unless asked, except for kit lessons you apply
 under the kit lock (`kit push`). Every Vortex PR description
 ends with the doodlebot footer (`harness/PULL-REQUESTS.md`).
+
+## Human benchmark documentation
+
+For the human benchmark work, write README and docs from the supplied proposal and verified
+implementation, without using AI manuals as authoring sources. Test usability by giving a
+fresh implementer only a frozen copy of the human pages; do not give it implementation code
+or machine instructions. Compile and run its output separately, retain failures, then fix
+setup or human explanations and repeat. TypeScript examples are the main path; banners and
+logo assets are removed. The human benchmark proposal and run guides explain undecided real
+data, budgets and hardware prerequisites. Generated contracts still derive from source.

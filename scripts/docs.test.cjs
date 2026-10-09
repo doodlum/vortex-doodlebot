@@ -29,10 +29,11 @@ test("paired documentation refuses drift and missing companions", () => {
     for (const file of [
       "src",
       "harness/src",
+      "harness/benchmarks",
+      "benchmarks",
       "docs",
       "harness/reference",
       "scripts/documentation-map.json",
-      "assets",
       "package.json",
       "AGENTS.md",
       "ARCHITECTURE.md",
@@ -145,23 +146,43 @@ test("runnable human examples compile against the actual harness", () => {
   assert.deepEqual(checkExamples(root), []);
 });
 
-test("example checking rejects a nonexistent helper instead of accepting dynamic-import any", () => {
-  const file = "docs/guides/scripting.md";
-  const code = extractExample(root, file, "Runnable inspection script").replace(
-    "kit.clientFor(config)",
-    "kit.inventedClient(config)",
-  );
+test("duplicate example filenames cannot hide an unchecked example", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-example-control-"));
+  try {
+    fs.mkdirSync(path.join(fixture, "harness"));
+    fs.mkdirSync(path.join(fixture, "docs"));
+    fs.writeFileSync(
+      path.join(fixture, "harness/tsconfig.json"),
+      '{"compilerOptions":{"strict":true}}',
+    );
+    for (const page of ["first.md", "second.md"])
+      fs.writeFileSync(
+        path.join(fixture, "docs", page),
+        '```typescript title="duplicate.mts"\nconst value = 1;\n```\n',
+      );
+    assert.match(checkExamples(fixture)[0], /Duplicate runnable TypeScript filename duplicate.mts/);
+  } finally {
+    assert.equal(path.dirname(fixture), os.tmpdir());
+    assert.ok(path.basename(fixture).startsWith("doodlebot-example-control-"));
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test("example checking rejects an invented method on the human TypeScript API", () => {
+  const file = "docs/getting-started/first-session.md";
+  const original = extractExample(root, file, "first-test.mts");
+  const code = original.replace("vortex.call", "vortex.inventedCall");
+  assert.notEqual(code, original, "The control must actually change the example");
   assert.ok(
-    checkExamples(root, { [file]: code }).some((message) => message.includes("inventedClient")),
+    checkExamples(root, { [file]: code }).some((message) => message.includes("inventedCall")),
   );
 });
 
 test("example checking rejects arguments that the real MCP schema would silently strip", () => {
-  const file = "docs/testing/integration.md";
-  const code = extractExample(root, file, "Runnable deployment test").replaceAll(
-    "expectedActiveProfileId: profileId",
-    "expectedActiveGameId: managedGame.gameId",
-  );
+  const file = "docs/guides/mod-workflows.md";
+  const original = extractExample(root, file, "local-mod.mts");
+  const code = original.replaceAll("expectedActiveProfileId:", "expectedActiveGameId:");
+  assert.notEqual(code, original, "The control must actually change the example");
   assert.ok(
     checkExamples(root, { [file]: code }).some((message) =>
       message.includes("set_mods_enabled does not accept expectedActiveGameId"),

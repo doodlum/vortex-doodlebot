@@ -191,6 +191,7 @@ Driving a running instance
                          work; returns once they finish (run it in the background)
     --count <n> --seconds <n> --stagger <s>   (defaults 1, 30, 0)
   collection <url>       Install exact Nexus collection/revision using OAuth
+    --warnings-as-errors Fail on any collection warning; warnings are printed by default
   deploy                 Deploy enabled mods for the active game
     --purge              Permit purging a foreign deployment in a disposable game
   purge                  Remove files recorded in this game's deployment manifest

@@ -124,3 +124,7 @@ an isolated released app covers runtime behavior. Inspect the final manifest and
 then run `readiness`. Verify the actual final commit for publication; a previous local-diff
 receipt remains evidence for that diff only. See [the manual](AGENTS.md#recorded-checks-and-readiness)
 and [the workflow](AGENT-WORKFLOW.md) for commands and report responsibilities.
+
+## Human-authored benchmark entry points
+
+The TypeScript benchmark SDK in harness/benchmarks runs released Vortex without a source build. Its process-spawn callback marks B5 startup. The human guides in docs/testing document fixtures, explicit real-game prerequisites, 133 proposed cases, three repeats, and blocked reports. Human documentation is authored from the proposal and implementation, without using machine manuals as prose input. Machine references are generated from source.

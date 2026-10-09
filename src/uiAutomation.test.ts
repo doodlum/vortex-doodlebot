@@ -11,6 +11,11 @@
 // are exercised against explicitly stubbed rects rather than pretending jsdom
 // lays anything out.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Page } from "@playwright/test";
+import {
+  inspectCollectionCompletion,
+  waitForCollectionCompletion,
+} from "../harness/benchmarks/collectionCompletion";
 
 import {
   accessibleName,
@@ -32,6 +37,152 @@ import {
 function setBody(html: string): void {
   document.body.innerHTML = html;
 }
+
+describe("stock collection completion UI", () => {
+  function view(
+    options: {
+      pending?: number;
+      progress?: boolean;
+      step?: string;
+      done?: boolean;
+      postprocessing?: boolean;
+      selected?: string;
+      active?: string;
+    } = {},
+  ) {
+    setBody(
+      '<div class="collection-mods-panel"></div>' +
+        (options.progress ? '<div class="collection-progress-flex"></div>' : ""),
+    );
+    const driver = {
+      step: options.step ?? "review",
+      installDone: options.done ?? true,
+      postprocessing: options.postprocessing ?? false,
+      collection: options.active ? { id: options.active } : undefined,
+      lastCollection: { id: "wanted" },
+    };
+    const parent = { memoizedProps: { collection: { id: options.selected ?? "wanted" }, driver } };
+    for (const el of document.querySelectorAll(
+      ".collection-mods-panel, .collection-progress-flex",
+    )) {
+      stubRect(el, { width: 200, height: 30 });
+      const mods = Object.fromEntries(
+        Array.from({ length: options.pending ?? 0 }, (_, i) => [
+          `optional-${i}`,
+          { status: "pending" },
+        ]),
+      );
+      Object.assign(el, {
+        __reactFiberTest: {
+          memoizedProps: el.matches(".collection-progress-flex")
+            ? { mods, onResume: () => undefined }
+            : {},
+          return: parent,
+        },
+      });
+    }
+    const page = {
+      evaluate: async (callback: (id: string) => unknown, id: string) => callback(id),
+    } as unknown as Page;
+    return { page, driver };
+  }
+  it("fails the observed completed-driver/pending-optionals contradiction and retains counts", async () => {
+    const { page } = view({ progress: true, pending: 118 });
+    const observations: unknown[] = [];
+    await expect(
+      waitForCollectionCompletion(page, "wanted", {
+        timeoutMs: 3000,
+        uiSettleMs: 1000,
+        onObservation: (s) => observations.push(s),
+      }),
+    ).rejects.toThrow("UI still shows unfinished installation");
+    expect(observations.at(-1)).toMatchObject({
+      driver: { installDone: true, step: "review", postprocessing: false },
+      progress: { visible: true, statuses: { pending: 118 } },
+    });
+  });
+  it("accepts a settled review with no installation panel", async () => {
+    const { page } = view();
+    await expect(
+      waitForCollectionCompletion(page, "wanted", {
+        timeoutMs: 1000,
+        onObservation: () => undefined,
+      }),
+    ).resolves.toBeUndefined();
+  });
+  it("allows the progress panel to disappear during the final render", async () => {
+    const { page } = view({ progress: true, pending: 1 });
+    await expect(
+      waitForCollectionCompletion(page, "wanted", {
+        timeoutMs: 3000,
+        onObservation: () => document.querySelector(".collection-progress-flex")?.remove(),
+      }),
+    ).resolves.toBeUndefined();
+  });
+  it("allows a final render slower than one poll inside the completion budget", async () => {
+    const { page } = view({ progress: true, pending: 1 });
+    let observations = 0;
+    await expect(
+      waitForCollectionCompletion(page, "wanted", {
+        timeoutMs: 5000,
+        onObservation: () => {
+          observations++;
+          if (observations === 2) document.querySelector(".collection-progress-flex")?.remove();
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(observations).toBe(3);
+  });
+  it("waits for post-processing rather than accepting an absent panel", async () => {
+    const { page, driver } = view({ postprocessing: true });
+    const observations: unknown[] = [];
+    await waitForCollectionCompletion(page, "wanted", {
+      timeoutMs: 3000,
+      onObservation: (s) => {
+        observations.push(s);
+        driver.postprocessing = false;
+      },
+    });
+    expect(observations).toHaveLength(2);
+  });
+  it.each([{ selected: "other" }, { active: "other" }])(
+    "refuses a different view/active collection despite the driver's last collection: %j",
+    async (options) => {
+      const { page } = view(options);
+      await expect(
+        waitForCollectionCompletion(page, "wanted", {
+          timeoutMs: 1000,
+          onObservation: () => undefined,
+        }),
+      ).rejects.toThrow("completion is unobservable");
+    },
+  );
+  it("does not count a hidden panel as visible", async () => {
+    const { page } = view({ progress: true, pending: 118 });
+    document.querySelector<HTMLElement>(".collection-progress-flex")!.style.display = "none";
+    expect((await inspectCollectionCompletion(page, "wanted")).progress.visible).toBe(false);
+  });
+  it("blocks a hidden collection view even with a terminal driver", async () => {
+    const { page } = view();
+    document.querySelector<HTMLElement>(".collection-mods-panel")!.style.display = "none";
+    await expect(
+      waitForCollectionCompletion(page, "wanted", {
+        timeoutMs: 1000,
+        onObservation: () => undefined,
+      }),
+    ).rejects.toThrow("completion is unobservable");
+  });
+  it("blocks an unreadable driver rather than timing out as an install failure", async () => {
+    const { page, driver } = view();
+    Object.assign(driver, { postprocessing: undefined });
+    await expect(
+      waitForCollectionCompletion(page, "wanted", {
+        timeoutMs: 1000,
+        onObservation: () => undefined,
+      }),
+    ).rejects.toThrow("completion is unobservable");
+  });
+});
 
 /** Depth-first list of every node in a snapshot tree. */
 function flatten(nodes: ReturnType<typeof snapshot>["tree"]): ReturnType<typeof snapshot>["tree"] {

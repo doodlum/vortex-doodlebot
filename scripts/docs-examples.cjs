@@ -2,16 +2,27 @@ const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
 
-const examples = [
-  ["docs/testing/unit.md", "Runnable snapshot test", "harness/src/docs-example.test.ts"],
-  [
-    "docs/testing/integration.md",
-    "Runnable deployment test",
-    "harness/src/tests/docs-example.spec.ts",
-  ],
-  ["docs/guides/scripting.md", "Runnable inspection script", "harness/src/docs-inspect.mts"],
-  ["docs/testing/benchmarks.md", "Runnable profiling script", "harness/src/docs-profile.mts"],
-];
+function runnableExamples(root) {
+  const walk = (directory) =>
+    fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const filename = path.join(directory, entry.name);
+      return entry.isDirectory() ? walk(filename) : [filename];
+    });
+  const examples = [];
+  for (const filename of walk(path.join(root, "docs")).filter((file) => file.endsWith(".md"))) {
+    const body = fs.readFileSync(filename, "utf8");
+    for (const match of body.matchAll(
+      /```typescript title="([a-zA-Z0-9_./-]+\.(?:mts|ts))"\r?\n([\s\S]*?)\r?\n```/g,
+    )) {
+      examples.push({
+        file: path.relative(root, filename).replaceAll("\\", "/"),
+        title: match[1],
+        code: match[2],
+      });
+    }
+  }
+  return examples;
+}
 
 function extractExample(root, file, title) {
   const body = fs.readFileSync(path.join(root, file), "utf8");
@@ -28,16 +39,28 @@ function checkExamples(root, replacements = {}) {
   if (config.error)
     throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.join(root, "harness"));
+  const examples = runnableExamples(root);
+  if (examples.length === 0) return ["Human documentation has no runnable TypeScript examples."];
+  const titles = new Set();
+  for (const example of examples) {
+    if (example.title.split("/").some((part) => part === ".." || !part))
+      return [`Runnable TypeScript filenames must stay inside the repository: ${example.title}`];
+    if (titles.has(example.title))
+      return [
+        `Duplicate runnable TypeScript filename ${example.title}; use unique filenames so every example is checked.`,
+      ];
+    titles.add(example.title);
+  }
   const files = new Map(
-    examples.map(([file, title, target]) => {
-      let body = replacements[file] ?? extractExample(root, file, title);
+    examples.map(({ file, title, code }) => {
+      let body = replacements[file] ?? code;
       // The dynamic kit URL is supplied at runtime. Give its actual module type to the
       // compiler so a typo cannot pass merely because a dynamic import has type any.
       body = body.replace(
         "const kit = await import(process.env.VORTEX_AI_KIT!);",
-        'const kit: typeof import("./kit") = await import(process.env.VORTEX_AI_KIT!);',
+        'const kit: typeof import("./harness/src/kit") = await import(process.env.VORTEX_AI_KIT!);',
       );
-      return [path.normalize(path.join(root, target)), body];
+      return [path.normalize(path.join(root, title)), body];
     }),
   );
   const host = ts.createCompilerHost(parsed.options);
@@ -99,4 +122,4 @@ function checkExamples(root, replacements = {}) {
   return errors;
 }
 
-module.exports = { examples, extractExample, checkExamples };
+module.exports = { runnableExamples, extractExample, checkExamples };

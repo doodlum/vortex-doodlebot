@@ -13,7 +13,7 @@
  * "the first plausible match" is a policy decision better made where it can be
  * seen and adjusted.
  */
-import { McpError, type VortexMcpClient } from "./mcpClient";
+import type { VortexMcpClient } from "./mcpClient";
 import { withUiLock } from "./uiSession";
 
 export interface SnapshotNode {
@@ -134,6 +134,25 @@ export async function snapshot(
   return withUiLock(mcp, () =>
     mcp.call<Snapshot>("ui_snapshot", index === undefined ? { selector } : { selector, index }),
   );
+}
+
+/** An absent UI container is normal while waiting; other observation errors fail. */
+export async function snapshotIfPresent(
+  mcp: VortexMcpClient,
+  selector: string,
+  index?: number,
+): Promise<Snapshot | undefined> {
+  try {
+    return await snapshot(mcp, selector, index);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.startsWith("No element matches selector") ||
+        /^Selector .*so index \d+ is out of range\./.test(error.message))
+    )
+      return undefined;
+    throw error;
+  }
 }
 
 /**
@@ -268,18 +287,27 @@ const FOREIGN_PURGE_ACCEPTED: DialogPolicy = {
  * repeatable — but it is destructive to whatever else was using that game
  * directory, so nothing turns it on by accident.
  */
-export function dialogPolicies(options: { allowForeignPurge?: boolean } = {}): DialogPolicy[] {
+export function dialogPolicies(
+  options: { allowForeignPurge?: boolean; optionalMods?: "skip" | "install" } = {},
+): DialogPolicy[] {
   return DEFAULT_DIALOG_POLICIES.map((policy) =>
     policy === FOREIGN_PURGE_REFUSED && options.allowForeignPurge === true
       ? FOREIGN_PURGE_ACCEPTED
-      : policy,
+      : options.optionalMods === "install" &&
+          /collection installation complete/i.test(policy.match.source)
+        ? {
+            ...policy,
+            button: /^(install optional mods|done)$/i,
+            because: "Install selected optional members, then finish the completed installation",
+          }
+        : policy,
   );
 }
 
 export const DEFAULT_DIALOG_POLICIES: DialogPolicy[] = [
   {
     match: /collection installation complete/i,
-    button: /^no thanks$/i,
+    button: /^(no thanks|done)$/i,
     because: "required members are complete; optional members are outside this run",
   },
   {
@@ -342,22 +370,15 @@ export interface AnsweredDialog {
 }
 
 /**
- * The text of every open modal, or undefined when the renderer did not answer.
+ * The text of every open modal. Observation errors propagate to the caller.
  *
  * Asks for the dialogs alone rather than a full snapshot: this runs every second for the
  * whole of an install, and with thousands of mods rendered a full snapshot costs seconds of
  * renderer time per poll — enough to show up as the top entry in a CPU profile of the very
- * install being measured. Falls back to a snapshot on an extension without the tool.
+ * install being measured.
  */
-export async function openDialogs(mcp: VortexMcpClient): Promise<string[] | undefined> {
-  try {
-    return await mcp.call<string[]>("ui_active_dialogs");
-  } catch (err) {
-    if (err instanceof McpError && /not found|unknown tool/i.test(err.message)) {
-      return (await snapshot(mcp).catch(() => undefined))?.activeDialogs;
-    }
-    return undefined;
-  }
+export async function openDialogs(mcp: VortexMcpClient): Promise<string[]> {
+  return mcp.call<string[]>("ui_active_dialogs");
 }
 
 /** Containers Vortex renders modals into, most specific first. */
@@ -383,6 +404,8 @@ export function autoAnswerDialogs(
     signal: AbortSignal;
     pollMs?: number;
     onAnswer?: (answered: AnsweredDialog) => void;
+    /** Let the operation owner defer a matching dialog to its state-based coordinator. */
+    canAnswer?: (dialog: string) => Promise<boolean>;
     /**
      * A policy matched the dialog but its button was not found.
      *
@@ -428,6 +451,7 @@ export function autoAnswerDialogs(
           continue;
         }
 
+        if (options.canAnswer && !(await options.canAnswer(text))) continue;
         const clicked = await clickInsideDialog(mcp, text, policy.button, { required: false });
         if (clicked === undefined) {
           if (!warned.has(text)) {
@@ -531,7 +555,7 @@ export async function clickInsideDialog(
       // collection report and blocked an install, looking like a policy that
       // failed to match.
       for (let index = 0; index < 4; index++) {
-        const snap = await snapshot(mcp, selector, index).catch(() => undefined);
+        const snap = await snapshotIfPresent(mcp, selector, index);
         if (snap === undefined || snap.nodeCount === 0) break;
 
         // Only answer the dialog we actually matched on.
@@ -585,7 +609,7 @@ export async function dialogButtons(
   return withUiLock(mcp, async () => {
     for (const selector of DIALOG_SELECTORS) {
       for (let index = 0; index < 4; index++) {
-        const snap = await snapshot(mcp, selector, index).catch(() => undefined);
+        const snap = await snapshotIfPresent(mcp, selector, index);
         if (snap === undefined || snap.nodeCount === 0) break;
         if (!snapshotIsDialog(snap, dialogText)) continue;
         return findNodes(snap, { role: "button", enabledOnly: false }).map((b) => ({
@@ -638,7 +662,7 @@ const FOMOD_NAV = `${FOMOD_DIALOG} .fomod-nav-buttons`;
  */
 export async function advanceFomod(mcp: VortexMcpClient): Promise<string | undefined> {
   return withUiLock(mcp, async () => {
-    const snap = await snapshot(mcp, FOMOD_NAV).catch(() => undefined);
+    const snap = await snapshotIfPresent(mcp, FOMOD_NAV);
     if (snap === undefined || snap.nodeCount === 0) return undefined;
 
     // Deliberately includes disabled buttons, because position is what identifies
@@ -674,7 +698,7 @@ export function autoAdvanceFomods(
       await new Promise((resolve) => setTimeout(resolve, pollMs));
       if (options.signal.aborted) break;
 
-      const label = await advanceFomod(mcp).catch(() => undefined);
+      const label = await advanceFomod(mcp);
       if (label !== undefined) {
         advanced += 1;
         options.onAdvance?.(label);

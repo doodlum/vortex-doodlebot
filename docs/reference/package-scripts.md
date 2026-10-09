@@ -4,44 +4,48 @@
 
 Run these from the repository root with `pnpm run <name>`. Test selection, accounts and runtime requirements are explained in [running checks](../testing/running.md) and [benchmarks](../testing/benchmarks.md). A named opt-in script can change its disposable fixture and does not necessarily stop the operator’s already-running app.
 
-| Script                              | Command                                                                                                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build`                             | `tsx harness/src/extensionBuild.ts`                                                                                                            |
-| `dev`                               | `tsx harness/src/cli.ts watch`                                                                                                                 |
-| `typecheck`                         | `tsc --noEmit && tsc --noEmit -p harness/tsconfig.json`                                                                                        |
-| `lint`                              | `oxlint .`                                                                                                                                     |
-| `lint:fix`                          | `oxlint . --fix`                                                                                                                               |
-| `format`                            | `oxfmt .`                                                                                                                                      |
-| `format:check`                      | `oxfmt --check .`                                                                                                                              |
-| `test`                              | `vitest run`                                                                                                                                   |
-| `test:watch`                        | `vitest`                                                                                                                                       |
-| `ci`                                | `pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run docs:check && pnpm run docs:test && pnpm run test && pnpm run build` |
-| `docs:generate`                     | `node scripts/docs.cjs --write`                                                                                                                |
-| `docs:check`                        | `node scripts/docs.cjs`                                                                                                                        |
-| `docs:test`                         | `node --test scripts/docs.test.cjs`                                                                                                            |
-| `docs:build`                        | `node scripts/docs-run.cjs build`                                                                                                              |
-| `docs:serve`                        | `node scripts/docs-run.cjs serve`                                                                                                              |
-| `ai`                                | `tsx harness/src/cli.ts`                                                                                                                       |
-| `ai:doctor`                         | `tsx harness/src/cli.ts doctor`                                                                                                                |
-| `ai:source`                         | `tsx harness/src/cli.ts source`                                                                                                                |
-| `ai:up`                             | `tsx harness/src/cli.ts up`                                                                                                                    |
-| `ai:down`                           | `tsx harness/src/cli.ts down`                                                                                                                  |
-| `ai:watch`                          | `tsx harness/src/cli.ts watch`                                                                                                                 |
-| `ai:preflight`                      | `tsx harness/src/cli.ts pr-preflight`                                                                                                          |
-| `ai:lease`                          | `tsx harness/src/cli.ts lease`                                                                                                                 |
-| `ai:vortex-e2e`                     | `tsx harness/src/cli.ts vortex-e2e`                                                                                                            |
-| `ai:test`                           | `playwright test --config harness/playwright.config.ts`                                                                                        |
-| `ai:test:core`                      | `playwright test --config harness/playwright.config.ts`                                                                                        |
-| `ai:test:oauth`                     | `playwright test --config harness/oauth.playwright.config.ts`                                                                                  |
-| `ai:test:zoom`                      | `tsx harness/src/tests/zoom.e2e.ts`                                                                                                            |
-| `ai:test:panels`                    | `tsx harness/src/tests/panels.e2e.ts`                                                                                                          |
-| `ai:test:nexus`                     | `tsx harness/src/tests/nexus-collection.e2e.ts`                                                                                                |
-| `ai:test:large-library`             | `tsx harness/src/tests/large-library.e2e.ts`                                                                                                   |
-| `ai:test:bethesda`                  | `tsx harness/src/tests/bethesda.e2e.ts`                                                                                                        |
-| `ai:test:collection-download-retry` | `tsx harness/src/tests/collection-download-retry.e2e.ts`                                                                                       |
-| `ai:test:collection-scale`          | `tsx harness/src/tests/collection-scale.e2e.ts`                                                                                                |
-| `ai:test:parallel-sessions`         | `tsx harness/src/tests/parallel-sessions.e2e.ts`                                                                                               |
-| `ai:test:plugins-mod-link`          | `tsx harness/src/tests/plugins-mod-link.e2e.ts`                                                                                                |
-| `ai:test:plugins-page`              | `tsx harness/src/tests/plugins-page.e2e.ts`                                                                                                    |
-| `ai:test:download-churn`            | `tsx harness/src/tests/download-churn.e2e.ts`                                                                                                  |
-| `ai:test:mods-scroll`               | `tsx harness/src/tests/mods-scroll.e2e.ts`                                                                                                     |
+| Script                              | Command                                                                                                                                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `build`                             | `tsx harness/src/extensionBuild.ts`                                                                                                                                        |
+| `dev`                               | `tsx harness/src/cli.ts watch`                                                                                                                                             |
+| `typecheck`                         | `tsc --noEmit && tsc --noEmit -p harness/tsconfig.json`                                                                                                                    |
+| `lint`                              | `oxlint .`                                                                                                                                                                 |
+| `lint:fix`                          | `oxlint . --fix`                                                                                                                                                           |
+| `format`                            | `oxfmt .`                                                                                                                                                                  |
+| `format:check`                      | `oxfmt --check .`                                                                                                                                                          |
+| `test`                              | `vitest run`                                                                                                                                                               |
+| `test:watch`                        | `vitest`                                                                                                                                                                   |
+| `ci`                                | `pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run docs:check && pnpm run docs:test && pnpm run benchmark:check && pnpm run test && pnpm run build` |
+| `docs:generate`                     | `node scripts/docs.cjs --write`                                                                                                                                            |
+| `docs:check`                        | `node scripts/docs.cjs`                                                                                                                                                    |
+| `docs:test`                         | `node --test scripts/docs.test.cjs`                                                                                                                                        |
+| `docs:build`                        | `node scripts/docs-run.cjs build`                                                                                                                                          |
+| `docs:serve`                        | `node scripts/docs-run.cjs serve`                                                                                                                                          |
+| `benchmark`                         | `tsx benchmarks/run.mts`                                                                                                                                                   |
+| `benchmark:list`                    | `tsx benchmarks/run.mts --list`                                                                                                                                            |
+| `benchmark:smoke`                   | `tsx benchmarks/smoke.mts`                                                                                                                                                 |
+| `benchmark:check`                   | `tsx benchmarks/check-catalog.mts`                                                                                                                                         |
+| `ai`                                | `tsx harness/src/cli.ts`                                                                                                                                                   |
+| `ai:doctor`                         | `tsx harness/src/cli.ts doctor`                                                                                                                                            |
+| `ai:source`                         | `tsx harness/src/cli.ts source`                                                                                                                                            |
+| `ai:up`                             | `tsx harness/src/cli.ts up`                                                                                                                                                |
+| `ai:down`                           | `tsx harness/src/cli.ts down`                                                                                                                                              |
+| `ai:watch`                          | `tsx harness/src/cli.ts watch`                                                                                                                                             |
+| `ai:preflight`                      | `tsx harness/src/cli.ts pr-preflight`                                                                                                                                      |
+| `ai:lease`                          | `tsx harness/src/cli.ts lease`                                                                                                                                             |
+| `ai:vortex-e2e`                     | `tsx harness/src/cli.ts vortex-e2e`                                                                                                                                        |
+| `ai:test`                           | `playwright test --config harness/playwright.config.ts`                                                                                                                    |
+| `ai:test:core`                      | `playwright test --config harness/playwright.config.ts`                                                                                                                    |
+| `ai:test:oauth`                     | `playwright test --config harness/oauth.playwright.config.ts`                                                                                                              |
+| `ai:test:zoom`                      | `tsx harness/src/tests/zoom.e2e.ts`                                                                                                                                        |
+| `ai:test:panels`                    | `tsx harness/src/tests/panels.e2e.ts`                                                                                                                                      |
+| `ai:test:nexus`                     | `tsx harness/src/tests/nexus-collection.e2e.ts`                                                                                                                            |
+| `ai:test:large-library`             | `tsx harness/src/tests/large-library.e2e.ts`                                                                                                                               |
+| `ai:test:bethesda`                  | `tsx harness/src/tests/bethesda.e2e.ts`                                                                                                                                    |
+| `ai:test:collection-download-retry` | `tsx harness/src/tests/collection-download-retry.e2e.ts`                                                                                                                   |
+| `ai:test:collection-scale`          | `tsx harness/src/tests/collection-scale.e2e.ts`                                                                                                                            |
+| `ai:test:parallel-sessions`         | `tsx harness/src/tests/parallel-sessions.e2e.ts`                                                                                                                           |
+| `ai:test:plugins-mod-link`          | `tsx harness/src/tests/plugins-mod-link.e2e.ts`                                                                                                                            |
+| `ai:test:plugins-page`              | `tsx harness/src/tests/plugins-page.e2e.ts`                                                                                                                                |
+| `ai:test:download-churn`            | `tsx harness/src/tests/download-churn.e2e.ts`                                                                                                                              |
+| `ai:test:mods-scroll`               | `tsx harness/src/tests/mods-scroll.e2e.ts`                                                                                                                                 |

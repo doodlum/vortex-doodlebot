@@ -13,17 +13,37 @@
  * download sits there looking like an ordinary archive.
  */
 import type { VortexMcpClient } from "./mcpClient";
+import { isDeepStrictEqual } from "node:util";
 import { requireOAuth } from "./auth";
+import { nexusCollectionDomain, vortexCollectionGameId } from "./collectionIdentity";
+import {
+  collectionTerminalFailure,
+  type CollectionInstallObservation,
+} from "./collectionTerminalFailure";
 import {
   autoAdvanceFomods,
   autoAnswerDialogs,
+  dialogPolicies,
   clickByName,
   snapshot,
+  snapshotIfPresent,
+  openDialogs,
   clickInsideDialog,
+  findNodes,
   type AnsweredDialog,
 } from "./uiDriver";
+import { withUiLock } from "./uiSession";
 
 export class CollectionError extends Error {}
+export interface CollectionWarning {
+  id: string;
+  source: "notification" | "session" | "download";
+  at: number;
+  message: string;
+  originalSeverity: "error" | "warning";
+}
+const noticeIdentity = (notice: { id: string; type?: string; title?: string; message?: string }) =>
+  JSON.stringify([notice.id, notice.type, notice.title, notice.message]);
 
 export interface CollectionRef {
   gameId: string;
@@ -48,7 +68,7 @@ export function parseCollectionRef(input: string): CollectionRef {
     );
   if (nxm?.[1] !== undefined && nxm[2] !== undefined) {
     return {
-      gameId: nxm[1],
+      gameId: vortexCollectionGameId(nxm[1]),
       slug: nxm[2],
       revision: nxm[3] === undefined ? undefined : Number(nxm[3]),
     };
@@ -60,7 +80,7 @@ export function parseCollectionRef(input: string): CollectionRef {
     );
   if (web?.[1] !== undefined && web[2] !== undefined) {
     return {
-      gameId: web[1],
+      gameId: vortexCollectionGameId(web[1]),
       slug: web[2],
       revision: web[3] === undefined ? undefined : Number(web[3]),
     };
@@ -68,7 +88,7 @@ export function parseCollectionRef(input: string): CollectionRef {
 
   const bare = /^([a-z0-9]+)\/([A-Za-z0-9_-]+)$/.exec(trimmed);
   if (bare?.[1] !== undefined && bare[2] !== undefined) {
-    return { gameId: bare[1], slug: bare[2] };
+    return { gameId: vortexCollectionGameId(bare[1]), slug: bare[2] };
   }
 
   throw new CollectionError(
@@ -81,7 +101,7 @@ export function parseCollectionRef(input: string): CollectionRef {
 }
 
 export function toNxmUrl(ref: CollectionRef): string {
-  const base = `nxm://${ref.gameId}/collections/${ref.slug}`;
+  const base = `nxm://${nexusCollectionDomain(ref.gameId)}/collections/${ref.slug}`;
   return ref.revision === undefined ? base : `${base}/revisions/${String(ref.revision)}`;
 }
 
@@ -117,7 +137,7 @@ export async function resolveCollection(ref: CollectionRef): Promise<ResolvedCol
       query,
       variables: {
         slug: ref.slug,
-        game: ref.gameId,
+        game: nexusCollectionDomain(ref.gameId),
         ...(ref.revision === undefined ? {} : { revision: ref.revision }),
       },
     }),
@@ -155,6 +175,7 @@ export async function resolveCollection(ref: CollectionRef): Promise<ResolvedCol
 
   return {
     ...ref,
+    gameId: vortexCollectionGameId(ref.gameId),
     collectionId: collection.id,
     revisionId: revision.id,
     revisionNumber: revision.revisionNumber,
@@ -164,14 +185,26 @@ export async function resolveCollection(ref: CollectionRef): Promise<ResolvedCol
 }
 
 export interface InstallCollectionOptions {
+  /** Fail on any observed collection warning. Default false; final completion is still required. */
+  warningsAsErrors?: boolean;
+  onWarning?: (warning: CollectionWarning) => void;
+  /** Optional pinned listed count; required-member completion is checked separately. */
+  expectedListedMods?: number;
   /** How long to allow for the whole download+install. Collections are big. */
   timeoutMs?: number;
   onProgress?: (message: string) => void;
   /** Answer blocking modals automatically. Defaults to true. */
   autoAnswer?: boolean;
+  /** Keep the optional-member choice applied through driver metadata refreshes. */
+  optionalMods?: "skip" | "install";
+  /** Surface instrumentation failure at each collection progress poll. */
+  verifyProgress?: () => void;
+  /** Final functional/UI boundary. Required to accept warnings; automation remains active. */
+  verifyCompletion?: (collectionModId: string, remainingMs: number) => Promise<void>;
 }
 
 export interface InstallCollectionResult {
+  warnings: CollectionWarning[];
   ref: CollectionRef;
   modId: string | undefined;
   /** Member mods actually installed. */
@@ -180,12 +213,45 @@ export interface InstallCollectionResult {
   expectedModCount: number;
   complete: boolean;
   answeredDialogs: AnsweredDialog[];
+  downloadThreads: DownloadThreads;
+  optionalMods: "skip" | "install";
+  optionalCount: number;
+  optionalSatisfied: number;
+}
+
+export interface DownloadThreads {
+  previous: number;
+  threads: number;
+  premium: boolean;
+}
+
+/** Use Vortex's supported maximum: ten Premium download threads, one for a free account. */
+export async function maximizeDownloadThreads(mcp: VortexMcpClient): Promise<DownloadThreads> {
+  const premium = await mcp.call<unknown>("vortex_query", {
+    path: ["persistent", "nexus", "userInfo", "isPremium"],
+  });
+  if (typeof premium !== "boolean")
+    throw new CollectionError(
+      "Nexus membership status is unavailable; finish account setup before configuring collection downloads",
+    );
+  const previous = await mcp.call<number>("vortex_query", {
+    path: ["settings", "downloads", "maxParallelDownloads"],
+  });
+  const threads = premium ? 10 : 1;
+  await mcp.call("vortex_dispatch", { action: "type:SET_MAX_DOWNLOADS", args: [threads] });
+  const actual = await mcp.call<number>("vortex_query", {
+    path: ["settings", "downloads", "maxParallelDownloads"],
+  });
+  if (actual !== threads)
+    throw new CollectionError(`Vortex did not apply ${String(threads)} download threads`);
+  return { previous, threads, premium };
 }
 
 interface CollectionRule {
   /** "requires" for a member that must install, "recommends" for an optional one. */
   type: string;
-  reference: { description?: string; logicalFileName?: string };
+  ignored?: boolean;
+  reference: Record<string, unknown> & { description?: string; logicalFileName?: string };
 }
 
 interface CollectionMod {
@@ -241,6 +307,26 @@ export async function installCollection(
   const ref = parseCollectionRef(input);
   const report = options.onProgress ?? ((): void => undefined);
   const timeoutMs = options.timeoutMs ?? 60 * 60 * 1000;
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => {
+    const ms = deadline - Date.now();
+    if (ms <= 0) throw new CollectionError("Collection installation exceeded the overall timeout");
+    return ms;
+  };
+  const optionalMods = options.optionalMods ?? "skip";
+  const warnings: CollectionWarning[] = [];
+  const observeWarning = (warning: CollectionWarning) => {
+    if (!warnings.some((prior) => prior.source === warning.source && prior.id === warning.id)) {
+      warnings.push(warning);
+      options.onWarning?.(warning);
+    }
+    if (options.warningsAsErrors === true)
+      throw new CollectionError(
+        "Collection warning treated as an error: " +
+          warning.message +
+          ". Doodlebot does not retry failed installs. The profile and downloads are preserved.",
+      );
+  };
 
   // `isLoggedIn` is not the right question here. Vortex defines it as
   // `truthy(APIKey) || truthy(OAuthCredentials)`, so an API key alone satisfies
@@ -256,21 +342,106 @@ export async function installCollection(
 
   const controller = new AbortController();
   const previousErrors = new Set(
-    (await mcp.call<{ id: string }[]>("list_notifications")).map((notice) => notice.id),
+    (
+      await mcp.call<{ id: string; type?: string; title?: string; message?: string }[]>(
+        "list_notifications",
+      )
+    ).map(noticeIdentity),
   );
   const answeredDialogs: AnsweredDialog[] = [];
+  let automationFailure: unknown;
+  const recordAutomationFailure = (error: unknown) => {
+    automationFailure ??= error;
+    controller.abort();
+  };
+  const assertAutomationHealthy = () => {
+    if (automationFailure !== undefined) throw automationFailure;
+  };
+  let ownedCollectionId: string | undefined;
+  let optionalRoundStarted = false;
+  const answeringPolicies = dialogPolicies({ optionalMods });
   const answering =
     options.autoAnswer === false
       ? Promise.resolve([])
       : autoAnswerDialogs(mcp, {
+          policies: answeringPolicies,
           signal: controller.signal,
           pollMs: 1_500,
+          canAnswer: async (dialog) => {
+            if (
+              options.warningsAsErrors === true &&
+              (await collectionErrors(mcp, previousErrors)).length > 0
+            )
+              return false;
+            const completedReview = /collection installation complete/i.test(dialog);
+            if (ownedCollectionId === undefined) return !completedReview;
+            if (
+              (
+                await mcp.call<unknown[]>("collection_download_failures", {
+                  gameId: ref.gameId,
+                  collectionModId: ownedCollectionId,
+                })
+              ).length > 0
+            )
+              return false;
+            if (!completedReview) return true;
+            // The watcher runs faster than the completion poll. Read its own
+            // owned review boundary before a click can start another round.
+            const native = await mcp.call<CollectionInstallObservation>("collection_install_state");
+            if (
+              native.driver?.found !== true ||
+              native.driver.collectionId !== ownedCollectionId ||
+              native.driver.step !== "review" ||
+              (native.session &&
+                (native.session.collectionId !== ownedCollectionId ||
+                  native.session.gameId !== ref.gameId)) ||
+              !native.dialogs?.some(
+                (d) =>
+                  d.collectionId === ownedCollectionId &&
+                  (d.via === "driver" || d.via === "collection-prop") &&
+                  d.step === "review" &&
+                  /^collection installation complete/i.test(d.text ?? ""),
+              )
+            )
+              return false;
+            if ((native.session?.statusCounts.failed ?? 0) > 0) return false;
+            const statuses = await mcp.call<CollectionCompleteness[]>("collection_status", {
+              gameId: ref.gameId,
+            });
+            const status = statuses.find((entry) => entry.collectionModId === ownedCollectionId);
+            if (!status?.complete) return false;
+            const optionalIncomplete = status.optionalSatisfied < status.optional;
+            if (optionalMods === "install" && !optionalIncomplete)
+              for (const policy of answeringPolicies)
+                if (/collection installation complete/i.test(policy.match.source))
+                  policy.button = /^done$/i;
+            if (
+              collectionTerminalFailure(
+                native,
+                ref.gameId,
+                ownedCollectionId,
+                optionalMods,
+                optionalIncomplete,
+              )
+            )
+              return false; // The completion poll records warnings and fails the attempt.
+            return !(optionalMods === "install" && optionalRoundStarted && optionalIncomplete);
+          },
           onAnswer: (a) => {
+            if (/^install optional mods$/i.test(a.clicked)) {
+              optionalRoundStarted = true;
+              for (const policy of answeringPolicies)
+                if (/collection installation complete/i.test(policy.match.source))
+                  policy.button = /^done$/i;
+            }
             answeredDialogs.push(a);
             report(`answered [${a.clicked}] ${a.dialog.slice(0, 55)}`);
           },
           onUnanswerable: (d, wanted) =>
             report(`STUCK: no button matching ${wanted} in "${d.slice(0, 60)}"`),
+        }).catch((error: unknown) => {
+          recordAutomationFailure(error);
+          return [];
         });
   // Member mods ship FOMOD installers that block the driver until someone picks
   // options. Unattended is the whole point of this function, so accept their
@@ -281,27 +452,71 @@ export async function installCollection(
       : autoAdvanceFomods(mcp, {
           signal: controller.signal,
           onAdvance: (label) => report(`fomod step [${label}]`),
+        }).catch((error: unknown) => {
+          recordAutomationFailure(error);
+          return 0;
         });
-
+  let operationFailed = false;
   try {
     const resolved = await resolveCollection(ref);
+    assertAutomationHealthy();
+    if (ref.revision !== undefined && resolved.revisionNumber !== ref.revision)
+      throw new CollectionError("Nexus resolved a different revision than the requested pin");
+    if (
+      options.expectedListedMods !== undefined &&
+      resolved.modCount !== options.expectedListedMods
+    )
+      throw new CollectionError(
+        `Pinned collection listed count differs: expected ${options.expectedListedMods}, received ${resolved.modCount}`,
+      );
     report(
       `${resolved.name} — revision ${String(resolved.revisionNumber)}, ${String(resolved.modCount)} mods`,
     );
+    const downloadThreads = await maximizeDownloadThreads(mcp);
+    report(`Download threads: ${String(downloadThreads.threads)} (account-supported maximum)`);
 
     const exactRef = { ...ref, revision: resolved.revisionNumber };
     const existing = await findCollectionMod(mcp, exactRef);
     if (existing === undefined) {
+      assertAutomationHealthy();
       const url = toNxmUrl({ ...ref, revision: resolved.revisionNumber });
       report(`downloading ${url}`);
       await startCollectionDownload(mcp, ref, resolved, url);
-      await waitForCollectionMod(mcp, exactRef, 15 * 60 * 1000, report);
+      await waitForCollectionMod(mcp, exactRef, Math.min(remaining(), 15 * 60 * 1000), report);
     } else {
-      report("collection already added; resuming its install");
+      report("collection already added");
     }
 
-    const collectionMod = await waitForCollectionMod(mcp, exactRef, 60_000, report);
-    await startInstallDriver(mcp, ref, collectionMod.id, report);
+    const collectionMod = await waitForCollectionMod(
+      mcp,
+      exactRef,
+      Math.min(remaining(), 60_000),
+      report,
+    );
+    const optionalCount = await selectOptionalMembers(mcp, exactRef, collectionMod, optionalMods);
+    ownedCollectionId = collectionMod.id;
+    report(
+      `${optionalMods === "install" ? "Selected" : "Skipped"} ${optionalCount} optional members`,
+    );
+    if (options.autoAnswer !== false)
+      answeredDialogs.push(...(await confirmCollectionProfile(mcp)));
+    await observeCollectionWarnings(
+      mcp,
+      previousErrors,
+      ref.gameId,
+      collectionMod.id,
+      observeWarning,
+    );
+    assertAutomationHealthy();
+    await startInstallDriver(
+      mcp,
+      ref,
+      collectionMod.id,
+      report,
+      deadline,
+      assertAutomationHealthy,
+      existing === undefined,
+    );
 
     const expected = requiredMemberCount(collectionMod, resolved.modCount);
     if (expected !== resolved.modCount) {
@@ -309,33 +524,194 @@ export async function installCollection(
     }
     const status = await waitForCompletion(
       mcp,
-      ref,
+      exactRef,
       collectionMod.id,
-      timeoutMs,
+      remaining(),
       report,
       previousErrors,
+      async () => {
+        assertAutomationHealthy();
+        options.verifyProgress?.();
+        if (options.autoAnswer !== false)
+          answeredDialogs.push(...(await confirmCollectionProfile(mcp)));
+      },
+      optionalMods,
+      { required: expected, optional: optionalCount },
+      observeWarning,
+    );
+    assertNoFailedCollectionMembers(
+      await observeCollectionWarnings(
+        mcp,
+        previousErrors,
+        ref.gameId,
+        collectionMod.id,
+        observeWarning,
+      ),
     );
     if (options.autoAnswer !== false) {
       for (const dialog of (await snapshot(mcp)).activeDialogs) {
         if (/collection installation complete/i.test(dialog))
           // Best effort: the dialog watcher answers the same prompt if this misses it.
-          await clickInsideDialog(mcp, dialog, /^no thanks$/i, { required: false });
+          await clickInsideDialog(
+            mcp,
+            dialog,
+            optionalMods === "install" ? /^done$/i : /^(no thanks|done)$/i,
+            { required: false },
+          );
       }
     }
 
+    await options.verifyCompletion?.(collectionMod.id, remaining());
+    const finalState = await observeCollectionWarnings(
+      mcp,
+      previousErrors,
+      ref.gameId,
+      collectionMod.id,
+      observeWarning,
+    );
+    assertNoFailedCollectionMembers(finalState);
+    if (warnings.length > 0 && options.verifyCompletion === undefined) {
+      throw new CollectionError(
+        "Collection has warnings but no final functional/UI completion verifier. Supply verifyCompletion to accept warnings; member counts alone cannot confirm a fully installed collection.",
+      );
+    }
+    assertAutomationHealthy();
+    remaining();
+
     return {
+      warnings,
       ref,
       modId: collectionMod.id,
       modCount: status.satisfied,
       expectedModCount: status.required,
       complete: status.complete,
       answeredDialogs,
+      downloadThreads,
+      optionalMods,
+      optionalCount,
+      optionalSatisfied: status.optionalSatisfied,
     };
+  } catch (error) {
+    operationFailed = true;
+    throw error;
   } finally {
     controller.abort();
-    await answering.catch(() => undefined);
-    await advancing.catch(() => undefined);
+    await answering;
+    await advancing;
+    if (!operationFailed) assertAutomationHealthy();
   }
+}
+
+/** Use the same durable rule action as Vortex's optional-member selection UI. */
+export async function selectOptionalMembers(
+  mcp: VortexMcpClient,
+  ref: CollectionRef,
+  collection: CollectionMod,
+  choice: "skip" | "install",
+): Promise<number> {
+  const optional = (collection.rules ?? []).filter((rule) => rule.type === "recommends");
+  const required = (collection.rules ?? []).filter((rule) => rule.type === "requires");
+  if (
+    optional.some((rule) =>
+      required.some((member) => referencesMayReplace(rule.reference, member.reference)),
+    )
+  )
+    throw new CollectionError(
+      "Optional selection overlaps a required reference; refusing to replace a required rule",
+    );
+  const ignored = choice === "skip";
+  for (const rule of optional) {
+    if (rule.ignored === ignored) continue;
+    await mcp.call("vortex_dispatch", {
+      action: "addModRule",
+      args: [ref.gameId, collection.id, { ...rule, ignored }],
+    });
+  }
+  const actual = await findCollectionMod(mcp, ref);
+  const rules = (actual?.rules ?? []).filter((rule) => rule.type === "recommends");
+  if (
+    JSON.stringify((actual?.rules ?? []).filter((rule) => rule.type === "requires")) !==
+    JSON.stringify(required)
+  )
+    throw new CollectionError(
+      "Optional selection changed required collection rules; installation is not verified",
+    );
+  if (
+    actual?.id !== collection.id ||
+    rules.length !== optional.length ||
+    rules.some((rule) => rule.ignored !== ignored)
+  )
+    throw new CollectionError("Vortex did not persist the requested optional-member policy");
+  return optional.length;
+}
+
+/** Conservative guard for stock addModRule's private referenceEqual contract.
+ * Helper fields never distinguish rules. Equal IDs also block a write, even when
+ * extra matching fields would distinguish them in a particular stock release.
+ * Installed-member verification still uses the app's own findModByRef matcher.
+ */
+function referencesMayReplace(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  if (left.id !== undefined && left.id === right.id) return true;
+  const important = ["fileMD5", "logicalFileName", "fileExpression", "versionMatch", "repo", "tag"];
+  const pick = (reference: Record<string, unknown>) =>
+    Object.fromEntries(
+      important.filter((key) => reference[key] !== undefined).map((key) => [key, reference[key]]),
+    );
+  return isDeepStrictEqual(pick(left), pick(right));
+}
+
+/** Only the collection-added prompt asking to use its curated profile is approved.
+ * Install-during-download and plugin-rule settings retain their existing defaults.
+ */
+export async function confirmCollectionProfile(mcp: VortexMcpClient): Promise<AnsweredDialog[]> {
+  return withUiLock(mcp, async () => {
+    // Summaries only decide whether a scoped inspection is needed; curator text
+    // and truncated prefixes never authorize the click or identify its modal.
+    if (!((await openDialogs(mcp)) ?? []).some((text) => /collection added/i.test(text))) return [];
+    for (const selector of ['[role="dialog"]', ".modal.in", ".modal.show", "dialog[open]"]) {
+      for (let index = 0; index < 4; index++) {
+        const scoped = await snapshotIfPresent(mcp, selector, index);
+        if (!scoped || scoped.nodeCount === 0) break;
+        const buttons = findNodes(scoped, { role: "button", name: /^yes$/i });
+        const button = buttons[0];
+        if (buttons.length !== 1 || button === undefined) continue;
+
+        try {
+          const clicked = await mcp.call<{ name: string }>("ui_click", {
+            ref: button.ref,
+            confirmation: {
+              titleSuffix: "collection added",
+              question: "Do you want to switch to this profile?",
+              button: "Yes",
+              alternative: "No",
+            },
+          });
+          if (clicked.name !== "Yes")
+            throw new CollectionError("Profile confirmation clicked an unexpected control");
+          return [
+            {
+              dialog: (scoped.rootText ?? "Collection profile confirmation").slice(0, 160),
+              clicked: clicked.name,
+              because:
+                "Use the pinned collection's curated profile after its explicit collection-added confirmation",
+            },
+          ];
+        } catch (error) {
+          // The host rejects a mismatched candidate before clicking anything.
+          // Continue inspecting other dialogs, but never repeat a failed action.
+          if (
+            !(error instanceof Error) ||
+            !error.message.startsWith("Dialog confirmation rejected:")
+          )
+            throw error;
+        }
+      }
+    }
+    return [];
+  });
 }
 
 async function startCollectionDownload(
@@ -381,28 +757,104 @@ async function startCollectionDownload(
 /**
  * Get the install driver moving.
  *
- * `resume-collection` is the event Vortex's own "Resume" notification uses, but
- * it refuses with "already installing a collection" when a session is live — so
- * a failure here is frequently the good case, and the "Install Now" click is
- * what actually matters. The button only exists while the driver is waiting for
- * confirmation, so its absence is equally fine.
+ * A newly installed manifest already opens Vortex's query flow. Observe its
+ * exact driver instead of emitting a redundant resume, which generates a warning.
+ * An existing manifest with an idle driver can be started once. Failed actions
+ * propagate; waiting for the driver's normal startup does not repeat them.
  */
 async function startInstallDriver(
   mcp: VortexMcpClient,
   ref: CollectionRef,
   modId: string,
   report: (message: string) => void,
+  deadline: number,
+  assertAutomationHealthy: () => void,
+  newlyAdded: boolean,
 ): Promise<void> {
-  await mcp
-    .call("vortex_dispatch", { action: "resume-collection", args: [ref.gameId, modId] }, 120_000)
-    .catch(() => undefined);
+  type Driver = {
+    found?: boolean;
+    collectionId?: string;
+    lastCollectionId?: string;
+    step?: string;
+    installDone?: boolean;
+    preparing?: boolean | null;
+  };
+  const observe = async (): Promise<Driver> => {
+    assertAutomationHealthy();
+    const state = await mcp.call<{ driver?: Driver }>("collection_install_state");
+    const driver = state.driver ?? {};
+    if (driver.found && driver.collectionId !== undefined && driver.collectionId !== modId)
+      throw new CollectionError(
+        "Another collection owns the install driver; doodlebot will not start or click its controls",
+      );
+    return driver;
+  };
+  const waitingUntil = Math.min(deadline, Date.now() + 60_000);
+  let requestedView = false;
+  let driver: Driver;
+  for (;;) {
+    driver = await observe();
+    if (
+      driver.found &&
+      driver.preparing === false &&
+      (driver.collectionId === modId ||
+        (!newlyAdded &&
+          driver.collectionId === undefined &&
+          (driver.step === "prepare" || (driver.step === "review" && driver.installDone === true))))
+    )
+      break;
+    if (Date.now() >= waitingUntil)
+      throw new CollectionError(
+        "The requested collection's install driver did not become observable before startup timeout",
+      );
+    if (!requestedView) {
+      await mcp.call("vortex_dispatch", { action: "view-collection", args: [modId] });
+      requestedView = true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(500, waitingUntil - Date.now())));
+  }
+  if (driver.collectionId === undefined) {
+    if (Date.now() >= deadline)
+      throw new CollectionError("Collection installation exceeded the overall timeout");
+    await mcp.call(
+      "vortex_dispatch",
+      { action: "resume-collection", args: [ref.gameId, modId] },
+      Math.min(120_000, deadline - Date.now()),
+    );
+  } else report("Vortex already owns this collection's install flow");
 
-  await new Promise((resolve) => setTimeout(resolve, 4_000));
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.min(4_000, Math.max(0, deadline - Date.now()))),
+  );
+  if (Date.now() >= deadline)
+    throw new CollectionError("Collection installation exceeded the overall timeout");
 
-  const clicked = await clickByName(mcp, { role: "button", name: /^install now$/i })
-    .then(() => true)
-    .catch(() => false);
-  report(clicked ? "clicked Install Now" : "driver already running (no Install Now button)");
+  driver = await observe();
+  while (driver.preparing !== false) {
+    if (Date.now() >= waitingUntil)
+      throw new CollectionError(
+        "Collection driver preparation did not become observable and settle before startup timeout",
+      );
+    await new Promise((resolve) => setTimeout(resolve, Math.min(500, waitingUntil - Date.now())));
+    driver = await observe();
+  }
+  if (
+    !driver.found ||
+    (driver.collectionId !== modId &&
+      !(
+        driver.collectionId === undefined &&
+        driver.lastCollectionId === modId &&
+        driver.step === "review" &&
+        driver.installDone === true
+      ))
+  )
+    throw new CollectionError(
+      "The install driver does not own the requested collection after startup",
+    );
+  if (driver.step === "query") {
+    await clickByName(mcp, { role: "button", name: /^install now$/i });
+    report("clicked Install Now");
+  } else report("driver already started; no additional start action");
 }
 
 export async function findCollectionMod(
@@ -455,6 +907,11 @@ export interface CollectionCompleteness {
   required: number;
   satisfied: number;
   unsatisfied: CollectionRuleStatus[];
+  optional: number;
+  optionalSatisfied: number;
+  optionalIgnored: number;
+  optionalSelected: number;
+  optionalUnsatisfied: CollectionRuleStatus[];
 }
 
 /**
@@ -477,23 +934,103 @@ async function waitForCompletion(
   timeoutMs: number,
   report: (message: string) => void,
   previousErrors: Set<string>,
+  confirmProfile?: () => Promise<void>,
+  optionalMods: "skip" | "install" = "skip",
+  expectedMembers?: { required: number; optional: number },
+  observeWarning: (warning: CollectionWarning) => void = () => undefined,
 ): Promise<CollectionCompleteness> {
   const started = Date.now();
   let last = "";
   let lastChange = Date.now();
+  const verifyCounts = (counts: { required: number; optional: number }) => {
+    if (
+      expectedMembers !== undefined &&
+      (counts.required !== expectedMembers.required || counts.optional !== expectedMembers.optional)
+    )
+      throw new CollectionError("Collection member counts changed during installation");
+  };
 
   for (;;) {
+    if (Date.now() - started > timeoutMs)
+      throw new CollectionError("Collection installation exceeded the overall timeout");
+    const observation = await observeCollectionWarnings(
+      mcp,
+      previousErrors,
+      ref.gameId,
+      collectionModId,
+      observeWarning,
+    );
+    await confirmProfile?.();
     const all = await mcp.call<CollectionCompleteness[]>("collection_status", {
       gameId: ref.gameId,
     });
-    const status = all.find((entry) => entry.collectionModId === collectionModId);
+    let status = all.find((entry) => entry.collectionModId === collectionModId);
 
     if (status !== undefined) {
-      if (status.complete) {
+      verifyCounts(status);
+      const terminalFailure = collectionTerminalFailure(
+        observation.native,
+        ref.gameId,
+        collectionModId,
+        optionalMods,
+        status.optionalSatisfied < status.optional,
+      );
+      if (terminalFailure)
+        throw new CollectionError(
+          `${terminalFailure}: ${status.satisfied}/${status.required} required members; ` +
+            `${status.optionalSatisfied}/${status.optional} optional members installed. ` +
+            "Doodlebot does not retry failed installs. The profile, downloads and warning evidence are preserved.",
+        );
+      const selectionApplied =
+        optionalMods === "skip"
+          ? status.optionalIgnored === status.optional
+          : status.optionalSelected === status.optional;
+      if (!selectionApplied) {
+        // Released Vortex can regenerate rules after resume-collection, dropping
+        // the earlier selection. Repair only this exact manifest, then poll the
+        // actual status again; an absent flag is not an explicit AE selection.
+        const refreshed = await mcp.call<CollectionMod | undefined>("vortex_query", {
+          path: ["persistent", "mods", ref.gameId, collectionModId],
+        });
+        if (
+          refreshed?.id !== collectionModId ||
+          refreshed.type !== "collection" ||
+          refreshed.attributes?.collectionSlug !== ref.slug ||
+          Number(refreshed.attributes.revisionNumber) !== ref.revision
+        )
+          throw new CollectionError("Collection identity changed during optional selection");
+        verifyCounts({
+          required: (refreshed.rules ?? []).filter((rule) => rule.type === "requires").length,
+          optional: (refreshed.rules ?? []).filter((rule) => rule.type === "recommends").length,
+        });
+        if (
+          (refreshed.rules ?? []).some((rule) => rule.type === "requires" && rule.ignored === true)
+        )
+          throw new CollectionError("Required collection member was ignored during installation");
+        await selectOptionalMembers(mcp, ref, refreshed, optionalMods);
+        report(`Reapplied ${optionalMods} policy after collection rules refreshed`);
+        const repaired = await mcp.call<CollectionCompleteness[]>("collection_status", {
+          gameId: ref.gameId,
+        });
+        status = repaired.find((entry) => entry.collectionModId === collectionModId);
+        if (status === undefined)
+          throw new CollectionError("Collection disappeared after optional selection");
+        verifyCounts(status);
+      }
+      const optionalsDone =
+        optionalMods === "skip"
+          ? status.optionalIgnored === status.optional
+          : status.optionalSelected === status.optional &&
+            status.optionalIgnored === 0 &&
+            status.optionalSatisfied === status.optional;
+      if (status.complete && optionalsDone) {
+        assertNoFailedCollectionMembers(observation);
+        if (Date.now() - started >= timeoutMs)
+          throw new CollectionError("Collection installation exceeded the overall timeout");
         report(`${String(status.satisfied)}/${String(status.required)} required mods — complete`);
         return status;
       }
-      const line = `${String(status.satisfied)}/${String(status.required)} required mods satisfied`;
+      const line = `${status.satisfied}/${status.required} required mods satisfied; ${status.optionalSatisfied}/${status.optional} optional members installed (${optionalMods})`;
       if (line !== last) {
         last = line;
         lastChange = Date.now();
@@ -501,9 +1038,11 @@ async function waitForCompletion(
       }
     }
 
-    if (Date.now() - lastChange > 30_000) await throwOnCollectionErrors(mcp, previousErrors);
     if (Date.now() - started > timeoutMs) {
-      const missing = (status?.unsatisfied ?? [])
+      const missing = [
+        ...(status?.unsatisfied ?? []),
+        ...(optionalMods === "install" ? (status?.optionalUnsatisfied ?? []) : []),
+      ]
         .map(
           (u) => `    ${u.reference}${u.installedButDisabled ? "  (installed but disabled)" : ""}`,
         )
@@ -527,25 +1066,94 @@ async function waitForCompletion(
   }
 }
 
-/** Fail stalled installs with the app's actual errors, not an hour-long timeout. */
-export async function throwOnCollectionErrors(
+/** Detect install errors independently of timing, without retrying or dismissing them. */
+function assertNoFailedCollectionMembers(state: {
+  failedMembers: number;
+  failures: unknown[];
+}): void {
+  if (state.failedMembers > 0 || state.failures.length > 0)
+    throw new CollectionError(
+      "Collection still has failed members at the completion boundary. Doodlebot does not retry failed installs.",
+    );
+}
+
+async function observeCollectionWarnings(
   mcp: VortexMcpClient,
   previous: Set<string>,
-): Promise<void> {
+  gameId: string,
+  collectionModId: string,
+  observeWarning: (warning: CollectionWarning) => void,
+) {
+  for (const notice of await collectionErrors(mcp, previous))
+    observeWarning({
+      source: "notification",
+      id: noticeIdentity(notice),
+      at: Date.now(),
+      originalSeverity: notice.type === "warning" ? "warning" : "error",
+      message: `${notice.title ?? "Collection issue"}: ${notice.message ?? ""}`,
+    });
+  const native = await mcp.call<CollectionInstallObservation>("collection_install_state");
+  const failedMembers = native.session?.statusCounts.failed ?? 0;
+  if (
+    native.session?.collectionId === collectionModId &&
+    native.session.gameId === gameId &&
+    failedMembers > 0
+  )
+    observeWarning({
+      source: "session",
+      id: collectionModId + "-" + failedMembers,
+      at: Date.now(),
+      originalSeverity: "error",
+      message: "Collection install failed for " + failedMembers + " members",
+    });
+  const failures = await mcp.call<{ downloadId: string; reference: string }[]>(
+    "collection_download_failures",
+    { gameId, collectionModId },
+  );
+  for (const member of failures)
+    observeWarning({
+      source: "download",
+      id: member.downloadId,
+      at: Date.now(),
+      originalSeverity: "error",
+      message: "Collection member download failed: " + member.reference,
+    });
+  return {
+    native,
+    failedMembers:
+      native.session?.collectionId === collectionModId && native.session.gameId === gameId
+        ? failedMembers
+        : 0,
+    failures,
+  };
+}
+
+/** Detect new relevant error notices, including Vortex's message-only installer errors. */
+async function collectionErrors(mcp: VortexMcpClient, previous: Set<string>) {
   const notices =
     await mcp.call<{ id: string; type: string; title?: string; message?: string }[]>(
       "list_notifications",
     );
-  const failures = notices.filter(
+  return notices.filter(
     (notice) =>
-      !previous.has(notice.id) &&
-      notice.type === "error" &&
-      /dependency|download|collection|login|logged in|authentication/i.test(notice.title ?? ""),
+      !previous.has(noticeIdentity(notice)) &&
+      (notice.type === "error" || notice.type === "warning") &&
+      /dependency|download|collection|install|extract|archive|deploy|nexus|login|logged in|authentication/i.test(
+        `${notice.title ?? ""} ${notice.message ?? ""}`,
+      ),
   );
+}
+export async function throwOnCollectionErrors(
+  mcp: VortexMcpClient,
+  previous: Set<string>,
+): Promise<void> {
+  const failures = await collectionErrors(mcp, previous);
   if (failures.length)
     throw new CollectionError(
       "Vortex cannot continue this collection: " +
-        failures.map((notice) => `${notice.title}: ${notice.message ?? ""}`).join("; ") +
-        ". The profile and downloads are preserved. Inspect notifications/logs for the service error, then rerun collection with the same URL and configuration after it is resolved.",
+        failures
+          .map((notice) => `${notice.title ?? "Collection error"}: ${notice.message ?? ""}`)
+          .join("; ") +
+        ". Doodlebot does not retry failed installs. The profile and downloads are preserved. Inspect notifications/logs before starting a separate run.",
     );
 }

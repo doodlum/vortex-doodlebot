@@ -1,76 +1,46 @@
-# Install, deploy and test mods
+# Install a mod and check deployment
 
-Install a local archive, enable it and check the files Vortex deploys. This walkthrough
-uses the fake game, so it needs no account and keeps deployment out of an installed game.
+This example creates a tiny archive, installs it, enables the mod, deploys it, and checks the actual file in the disposable game. Save it at the repository root:
 
-## Install a local archive
+```typescript title="local-mod.mts"
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { withVortex } from "./harness/benchmarks/index";
+import { clientFor, localMod, zipSync, strToU8 } from "./harness/src/kit";
 
-```powershell
-$env:VORTEX_AI_OWNER = 'mod-check'
-$env:VORTEX_AI_INSTALLED = '1'
-pnpm run ai -- setup --installed --sandbox
-pnpm run ai -- install 'C:\test-data\example.zip' --installed --sandbox
-pnpm run ai -- call list_mods --installed --sandbox
+await withVortex({}, async (vortex) => {
+  const archive = path.join(vortex.config.cacheDir, "hello-mod.zip");
+  const content = "Hello from a Vortex test\n";
+  fs.writeFileSync(archive, zipSync({ "textures/hello.txt": strToU8(content) }));
+
+  const { modId } = await localMod.installLocalMod(clientFor(vortex.config), archive);
+  const profile = await vortex.call<{ id: string }>("vortex_query", {
+    selector: "activeProfile",
+  });
+  await vortex.call("set_mods_enabled", {
+    modIds: [modId],
+    enabled: true,
+    profileId: profile.id,
+    expectedActiveProfileId: profile.id,
+  });
+
+  const deployed = path.join(vortex.config.gamePath!, "Data", "textures", "hello.txt");
+  try {
+    await vortex.deploy();
+    assert.equal(fs.readFileSync(deployed, "utf8"), content);
+  } finally {
+    await vortex.purge();
+  }
+});
 ```
 
-The archive must exist. ZIP and supported local archive formats go through Vortex's actual
-installation path. The harness monitors known dialogs and FOMOD navigation. If it cannot
-handle an interaction or its policy refuses it, installation is reported as failed.
+Run `pnpm exec tsx local-mod.mts`.
 
-Read the returned mod ID and active game/profile before changing enabled state. Write
-`enable.json` with IDs actually observed in this instance:
+Installation writes to Vortex's staging directory. Enabling chooses the mod for the active profile. Deployment places its files in the game. The assertion checks the final bytes, so the test can catch a deployment failure even if the installed-mod list looks correct.
 
-```json
-{
-  "modIds": ["<observed-mod-id>"],
-  "enabled": true,
-  "expectedActiveProfileId": "<observed-active-profile-id>"
-}
-```
+This archive's `Data/textures` destination belongs to the disposable test game. Real games have different mod paths and installers. Use a suitable fixture when testing those behaviors.
 
-```powershell
-pnpm run ai -- call set_mods_enabled --args-file enable.json
-pnpm run ai -- deploy --installed --sandbox
-```
+## Collections
 
-## Check real bytes
-
-Check the sandbox game path and compare the deployed file contents with the archive payload.
-This catches problems that an installed-mod listing alone cannot reveal. Repeat
-with the mod disabled, then verify the file is absent. `purge` removes files recorded by
-Vortex's deployment manifest; it is not a general cleanup command for unknown game files.
-
-```powershell
-pnpm run ai -- purge --installed --sandbox
-pnpm run ai -- down --installed --sandbox
-```
-
-Use `deploy --purge` only when permitting replacement of a foreign deployment in an explicitly
-disposable game. To automate the file-content check, follow [the integration test recipe](../testing/integration.md).
-
-## Collections and downloads
-
-`collection <url>` installs the selected Nexus collection revision using cached OAuth.
-`e2e <collection>` orchestrates fresh start, install, verify, deploy and optional real-game
-launch. `--no-launch` stops at installation/deployment; `--runs`, `--keep` and `--purge` change
-repetition and cleanup. Choose the actual game and deployment target before using these
-commands. Their account and real-game effects are larger than a local sandbox experiment.
-
-```powershell
-pnpm run ai -- collection '<exact-collection-revision-url>' --owner collection-check --slot auto
-```
-
-Check [login prerequisites](../getting-started/authentication.md), revision availability,
-download entitlement and service responses. Use `collection_status` and
-`collection_install_state` to inspect completion, including stages a mod count alone cannot reveal.
-
-`slow-download` uses throttled local files to exercise the real download UI without Nexus.
-For large offline collection workloads, use [collection-scale benchmarks](../testing/benchmarks.md).
-Offline fixtures make the workload reproducible; live-service behavior needs a separate check.
-
-## Conflicts and dependencies
-
-Inventory and diagnostic tools can find candidate conflicts, duplicate mods, missing masters,
-undeployed files or orphans. Use those findings to investigate and choose which mod should
-win, which files can safely be deleted and what the load order should be. Record the evidence
-and intended behavior before applying a rule or deleting files.
+Real collection runs need [OAuth and download access](../getting-started/authentication.md). Use the [benchmark runner](../testing/benchmarks.md) with a pinned revision, cache mode, and explicit game fixture. See the [proposal matrix](../testing/proposal.md) for intended real-data coverage.

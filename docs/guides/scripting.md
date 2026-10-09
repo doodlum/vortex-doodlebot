@@ -1,69 +1,23 @@
-# Write scratch scripts
+# Write a TypeScript script
 
-A scratch script lets you combine tool calls, inspect their results and capture the UI while
-exploring a problem. `script` runs a `.mts` file with Doodlebot's TypeScript runtime and
-instance lease. It supplies the kit import URL in `VORTEX_AI_KIT`, so scripts outside the
-repository can import the helpers without Windows path or dependency-resolution problems.
+Save small scripts as `.mts` files at the repository root. Import `withVortex` from `./harness/benchmarks/index` and run the file with `pnpm exec tsx file.mts`.
 
-## First script
+```typescript title="inspect-game.mts"
+import { withVortex } from "./harness/benchmarks/index";
 
-Save `inspect.mts` in your own task directory:
-
-```typescript title="Runnable inspection script"
-const kit = await import(process.env.VORTEX_AI_KIT!);
-const config = kit.loadConfig();
-const mcp = kit.clientFor(config);
-await mcp.waitUntilReady();
-const status = await mcp.call("automation_status");
-const profiles = await mcp.call("list_profiles");
-console.log(JSON.stringify({ status, profiles }, null, 2));
+await withVortex({}, async (vortex) => {
+  console.log(await vortex.call("vortex_query", { selector: "activeGameId" }));
+});
 ```
 
-After starting your sandbox:
+The callback receives a live app connection, a Playwright page, and helpers for fixtures and measurements. When it returns or throws, the wrapper closes Vortex. A failed run preserves its disposable fixture for diagnosis; a successful run removes it.
 
-```powershell
-pnpm run ai -- script 'C:\tasks\inspect.mts' --installed --sandbox --owner operator
-```
+Use `node:assert/strict` or Playwright's `expect` for checks that must fail the run. Keep changing inputs in a separate TypeScript configuration file. [Benchmarks](../testing/adding-benchmarks.md) add repeats and reports to this pattern.
 
-Run the example against an app you have already started, then call `down` when your session
-is finished. The MCP client uses individual HTTP requests and needs no close call.
-Kit flags such as owner, slot, worktree and ports remain harness flags even
-after the script name. Put the script's own arguments after `--` to avoid collisions.
+## Advanced: attach to an existing app
 
-## Add renderer observations
+For a long interactive reproduction, you can [keep a session open](lifecycle.md) and use the lower-level `kit` helpers. Save the script as `.mts` and run it through `pnpm run ai -- script file.mts` with the same instance options as setup.
 
-```typescript
-const handle = await kit.attachToRenderer(config);
-try {
-  console.log(await handle.page.title());
-  const image = await kit.captureScreenshot(config, { label: "script-observation" });
-  console.log(image);
-} finally {
-  await handle.close();
-}
-```
+`loadConfig()` and `clientFor(config)` then connect to that existing app. Scripts outside the repository can dynamically import `process.env.VORTEX_AI_KIT`, which the runner sets to the helper module URL.
 
-Closing the CDP connection does not stop the app. Attachment selects the Vortex renderer
-instead of an arbitrary splash or pop-out page. It also supplies the function-name shim
-needed by TypeScript-compiled `page.evaluate` functions.
-
-## Available helpers
-
-The [helper reference](../reference/script-api.md) covers the public kit and module declarations:
-configuration; MCP; renderer capture/input; JSON and ZIP helpers; UI; local mods; deployment;
-Bethesda/offline collection fixtures; slow downloads; large libraries/table probes; CPU
-profiling; recording; and Vortex log analysis. Some underlying module types or functions
-shown in the reference are not re-exported by the scratch kit; the source link identifies
-the direct repository import when needed.
-
-Use a named owner and disposable fixture, and check the active game/profile before writes.
-Keep clients and browser handles within the procedure that uses them. Wait for app exit
-before cleaning up known temporary files, and retain the evidence from failed runs.
-
-## Turn a useful script into maintained automation
-
-Move reusable behavior into a harness module with a meaningful test and update its human
-guide and AI contract in the same change. Put stable checks in the unit or real-app test
-layer, and measurements in an explicit benchmark with fixture parameters and a comparison
-method. See [unit tests](../testing/unit.md), [integration tests](../testing/integration.md)
-and [benchmarks](../testing/benchmarks.md).
+Most tests can use `withVortex()` without this connection setup. The [helper reference](../reference/script-api.md) is available when you need lower-level control.

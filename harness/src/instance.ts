@@ -191,7 +191,7 @@ export function forgetLaunchedPid(
 export async function registerLaunchedProcess(
   child: ChildProcess,
   identities: readonly LeaseIdentity[],
-  options: OperationOptions = {},
+  options: OperationOptions & { onProcessSpawn?: (child: ChildProcess) => void } = {},
 ): Promise<void> {
   if (child.pid === undefined) return;
   let releaseChild: (() => void) | undefined;
@@ -199,6 +199,7 @@ export async function registerLaunchedProcess(
     if (options.context !== undefined)
       releaseChild = trackOperationChild(options.context, child.pid, [], options.leaseEnv);
     recordLaunchedPid(identities, child.pid, options.leaseEnv);
+    options.onProcessSpawn?.(child);
   } catch (error) {
     if (error instanceof ChildRegistrationError) releaseChild = error.release;
     const failures = [error];
@@ -548,6 +549,10 @@ export interface LaunchOptions extends OperationOptions {
   config: HarnessConfig;
   /** Progress and warnings, such as a development bundle under --production. */
   onProgress?: (message: string) => void;
+  /** Monotonic timestamp immediately before process creation, for startup measurements. */
+  onSpawn?: (at: number) => void;
+  /** Exact child immediately after spawn/PID recording, before any readiness await. */
+  onProcessSpawn?: (child: ChildProcess) => void;
 }
 
 /** Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio.log`. */
@@ -632,6 +637,7 @@ async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
   const logFd = openStdioLog(userDataDir);
   let child: ChildProcess;
   try {
+    options.onSpawn?.(performance.now());
     child = spawn(
       target.executable,
       [...target.args, `--remote-debugging-port=${String(config.cdpPort)}`],

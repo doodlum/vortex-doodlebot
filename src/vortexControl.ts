@@ -605,12 +605,15 @@ interface ListenerEntry {
   seq: number;
   args: unknown[];
   receivedAt: number;
+  retainedBytes?: number;
 }
 
 interface ListenerRecord {
   name: string;
   buffer: ListenerEntry[];
   nextSeq: number;
+  problem?: string;
+  retainedBytes?: number;
 }
 
 // Module-level, not per-request: the MCP transport is stateless (no session tied to a
@@ -618,6 +621,117 @@ interface ListenerRecord {
 // here survives across separate tool calls just fine — that's what makes register-then-
 // poll possible at all.
 const listeners = new Map<string, ListenerRecord>();
+
+/** Observe scalar field transitions across every record, without retaining whole state snapshots. */
+export function watchStateChanges(
+  api: IExtensionApi,
+  path: string[],
+  fields: Record<string, string[]>,
+): { listenerId: string } {
+  const safePath = (value: string[]) =>
+    value.length > 0 &&
+    value.length <= 12 &&
+    value.every(
+      (key) =>
+        typeof key === "string" &&
+        key.length > 0 &&
+        !["__proto__", "prototype", "constructor"].includes(key),
+    );
+  if (
+    !safePath(path) ||
+    Object.keys(fields).length === 0 ||
+    Object.keys(fields).length > 16 ||
+    Object.entries(fields).some(
+      ([key, route]) => !/^[a-zA-Z]\w{0,63}$/.test(key) || !safePath(route),
+    )
+  )
+    throw new Error(
+      "State transition observation requires a record path and named scalar field paths",
+    );
+  if (listeners.size >= MAX_CONCURRENT_LISTENERS)
+    throw new Error("Too many active listeners; restart Vortex before registering more");
+  const listenerId = crypto.randomUUID();
+  const record: ListenerRecord = { name: "watch_state_changes", buffer: [], nextSeq: 1 };
+  listeners.set(listenerId, record);
+  const project = (item: unknown): Record<string, unknown> => {
+    const result: Record<string, unknown> = {};
+    for (const [key, route] of Object.entries(fields)) {
+      let value = item;
+      for (const part of route)
+        value =
+          value !== null && typeof value === "object"
+            ? (value as Record<string, unknown>)[part]
+            : undefined;
+      if (
+        value !== undefined &&
+        value !== null &&
+        !["string", "number", "boolean"].includes(typeof value)
+      )
+        throw new Error(`Observed field ${key} must be scalar`);
+      if (typeof value === "string" && value.length > 4096)
+        throw new Error(`Observed field ${key} exceeds the scalar size limit`);
+      if (typeof value === "number" && !Number.isFinite(value))
+        throw new Error(`Observed field ${key} must be finite`);
+      result[key] = value ?? null;
+    }
+    return result;
+  };
+  const dictionary = (value: unknown): Record<string, unknown> => {
+    if (value === null || value === undefined) return {};
+    if (typeof value !== "object")
+      throw new Error("Observed state must be a dictionary or array of records");
+    return value as Record<string, unknown>;
+  };
+  try {
+    if (!api.onStateChange) throw new Error("Vortex does not expose onStateChange");
+    api.onStateChange(path, (previous: unknown, current: unknown) => {
+      if (record.problem) return;
+      const receivedAt = Date.now();
+      try {
+        const before = dictionary(previous),
+          after = dictionary(current);
+        const oldChanges: Record<string, unknown> = Object.create(null);
+        const newChanges: Record<string, unknown> = Object.create(null);
+        let bytes = 0;
+        for (const id of new Set([...Object.keys(before), ...Object.keys(after)])) {
+          if (before[id] === after[id]) continue;
+          const oldValue = Object.hasOwn(before, id) ? project(before[id]) : null;
+          const newValue = Object.hasOwn(after, id) ? project(after[id]) : null;
+          if (
+            oldValue !== null &&
+            newValue !== null &&
+            Object.keys(fields).every((key) => oldValue[key] === newValue[key])
+          )
+            continue;
+          oldChanges[id] = oldValue;
+          newChanges[id] = newValue;
+          bytes += Buffer.byteLength(JSON.stringify([id, oldValue, newValue]), "utf8");
+          if (bytes > 2 * 1024 * 1024)
+            throw new Error("State transition entry exceeded 2 MiB; narrow the observed fields");
+        }
+        if (Object.keys(newChanges).length === 0) return;
+        record.buffer.push({
+          seq: record.nextSeq++,
+          receivedAt,
+          args: [oldChanges, newChanges],
+          retainedBytes: bytes,
+        });
+        record.retainedBytes = (record.retainedBytes ?? 0) + bytes;
+        while (
+          record.buffer.length > MAX_BUFFER_ENTRIES_PER_LISTENER ||
+          record.retainedBytes > 16 * 1024 * 1024
+        )
+          record.retainedBytes -= record.buffer.shift()!.retainedBytes ?? 0;
+      } catch (error) {
+        record.problem = error instanceof Error ? error.message : String(error);
+      }
+    });
+  } catch (error) {
+    listeners.delete(listenerId);
+    throw error;
+  }
+  return { listenerId };
+}
 
 function registerListener(
   api: IExtensionApi,
@@ -696,6 +810,7 @@ function registerListener(
 export function pollListener(
   listenerId: string,
   since = 0,
+  limit = 500,
 ): { entries: ListenerEntry[]; lastSeq: number } {
   const record = listeners.get(listenerId);
   if (record === undefined) {
@@ -704,7 +819,10 @@ export function pollListener(
         "listeners don't survive a restart.",
     );
   }
-  const entries = record.buffer.filter((entry) => entry.seq > since);
+  if (record.problem) throw new Error(`State transition observation failed: ${record.problem}`);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+    throw new Error("Listener poll limit must be 1–500");
+  const entries = record.buffer.filter((entry) => entry.seq > since).slice(0, limit);
   return { entries, lastSeq: entries.length > 0 ? entries[entries.length - 1].seq : since };
 }
 
@@ -3099,6 +3217,11 @@ export interface CollectionStatus {
   required: number;
   satisfied: number;
   unsatisfied: CollectionRuleStatus[];
+  optional: number;
+  optionalSatisfied: number;
+  optionalIgnored: number;
+  optionalSelected: number;
+  optionalUnsatisfied: CollectionRuleStatus[];
 }
 
 /**
@@ -3135,16 +3258,21 @@ export function collectionStatus(api: IExtensionApi, gameId?: string): Collectio
         (rule) => rule.type === "requires" && rule.ignored !== true,
       );
 
-      const statuses: CollectionRuleStatus[] = rules.map((rule) => {
+      const optional = ((collection.rules ?? []) as unknown as CollectionModRule[]).filter(
+        (rule) => rule.type === "recommends",
+      );
+      const check = (rule: CollectionModRule): CollectionRuleStatus => {
         const mod = util.findModByRef(rule.reference, mods);
         const enabled = mod === undefined ? false : profile?.modState?.[mod.id]?.enabled === true;
         return {
           reference: util.renderModReference(rule.reference),
           modId: mod?.id,
-          satisfied: mod !== undefined && enabled,
+          satisfied: mod?.state === "installed" && enabled,
           installedButDisabled: mod !== undefined && !enabled,
         };
-      });
+      };
+      const statuses = rules.map(check);
+      const optionalStatuses = optional.map(check);
 
       const unsatisfied = statuses.filter((s) => !s.satisfied);
       return {
@@ -3154,6 +3282,46 @@ export function collectionStatus(api: IExtensionApi, gameId?: string): Collectio
         required: statuses.length,
         satisfied: statuses.length - unsatisfied.length,
         unsatisfied,
+        optional: optional.length,
+        optionalSatisfied: optionalStatuses.filter((item) => item.satisfied).length,
+        optionalIgnored: optional.filter((rule) => rule.ignored === true).length,
+        optionalSelected: optional.filter((rule) => rule.ignored === false).length,
+        optionalUnsatisfied: optionalStatuses.filter((item) => !item.satisfied),
       };
     });
+}
+
+/** Failed transfers belonging to unresolved, selected members, using stock reference matchers. */
+export function collectionDownloadFailures(
+  api: IExtensionApi,
+  gameId: string,
+  collectionModId: string,
+) {
+  const st = state(api);
+  const targetGameId = resolveGameId(gameId, st);
+  const mods = st.persistent.mods?.[targetGameId] ?? {};
+  const collection = mods[collectionModId];
+  if (collection?.type !== "collection") throw new Error("No collection with that id in this game");
+  const downloads = st.persistent.downloads.files;
+  const profile = selectors.activeProfile(st);
+  const failures: { downloadId: string; reference: string }[] = [];
+  for (const rule of (collection.rules ?? []) as unknown as CollectionModRule[]) {
+    if (
+      !(rule.type === "requires" && rule.ignored !== true) &&
+      !(rule.type === "recommends" && rule.ignored === false)
+    )
+      continue;
+    const member = util.findModByRef(rule.reference, mods);
+    if (member?.state === "installed" && profile?.modState?.[member.id]?.enabled === true) continue;
+    for (const [id, download] of Object.entries(downloads)) {
+      if (download.state !== "failed") continue;
+      // Stock's archive-reuse matcher excludes failed records. Project only its
+      // eligibility state for identity matching; the real transfer stays failed.
+      if (
+        util.findDownloadByRef(rule.reference, { [id]: { ...download, state: "finished" } }) === id
+      )
+        failures.push({ downloadId: id, reference: util.renderModReference(rule.reference) });
+    }
+  }
+  return failures;
 }

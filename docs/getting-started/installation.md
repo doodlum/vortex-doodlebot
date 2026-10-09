@@ -1,54 +1,34 @@
 # Install Doodlebot
 
-Start here to reproduce bugs or test local mod installation with released Vortex. The
-first session uses a fake game and needs no Nexus login.
+Doodlebot is a TypeScript toolkit for testing Vortex. It starts an isolated app, lets your code inspect and operate it, and closes the app when your test finishes. Local tests use a disposable game and generated data.
 
-## Requirements
+## What you need
 
-| Requirement            | Why it is needed                                               |
-| ---------------------- | -------------------------------------------------------------- |
-| Windows                | Vortex and the supported Electron workflows run here           |
-| Vortex                 | Install the released app before the account-free quick start   |
-| Node ≥ 20.19           | CLI, build and test runtime; CI uses Node 22                   |
-| pnpm 9.15.0            | The package manager pinned by `package.json`                   |
-| Git                    | Clone the toolkit; source work also uses forks and worktrees   |
-| An interactive desktop | Visible app and screenshot checks; headless results can differ |
+- Windows and a released Vortex installation.
+- Node.js **20.19 or newer** and **pnpm 9.15.0**, matching this repository's `package.json`.
+- Git, to clone the repository.
+- A visible desktop for UI and performance tests.
 
-Download Vortex from its [official page](https://www.nexusmods.com/about/vortex/).
-Install Node from [nodejs.org](https://nodejs.org/), then install the pinned pnpm version
-using the installation method supported by your Node distribution. For example, with npm:
+You do not need a Nexus account, a commercial game, an LLM, or Vortex's source code for the first test. [Real collection tests](authentication.md) have extra prerequisites.
+
+## Get the toolkit
+
+Run these commands in PowerShell:
 
 ```powershell
-npm install --global pnpm@9.15.0
 git clone https://github.com/doodlum/vortex-doodlebot.git
 cd vortex-doodlebot
-pnpm install --frozen-lockfile
-$env:VORTEX_AI_OWNER = 'operator'
-pnpm run build
+pnpm install
 ```
 
-`pnpm run build` builds Doodlebot's extension, not Vortex. Dependencies and the extension
-output live in this checkout. You do not need a Vortex fork, an LLM or a Nexus account yet.
+Then [write your first TypeScript test](first-session.md). Its `withVortex()` call prepares the extension, starts the released app with an isolated profile, and cleans up afterward. You do not need a separate setup command.
 
-## Select the installed app explicitly
+If Vortex is installed somewhere Doodlebot cannot find, give `withVortex()` its executable path:
 
-```powershell
-$env:VORTEX_AI_INSTALLED = '1'
-# Set this only for a nonstandard installation:
-# $env:VORTEX_AI_EXE = 'C:\Apps\Vortex\Vortex.exe'
-pnpm run ai -- doctor --installed --sandbox
+```typescript
+await withVortex({ executable: "D:/Apps/Vortex/Vortex.exe" }, async (vortex) => {
+  // Your test goes here.
+});
 ```
 
-Doctor checks the prerequisites and tells you how to fix missing ones. An existing managed
-`.vortex-src` checkout takes precedence unless you select installed Vortex explicitly.
-Keep that selection set throughout the quick start so every command uses the same app.
-
-## Optional software
-
-- An MCP-capable LLM client for [assistant workflows](../llms/connecting.md).
-- FFmpeg for [video recording](../guides/capture.md); screenshots do not need it.
-- GitHub CLI and fork access for [Vortex source development](../guides/source-development.md).
-- Nexus OAuth and Premium for unattended [live collection downloads](authentication.md).
-- Python for building or editing this documentation site; app automation does not need it.
-
-Next: [open your first session](first-session.md).
+For a missing prerequisite or startup failure, use [troubleshooting](../troubleshooting.md).

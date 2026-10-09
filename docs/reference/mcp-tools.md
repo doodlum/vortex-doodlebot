@@ -4,7 +4,7 @@
 
 Use these contracts when calling tools directly or configuring an assistant. See [calling tools](../guides/calling-tools.md) for JSON files, results, errors and state checks.
 
-Discover the tools in your running instance with `pnpm run ai -- tools --json`. Runtime availability depends on Vortex and bearer-token configuration. This reference covers all **58** registrations in the current source.
+Discover the tools in your running instance with `pnpm run ai -- tools --json`. Runtime availability depends on Vortex and bearer-token configuration. This reference covers all **60** registrations in the current source.
 
 A token unlocks the token-required tools and makes **every request** require its bearer header. A diagnostic tool can still contact external services: `check_nexus_mod_updates` consumes Nexus API quota.
 
@@ -25,7 +25,7 @@ How many times Vortex has run its health checks for each test event (plugins-cha
 
 ## automation_status
 
-Identify this renderer lifetime and isolated harness profile. runtimeId changes after renderer reload; userDataDir is null outside the harness. \`paths\` are the per-user folders Vortex resolved (documents, localAppData) — what a Bethesda game's INI files and plugins.txt are written under — so a harness can refuse to manage a game unless they are its own sandbox copies. \`nodeEnv\` is the renderer's NODE\_ENV; \`react.build\` is which React build the renderer actually loaded (production, development, or unknown), read from the module cache — the harness refuses a --production run unless it is production. Contains no credentials.
+Identify this renderer lifetime, running Vortex version, and isolated harness profile. runtimeId changes after renderer reload; userDataDir is null outside the harness. \`paths\` are the per-user folders Vortex resolved (documents, localAppData) — what a Bethesda game's INI files and plugins.txt are written under — so a harness can refuse to manage a game unless they are its own sandbox copies. \`nodeEnv\` is the renderer's NODE\_ENV; \`react.build\` is which React build the renderer actually loaded (production, development, or unknown), read from the module cache — the harness refuses a --production run unless it is production. Contains no credentials.
 
 **Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L181).
 
@@ -42,7 +42,7 @@ Identify this renderer lifetime and isolated harness profile. runtimeId changes 
 
 Report whether a Nexus API key, OAuth access token, and OAuth refresh token are present, without returning credentials. Presence does not prove server validity; Vortex manages token refresh. Check oauthPresent before collection operations.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L203).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L204).
 
 ```json title="Input schema"
 {
@@ -57,7 +57,7 @@ Report whether a Nexus API key, OAuth access token, and OAuth refresh token are 
 
 Discover the live Vortex API surface: callable selector names (for vortex\_query, with known caveats in \`selectorHints\`, e.g. selectorHints.knownGames warns it's a 5000-entry catalog that blows the response limit and points at 'discovered' instead), every action/api.ext function/event/api method name dispatchable via vortex\_dispatch (\`actions\`/\`extensionApis\`/\`eventNames\`/\`apiMethods\` — all of these are callable, no allowlist; the loopback bind + bearer token is the real security boundary), with real positional argument order for the ones this project has verified (\`dispatchHints\`/\`extensionApiHints\`/\`eventHints\`/\`listenerHints\`, e.g. dispatchHints.setModEnabled = "profileId: string, modId: string, enable: boolean" — missing from these maps just means no pre-verified arg order/caveat, not that it's unavailable; eventHints/listenerHints also document the "\_\_CALLBACK\_\_" sentinel position for the few events/apiMethods that need one — a listenerHints entry means that apiMethod registers a persistent listener instead of performing a one-off action; see poll\_listener), and top-level Redux state keys (for vortex\_query's path mode, includes state added by any loaded extension, not just core Vortex). Reflects whatever Vortex is actually running right now — new selectors/actions/events/state show up here without an extension rebuild.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L214).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L215).
 
 ```json title="Input schema"
 {
@@ -72,7 +72,7 @@ Discover the live Vortex API surface: callable selector names (for vortex\_query
 
 Discover real dispatchable Redux action type strings — and, where recoverable, their payload shape — by scanning every installed extension's own compiled JS on disk (bundled + user-installed, both plain files, no source checkout or app.asar archive parsing needed). This is what most action creators defined inside an extension's own module (as opposed to Vortex core) actually need: vortex\_describe's \`actions\` list only contains what's re-exported through the published @nexusmods/vortex-api package, which most extension-internal action creators (confirmed live: 79 of 81 across this install's extensions) never are — those are otherwise undiscoverable, not just undocumented. Each result's \`type\` is usable directly with vortex\_dispatch as action='type:\<type\>'. \`payloadKeys\` maps each payload object key to which positional argument (0-indexed) it came from in the original creator — e.g. \{pluginName: 0, enabled: 1\} means dispatch with args=\[\{pluginName: \<value\>, enabled: \<value\>\}\]. \`passthroughPayload: true\` means the payload IS the single argument directly — dispatch with args=\[\<value\>\] (no wrapping object). \`noPayload: true\` means the action creator takes no argument at all — dispatch with args=\[\] (this is a CONFIRMED shape, not an unknown one). When payloadKeys is empty and both flags are false, the type string was recovered but its shape wasn't recognized — still more than nothing, but verify the shape yourself before dispatching. IMPORTANT LIMIT: this recovers dispatch SHAPE, not reducer BEHAVIOR — the creator's argument shape and what the reducer actually does with it are two separate pieces of code, only the first is scanned. Confirmed live: gamebryo-plugin-management's TOGGLE\_TUTORIAL (shape \{tutorialId: 0, isOpen: 1\}) silently ignores the isOpen value and forces true whenever tutorialId differs from the currently-open one — dispatching a 'correct-shaped' payload does not guarantee the effect its field names imply. Read state before AND after your first real dispatch of any newly-discovered action to confirm what it actually does, don't trust the shape alone. One reassuring counterpoint, also confirmed live: gamebryo-plugin-management's userlist-related actions (setGroup/addRule/removeRule/addGroup/removeGroup/addGroupRule/removeGroupRule) all match plugin names case-INsensitively when updating an existing entry — exact casing of a pluginId/pluginName argument doesn't matter for those, confirmed by dispatching a deliberately-wrong-case pluginId live and observing it correctly update the existing entry with no duplicate created — but this is specific to that extension's userlist reducers, not a guarantee for every action found here. Cached after the first call (these files only change when Vortex/an extension updates) — pass forceRefresh to re-scan after an update. A real filesystem scan across every installed extension, not instant, but a one-time cost per process lifetime.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L242).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L243).
 
 ```json title="Input schema"
 {
@@ -92,7 +92,7 @@ Discover real dispatchable Redux action type strings — and, where recoverable,
 
 Read Vortex state. Two modes: \`selector\` calls that named vortex-api selector as \`(state, ...args)\` (e.g. selector='activeProfileId', or selector='profiles' then cross-reference the id yourself); \`path\` walks the Redux state tree by key (e.g. path=\['persistent','mods','skyrimse'\]). Use vortex\_describe first to see what's available. Genuinely read-only (can't mutate anything) — for calling an api.ext function (which can have side effects), use vortex\_dispatch instead. Anything sourced from state.confidential (the stored Nexus API key/OAuth credential) comes back as "\[redacted: state.confidential\]" — this is unconditional, not something the write token lifts; a selector that only derives a non-secret fact from that subtree (e.g. isLoggedIn) is unaffected.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L297).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L298).
 
 ```json title="Input schema"
 {
@@ -121,7 +121,7 @@ Read Vortex state. Two modes: \`selector\` calls that named vortex-api selector 
 
 List Vortex profiles (defaults to every game; pass gameId to filter to one), with name, active status, and mod counts — a formatted join vortex\_query can't do in one call: the raw path (persistent.profiles) dumps every profile's full per-mod enabled state, which can run past 500K characters and blow the response limit on a large modlist (found live). Sorted most-recently-activated first.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L332).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L333).
 
 ```json title="Input schema"
 {
@@ -141,7 +141,7 @@ List Vortex profiles (defaults to every game; pass gameId to filter to one), wit
 
 Whether each installed collection is COMPLETE, by Vortex's own definition — the same check behind the Collections page's "Incomplete" badge. Use this, not a mod count, to decide whether a collection finished: a collection can have every member installed, correctly named and nothing left installing, and still be incomplete, because Vortex resolves each required rule through its own reference matcher AND requires the matched mod to be enabled in the active profile. Unsatisfied rules are listed, and installedButDisabled distinguishes "never installed" from "installed but switched off".
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L350).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L351).
 
 ```json title="Input schema"
 {
@@ -157,11 +157,34 @@ Whether each installed collection is COMPLETE, by Vortex's own definition — th
 }
 ```
 
+## collection_download_failures
+
+Failed download IDs for unresolved selected collection members, matched by Vortex's own reference matcher. Required ignored members and skipped optionals are excluded. No URLs or credentials are returned. A failed transfer alone does not establish a recoverable cause.
+
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L371).
+
+```json title="Input schema"
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "gameId": {
+      "type": "string"
+    },
+    "collectionModId": {
+      "type": "string"
+    }
+  },
+  "required": ["gameId", "collectionModId"],
+  "additionalProperties": false
+}
+```
+
 ## collection_install_state
 
 Where a collection install is right now. \`driver\` is the collections extension's InstallDriver, read from the \`driver\` prop Vortex passes its collection dialogs: \`step\` (prepare, changelog, query = Install Now shown, start = auto-continues on the next update, disclaimer, installing, review = review screen), installDone, postprocessing, the collection id. That is a private shape: when a Vortex build stops passing the prop, driver.found is false with a reason. \`session\` summarises the public install session (state.session.collections.activeSession: members by status and type, the ones still outstanding). driver.preparing: work queued with prepare() is unfinished (start/query wait for it); driver.starting: a start attempt is in progress (builds with the game-version Cancel fix; null where not observable). \`dialogs\` are the open modals, each tagged with the step it belongs to (query, game-version-prompt, review) where recognised and the collection it belongs to (collectionId, collectionName, via: driver prop, collection prop or text). Read-only; cheap enough to poll.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L370).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L383).
 
 ```json title="Input schema"
 {
@@ -176,7 +199,7 @@ Where a collection install is right now. \`driver\` is the collections extension
 
 List mods for a game (defaults to the active game), with friendly names and enabled state for the active profile — a formatted join vortex\_query can't do in one call. A large modlist (hundreds of mods) can exceed the client's response size limit; use enabledOnly/nameFilter/limit to narrow the result rather than requesting everything.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L411).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L424).
 
 ```json title="Input schema"
 {
@@ -210,7 +233,7 @@ List mods for a game (defaults to the active game), with friendly names and enab
 
 List the current Gamebryo/LOOT plugin load order (.esp/.esm/.esl), sorted by index. Only available for games using plugin-based load ordering (e.g. Skyrim, Fallout) — throws for games that don't have one active.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L436).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L449).
 
 ```json title="Input schema"
 {
@@ -225,7 +248,7 @@ List the current Gamebryo/LOOT plugin load order (.esp/.esm/.esl), sorted by ind
 
 Get the same rich per-plugin info Vortex's own Plugins tab shows — master list, LOOT messages/warnings, dirty-edit status (ITM/UDR), group, version — by triggering the SAME real LOOT lookup the UI panel and the LOOT-sort mechanism both use, merged with load order (index/enabled) and the base record Vortex already caches (modId, deployed, isNative). list\_load\_order alone only gives you index/enabled — this is the rest of what the tab surfaces. Only supports the active game (load order and plugin state have no per-game storage for an inactive game). A real, potentially slow LOOT call — capped at 25 plugins and 30s per call, pass a subset and make repeat calls for a full modlist. \`messages\` is opaque (from the \`loot\` native package, not vendored here) — read fields as found rather than assuming a schema.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L450).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L463).
 
 ```json title="Input schema"
 {
@@ -255,7 +278,7 @@ Get the same rich per-plugin info Vortex's own Plugins tab shows — master list
 
 List a game's mod categories (defaults to the active game), sorted by display order, with a mod count per category — a join vortex\_query can't do in one call.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L479).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L492).
 
 ```json title="Input schema"
 {
@@ -275,7 +298,7 @@ List a game's mod categories (defaults to the active game), sorted by display or
 
 List the download queue/history for a game (defaults to the active game): name, state, progress percent, size, start time, installedModId — a formatted view raw vortex\_query selectors (downloadsForGame/activeDownloads) don't give you in one call. Defaults to every state except 'finished' (found live: a real download history can run hundreds of entries deep and blow the response size limit if you dump it all — what's usually wanted is what's active/stuck/failed, not the archive). Pass states=\['finished'\] (optionally alongside others) to include completed downloads; use limit to cap results, most-recently-started first. To check whether a specific download is currently installed as a mod, use installedModId (matches list\_mods'/find\_mod\_by\_file's id) rather than matching by name — Nexus display names and installed-mod names commonly diverge. Note: installedModId can be stale for a superseded download of a mod that's since been updated in place under the same modId.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L498).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L511).
 
 ```json title="Input schema"
 {
@@ -308,7 +331,7 @@ List the download queue/history for a game (defaults to the active game): name, 
 
 Group downloads that came from the SAME Nexus mod page (not the same field list\_downloads' installedModId reads — this groups by the Nexus page id nested in each download's own metadata) and report every group with more than one entry: multiple archives ever downloaded for one mod, typically old versions left behind after updating. Each entry's \`installed\` flags whether THAT download's content is currently deployed — confirmed live that MORE THAN ONE entry in a group can show true simultaneously (Vortex updates a mod in place under the same modId, so an older download can keep a stale-but-live-looking installed pointer even though a newer one is what's actually deployed), so don't assume exactly one true value. Every entry showing installed:false is a real candidate for manual deletion to reclaim disk space. Reports raw facts only, no verdict; you may have a real reason to keep an old version.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L537).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L550).
 
 ```json title="Input schema"
 {
@@ -328,7 +351,7 @@ Group downloads that came from the SAME Nexus mod page (not the same field list\
 
 List Vortex's current notifications (errors, warnings, info) — what Vortex itself is currently flagging as a problem, useful for diagnosing 'mod is enabled but doesn't work'-class issues.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L562).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L575).
 
 ```json title="Input schema"
 {
@@ -343,7 +366,7 @@ List Vortex's current notifications (errors, warnings, info) — what Vortex its
 
 List a mod's dependency/conflict rules (before/after/requires/conflicts/...), resolving each reference to the target mod's friendly name when it's installed — a join vortex\_query can't do in one call.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L576).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L589).
 
 ```json title="Input schema"
 {
@@ -369,7 +392,7 @@ List a mod's dependency/conflict rules (before/after/requires/conflicts/...), re
 
 Find every OTHER installed mod whose own rules reference this one — the reverse of list\_mod\_rules, which only shows rules recorded ON the mod you ask about. Answers 'what depends on/conflicts with/orders around this mod', e.g. before removing or updating it. A join vortex\_query/list\_mod\_rules can't do in one call without scanning every other installed mod yourself.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L596).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L609).
 
 ```json title="Input schema"
 {
@@ -395,7 +418,7 @@ Find every OTHER installed mod whose own rules reference this one — the revers
 
 Find which installed mod(s) contain a file with this name, by scanning mod staging folders on disk (no reflectable API exposes this). Scans only enabled mods by default — fast; pass includeDisabled to search every installed mod instead (much slower for a large modlist, but useful for an orphaned/leftover file whose owning mod isn't currently enabled).
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L618).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L631).
 
 ```json title="Input schema"
 {
@@ -424,7 +447,7 @@ Find which installed mod(s) contain a file with this name, by scanning mod stagi
 
 List files provided by more than one currently-enabled mod (for the active/given profile) — the read side of conflict resolution; found by scanning mod staging folders on disk, no reflectable API exposes this. Each entry's \`risk\` is a coarse file-type hint (high: plugins/scripts/archives, medium: interface/config, low: everything else, e.g. meshes/textures) — not a winner. Doesn't report a winner — Vortex's actual resolution depends on deploy/rule order in ways not safe to reimplement here. Resolve a conflict via vortex\_dispatch: setFileOverride to pick a winning mod for specific files, or addModRule with type 'before'/'after' to control deploy order between two mods.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L641).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L654).
 
 ```json title="Input schema"
 {
@@ -454,7 +477,7 @@ List files provided by more than one currently-enabled mod (for the active/given
 
 Find enabled plugins whose master files aren't themselves enabled — reads each plugin's real TES4 header from the game's Data folder (the Bethesda plugin format's own binary spec, not Vortex-specific), since Vortex doesn't expose a resolved-masters selector. A very common real troubleshooting need (a patch enabled without its base mod).
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L678).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L691).
 
 ```json title="Input schema"
 {
@@ -474,7 +497,7 @@ Find enabled plugins whose master files aren't themselves enabled — reads each
 
 Read recent Papyrus error lines and crash log excerpts from the game's real save-data folder (Documents/My Games/\<game\>) — Vortex has no concept of game runtime logs, this is pure filesystem reading. Doesn't try to parse or explain crash log internals (format varies by crash-logging mod) — surfaces the raw excerpt for you to reason about. Each entry's \`mentionedFiles\` lists any .esp/.esm/.esl/.dll/.pex filenames spotted in the text — pass one to find\_mod\_by\_file to resolve which mod it belongs to. Only supports games with a verified save-data folder name (currently skyrimse, skyrimvr) — throws clearly for anything else.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L696).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L709).
 
 ```json title="Input schema"
 {
@@ -500,7 +523,7 @@ Read recent Papyrus error lines and crash log excerpts from the game's real save
 
 Find installed mods that look like duplicates or redundant leftovers — never auto-resolved, purely informational (same 'report candidates, don't decide' stance as list\_file\_conflicts). Two checks: more than one installed mod sharing the same Nexus mod id (metadata-only, cheap), and mods whose entire file set is contained in another mod's (usually an old/redundant version left installed). Scans only enabled mods by default — fast; includeDisabled searches every installed mod instead (much slower for a large modlist).
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L723).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L736).
 
 ```json title="Input schema"
 {
@@ -524,7 +547,7 @@ Find installed mods that look like duplicates or redundant leftovers — never a
 
 List DISABLED mods for a profile (defaults to the active one), sorted oldest-disabled first — candidates for actually removing rather than leaving disabled forever. \`disabledSince\` is when the mod's enabled state was last toggled (despite Vortex's own field name for it, enabledTime, this is set even for currently-disabled mods and tracks the last flip either direction) — how long ago that was is the real 'how stale' signal, not the enabled flag alone. Reports raw facts only, no verdict: a mod can be deliberately kept disabled as an alternate (e.g. two versions of a texture pack for different playthroughs).
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L747).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L760).
 
 ```json title="Input schema"
 {
@@ -554,7 +577,7 @@ List DISABLED mods for a profile (defaults to the active one), sorted oldest-dis
 
 Surfaces real 'conflicts'-type rules Vortex already has recorded on enabled mods (mod.rules — the same field list\_mod\_rules reads, often populated from Nexus mod page metadata or added by the user). Genuine Vortex data, not invented compatibility knowledge — \`targetEnabled\` tells you whether the conflicting mod is actually active right now.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L775).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L788).
 
 ```json title="Input schema"
 {
@@ -574,7 +597,7 @@ Surfaces real 'conflicts'-type rules Vortex already has recorded on enabled mods
 
 List file conflicts between enabled mods that have NO rule resolving them yet — the read side of Vortex's own conflict-resolution ('Set Rule') workflow, which list\_file\_conflicts deliberately declines to editorialize on. Each entry includes Vortex's OWN suggestion (before/after/null), the same recommendation its in-app conflict dialog offers as 'Use Suggested' — real computed data from the built-in mod-dependency-manager extension, not invented. To apply a non-null suggestion: vortex\_dispatch action='addModRule' args=\[gameId, modId, \{type: suggestion, reference: \{id: otherModId\}\}\] — modId/otherModId come from THIS entry, and the direction matters (get modId/otherModId backwards and you'll order the mods the wrong way). A null suggestion means Vortex has no confident answer and a human has to pick. Always scoped to the ACTIVE game — no gameId param, this data doesn't exist per-game the way most state here does.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L793).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L806).
 
 ```json title="Input schema"
 {
@@ -589,7 +612,7 @@ List file conflicts between enabled mods that have NO rule resolving them yet �
 
 Find plugins where Vortex's load-order state, what's actually deployed to the game's Data folder, and what the game's own plugins.txt says is active all disagree — reads both real files directly rather than trusting Vortex's in-memory state alone, since a deploy can silently partially fail. \`activeInPluginsTxt\` is \`null\` when the plugin isn't listed there at all — normal for game/DLC masters, which the engine activates implicitly without an entry, so that's never itself a discrepancy. No verdict about which source is 'right'. Only supports games with a verified save-data folder name (currently skyrimse, skyrimvr).
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L816).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L829).
 
 ```json title="Input schema"
 {
@@ -609,7 +632,7 @@ Find plugins where Vortex's load-order state, what's actually deployed to the ga
 
 Find files Vortex's own deployment manifest (\<Data\>/vortex.deployment.json — the same bookkeeping Vortex reads for its own Purge) still attributes to a mod that no longer has a matching entry in the current mod list, but that are still physically present in the Data folder — the read side of a commonly-reported Vortex complaint (uninstalling a mod sometimes leaves its .esp/texture files behind). \`source\` is NOT a mod id — it's the owning mod's installationPath (staging folder name), which can diverge from a mod's \`id\` across updates; don't try to match it against list\_mods' id directly. An empty result means either genuinely nothing orphaned, or the game has never been deployed (no manifest yet) — this tool can't distinguish those. Only covers the default mod type's manifest.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L838).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L851).
 
 ```json title="Input schema"
 {
@@ -629,7 +652,7 @@ Find files Vortex's own deployment manifest (\<Data\>/vortex.deployment.json —
 
 Check installed Nexus-sourced mods for available updates via Vortex's own built-in integration and the user's existing Vortex login — no separate API key. Kept as a dedicated tool (unlike get-mod-info, now folded into vortex\_query's extApi mode) because it does a real join vortex\_query can't do in one call: resolving mod ids to full IMod records and filtering to Nexus-sourced ones before calling the underlying api.ext function. Makes one real, rate-limited network call per mod through Vortex's own nexusCheckModsVersion — confirmed live to exceed a 300s MCP call timeout well before covering even a modest (~50 mod) list, so every call caps itself at \`limit\` (25) mods rather than trying everything and timing out with no partial results — this applies even when you pass modIds explicitly, since the timeout risk is the same either way. Check the result's eligibleCount vs checkedCount: if eligibleCount is higher, there's more to check — pass the remaining mod ids explicitly in a follow-up call to cover the rest in batches. Consumes the user's real Nexus API request quota — don't call this in a loop.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L862).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L875).
 
 ```json title="Input schema"
 {
@@ -662,7 +685,7 @@ Check installed Nexus-sourced mods for available updates via Vortex's own built-
 
 List Vortex's currently-open GENERIC modal dialogs (showDialog-based — most confirmation/question/error prompts) — distinct from list\_notifications' toast notifications. Each entry's \`actions\` array is the exact set of labels closeDialog's actionKey must match (via vortex\_dispatch) — read this before responding, never guess a choice. Does NOT cover the 'files changed outside Vortex' dialog that can block a deploy/purge/profile-switch — confirmed live that one uses a separate mechanism entirely and stays invisible here even while genuinely open and stalling a deploy; use list\_external\_changes for that one.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L907).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L920).
 
 ```json title="Input schema"
 {
@@ -677,7 +700,7 @@ List Vortex's currently-open GENERIC modal dialogs (showDialog-based — most co
 
 List pending 'external changes' Vortex detected (a deployed file differs from what Vortex itself put there) that are BLOCKING an in-progress deploy/purge/profile-switch — confirmed live to be invisible to list\_dialogs and to list\_notifications (which only shows a generic stalled 'Deploying' activity, no hint it's actually stuck waiting on a decision). If a deploy/switch\_profile call seems to hang, check this. Each entry's \`action\` is Vortex's own already-chosen default (e.g. 'newest'). RESOLUTION: requires Vortex's own setExternalChangeAction/confirmExternalChanges extension APIs, which exist in source but were confirmed NOT present in this build's live reflection as of this writing (dispatching confirmExternalChanges failed with an unknown-action error) — this tool can detect the block but not resolve it until a build that includes them is running; until then, answer the dialog in Vortex's own UI.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L926).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L939).
 
 ```json title="Input schema"
 {
@@ -692,7 +715,7 @@ List pending 'external changes' Vortex detected (a deployed file differs from wh
 
 Start timing the renderer: every Redux dispatch by action type (a dispatch runs middleware including persistence diffing, reducers and subscribers synchronously), every main-thread task over 50ms (where React rendering shows up), and the JS heap. Discards any previous trace. Use around an operation that feels slow — a deploy, an install, a filter change — then call perf\_trace\_stop. Outside a trace the cost is one boolean check per dispatch.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L957).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L970).
 
 ```json title="Input schema"
 {
@@ -714,7 +737,7 @@ Start timing the renderer: every Redux dispatch by action type (a dispatch runs 
 
 Stop the trace started by perf\_trace\_start and return: duration; dispatch count and total time; the action types that cost the most time and those dispatched most often (count, total and max ms each); long-task count, total and max ms; and heap start/max/end in MB. Time inside long tasks but outside dispatches is rendering or other work — profile it over CDP to attribute it.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L984).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L997).
 
 ```json title="Input schema"
 {
@@ -736,7 +759,7 @@ Stop the trace started by perf\_trace\_start and return: duration; dispatch coun
 
 Whether a perf trace is running, and for how long.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1005).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1018).
 
 ```json title="Input schema"
 {
@@ -751,7 +774,7 @@ Whether a perf trace is running, and for how long.
 
 Switch Vortex to a different profile by id (query list\_profiles to find one). NOT instant or lightweight: read from Vortex's own profile\_management source, this purges the current profile's deployed files then deploys the new profile's mods — real, potentially slow filesystem work, the same as switching profiles in the Vortex UI. This tool call returns as soon as the switch is DISPATCHED, not once deployment finishes — poll needToDeployForGame or watch for a 'deploying' notification (list\_notifications) if you need to know when it's actually done. Switching to an unknown profileId throws. Pass expectedActiveProfileId to guard against acting on a stale assumption about what's currently active — see its own param description.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1018).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1031).
 
 ```json title="Input schema"
 {
@@ -776,7 +799,7 @@ Switch Vortex to a different profile by id (query list\_profiles to find one). N
 
 Clone an existing profile into a new one (copies its on-disk profile directory — load order, ini tweaks — plus its mod enabled-state), the same operation as Vortex's own 'Clone' button. Only ever reads the source profile; never modifies it or switches the active profile. The clone is always for the SAME game as the source — there's no gameId param and no cross-game cloning. Returns the new profile in the same summary shape list\_profiles entries have (id, name, gameId, active, modCount, enabledModCount, lastActivated).
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1043).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1056).
 
 ```json title="Input schema"
 {
@@ -801,7 +824,7 @@ Clone an existing profile into a new one (copies its on-disk profile directory �
 
 Dispatch a named Vortex action creator, api.ext function, event, or direct api method — tried in that order. (1) Redux action creator (e.g. action='setModEnabled') — NOT runtime-validated: found live that a wrong argument type (a string where a boolean was expected) or a missing required argument both dispatch successfully with no error, silently carrying the bad payload into the reducer/UI rather than rejecting it here — double-check argument order/types yourself, especially for anything missing from dispatchHints. (2) api.ext function (e.g. action='nexusGetModInfo') — unlike action creators, these DO throw on a wrong argument shape, but as a raw, unhelpful runtime error (e.g. a bare "x.trim is not a function" with no indication which argument or what shape was expected) rather than a validation message — see extensionApiHints for the verified subset, and expect to iterate by trial and error on anything else. (3) a currently-registered event name, emitted via api.events.emit — most fire-and-forget by default; pass "\_\_CALLBACK\_\_" as one of the args at the position Vortex's own handler expects a Node-style (err, result?) =\> void callback and vortex\_dispatch will await real completion instead (e.g. action='deploy-mods', args=\['\_\_CALLBACK\_\_'\] resolves once deployment actually finishes, not just once it started). (4) a direct method on the api object itself (e.g. action='sendNotification') — a small subset of these (onStateChange, onAsync, registerProtocol, registerRepositoryLookup; see vortex\_describe's \`listenerHints\`) register a persistent listener instead of performing a one-off action: pass "\_\_CALLBACK\_\_" the same way, and this returns a listenerId immediately rather than waiting for anything — poll what it's captured with poll\_listener. (5) action='type:SOME\_TYPE' (note the literal 'type:' prefix) dispatches a raw \{type, payload\} Redux action directly, args\[0\] being the WHOLE payload — an escape hatch for actions defined inside a game extension's own module (e.g. gamebryo-plugin-management's per-plugin enable toggle) that aren't re-exported through @nexusmods/vortex-api and so don't appear anywhere in path (1)'s \`actions\` list at all — see dispatchHints for 'type:'-prefixed entries this project has verified. Deliberately requires the explicit prefix rather than silently falling back to a raw dispatch for any unrecognized name, since most reducers ignore an unknown type — a typo would otherwise silently no-op instead of throwing a clear error. Not allowlisted: everything in vortex\_describe's \`actions\`/\`extensionApis\`/\`eventNames\`/\`apiMethods\` lists is callable this way once you hold the write-tier token — that token, not a curated list, is the actual security boundary, matching what a human at Vortex's own UI can already do. Use vortex\_describe's \`dispatchHints\`/\`extensionApiHints\`/\`eventHints\`/\`listenerHints\` for the real argument order (incl. the \_\_CALLBACK\_\_ position) where this project has verified one; for anything else, check Vortex's source or test carefully with a state read before/after. Pass expectedActiveProfileId/expectedActiveGameId to guard against dispatching a write based on a stale assumption about what's currently active — see their own param descriptions.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1070).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1083).
 
 ```json title="Input schema"
 {
@@ -831,11 +854,50 @@ Dispatch a named Vortex action creator, api.ext function, event, or direct api m
 }
 ```
 
+## watch_state_changes
+
+Observe changes to named scalar fields in a state dictionary or array. Captures only changed records and emission timestamps, including records beyond the first 200. Other metadata and byte-progress churn are not retained. Returns listenerId for poll\_listener. Entries are limited to 2 MiB; the ring retains at most 500 entries or 16 MiB (oldest dropped). Projection errors fail polling; sequence gaps mean evidence was lost. Requires a write-enabled server; restart clears subscriptions.
+
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1152).
+
+```json title="Input schema"
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "path": {
+      "minItems": 1,
+      "maxItems": 12,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fields": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "minItems": 1,
+        "maxItems": 12,
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": ["path", "fields"],
+  "additionalProperties": false
+}
+```
+
 ## poll_listener
 
-Read back what a persistent listener registered via vortex\_dispatch (onStateChange/onAsync/registerProtocol/registerRepositoryLookup) has captured. Non-destructive — repeated polling with the same \`since\` returns the same entries; the listener's own ring buffer (capped at 500 firings, oldest dropped) is what bounds memory, not draining on read. Pass back the returned \`lastSeq\` as the next call's \`since\` to get only what's arrived since. Returns immediately even with zero new entries — this is a poll, not a blocking wait; call it again later rather than expecting it to hang until something happens. Listeners don't survive a Vortex restart. Worked example (confirmed live) to watch new/dismissed notifications: vortex\_dispatch action="onStateChange" args=\[\["session","notifications"\], "\_\_CALLBACK\_\_"\], then poll the returned listenerId — a wrong state path (e.g. persistent.notifications, which doesn't exist) fails SILENTLY, returning an empty entries array forever rather than an error, indistinguishable from 'registered correctly but nothing happened yet' — verify your path first with vortex\_query path=\[...\].
+Read back what a persistent listener registered via watch\_state\_changes or vortex\_dispatch (onStateChange/onAsync/registerProtocol/registerRepositoryLookup) has captured. Non-destructive — repeated polling with the same \`since\` returns the same entries; the listener's own ring buffer (capped at 500 firings, oldest dropped) is what bounds memory, not draining on read. Use limit for bounded response pages. Pass back the returned \`lastSeq\` as the next call's \`since\` to get only what's arrived since. Returns immediately even with zero new entries — this is a poll, not a blocking wait; call it again later rather than expecting it to hang until something happens. Listeners don't survive a Vortex restart. Worked example (confirmed live) to watch new/dismissed notifications: vortex\_dispatch action="onStateChange" args=\[\["session","notifications"\], "\_\_CALLBACK\_\_"\], then poll the returned listenerId — a wrong state path (e.g. persistent.notifications, which doesn't exist) fails SILENTLY, returning an empty entries array forever rather than an error, indistinguishable from 'registered correctly but nothing happened yet' — verify your path first with vortex\_query path=\[...\].
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1139).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1167).
 
 ```json title="Input schema"
 {
@@ -852,9 +914,16 @@ Read back what a persistent listener registered via vortex\_dispatch (onStateCha
       "type": "integer",
       "minimum": -9007199254740991,
       "maximum": 9007199254740991
+    },
+    "limit": {
+      "default": 500,
+      "description": "Maximum entries in this response. lastSeq advances only through delivered entries; poll again to drain pages.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500
     }
   },
-  "required": ["listenerId", "since"],
+  "required": ["listenerId", "since", "limit"],
   "additionalProperties": false
 }
 ```
@@ -863,7 +932,7 @@ Read back what a persistent listener registered via vortex\_dispatch (onStateCha
 
 Create a full snapshot of Vortex's settings/persistent/app/user state as a JSON file in Vortex's own backup folder (%APPDATA%/vortex/temp/state\_backups\_full) — the same data Vortex's own manual/hourly backups capture, reproduced from the published API since the backup function itself isn't exported. Pure read + file write; does not touch Vortex's live state. CONFIG/METADATA ONLY: profile definitions, per-mod enabled state, load order (nested under persistent, not a top-level key despite 'persistent' sounding generic), categories, download records — NOT the mod files or archives themselves; this alone can't recover deleted mod content, only Vortex's record of what was installed/enabled/ordered. There's no matching restore tool exposed here — restoring from this file is a manual step via Vortex's own Settings \> Workarounds UI outside this MCP server's reach.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1174).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1212).
 
 ```json title="Input schema"
 {
@@ -883,7 +952,7 @@ Create a full snapshot of Vortex's settings/persistent/app/user state as a JSON 
 
 Enable or disable a set of mods for a profile (defaults to the active profile). Does not deploy. Pass expectedActiveProfileId to guard against acting on a stale assumption about what's currently active, especially relevant when profileId is omitted (defaults to whatever's active right now, which may not be what you last observed) — see its own param description.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1202).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1240).
 
 ```json title="Input schema"
 {
@@ -917,7 +986,7 @@ Enable or disable a set of mods for a profile (defaults to the active profile). 
 
 Launch a game's configured primary tool (e.g. SKSE, or the vanilla exe if none is set) — the same operation as Vortex's own 'Play' button, including its suggestDeploy check, which can surface a blocking dialog (see list\_dialogs/vortex\_dispatch's closeDialog) if files changed outside Vortex since the last deploy. Throws if the game has no primary tool configured.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1230).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1268).
 
 ```json title="Input schema"
 {
@@ -941,7 +1010,7 @@ Launch a game's configured primary tool (e.g. SKSE, or the vanilla exe if none i
 
 Restart Vortex via its own graceful relaunch (same path as Vortex's 'Restart now' button): closes windows and lets Vortex's normal shutdown sequence finish — finalizing in-progress operations, flushing its database — before actually quitting. Not a hard process kill. The MCP connection drops during restart and this server reconnects automatically once Vortex is back up.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1259).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1297).
 
 ```json title="Input schema"
 {
@@ -956,7 +1025,7 @@ Restart Vortex via its own graceful relaunch (same path as Vortex's 'Restart now
 
 Quit Vortex cleanly — the same path as clicking the window's close button, NOT a process kill. The renderer flushes its pending state diffs and main waits for it to release its file handles before quitting, which is what leaves the state database consistent on disk. Use this rather than killing the process whenever the on-disk state matters afterwards (snapshotting a profile, reusing the user-data directory for a later run): a hard kill can leave state half-written, and that surfaces later as a stale or corrupt profile rather than as an error here. The MCP connection drops and does not come back — unlike vortex\_restart, nothing restarts it.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1279).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1317).
 
 ```json title="Input schema"
 {
@@ -971,7 +1040,7 @@ Quit Vortex cleanly — the same path as clicking the window's close button, NOT
 
 Read what is actually ON SCREEN in Vortex right now, as a compact accessibility tree with a stable \`ref\` per node — the primary 'look at the UI' call, and the one that hands out the refs every ui\_click/ui\_fill/ui\_hover consumes. Complements, rather than replaces, the state tools: vortex\_query/list\_mods tell you what Vortex BELIEVES, ui\_snapshot tells you what it is SHOWING, and the two genuinely disagree (a pending render, a mod hidden by an active filter, a modal covering the page). Layout wrappers with no role, name, test id or own text are collapsed into their children, so the tree describes controls rather than React's div soup. Hidden elements are excluded by default. Any open modal's text is ALSO surfaced at the top level as \`activeDialogs\` — check it first when a click appears to do nothing, since a modal is the most common reason. Every call allocates a new ref generation and invalidates the previous one.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1340).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1378).
 
 ```json title="Input schema"
 {
@@ -1017,7 +1086,7 @@ Read what is actually ON SCREEN in Vortex right now, as a compact accessibility 
 
 Poll until a CSS selector or a piece of visible text reaches the given state, then return how long it took. Use this instead of guessing at sleeps after an action that kicks off real work — installing a mod, deploying, switching profile — all of which take wildly variable wall-clock time. Returns \`matched: false\` on timeout rather than throwing, so a caller can branch on it; a timeout is not by itself an error, since 'the notification never appeared' is sometimes the expected outcome.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1394).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1432).
 
 ```json title="Input schema"
 {
@@ -1058,7 +1127,7 @@ Poll until a CSS selector or a piece of visible text reaches the given state, th
 
 Report the Electron window's outer size, the renderer's inner (CSS px) size, and the device pixel ratio. The two sizes differ by the window chrome, so compare layout findings against \`inner\`, not \`window\`.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1429).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1467).
 
 ```json title="Input schema"
 {
@@ -1073,7 +1142,7 @@ Report the Electron window's outer size, the renderer's inner (CSS px) size, and
 
 Scan the rendered UI at its CURRENT size for responsive-layout breakage: content overflowing the right edge, elements pushed fully offscreen, text clipped by an overflow:hidden box with no way to scroll to it, and interactive targets that shrank below 24px. Heuristic and purely advisory — it reports, it never fails. A horizontal scrollbar on a deliberately-scrollable pane is normal and will show up here, so the caller decides what counts as a regression; the useful signal is a DIFFERENCE between two widths, which is what ui\_responsive\_sweep automates. Each issue carries a descriptive selector so it can be re-examined with ui\_snapshot.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1441).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1479).
 
 ```json title="Input schema"
 {
@@ -1095,7 +1164,7 @@ Scan the rendered UI at its CURRENT size for responsive-layout breakage: content
 
 The visible text of each open modal dialog (the same \`activeDialogs\` a ui\_snapshot returns), without walking or measuring the rest of the UI. Use it to poll for a dialog: a full ui\_snapshot every second with thousands of mods rendered costs the renderer seconds and skews any timing being taken.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1460).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1498).
 
 ```json title="Input schema"
 {
@@ -1110,7 +1179,7 @@ The visible text of each open modal dialog (the same \`activeDialogs\` a ui\_sna
 
 Read the renderer's console output and uncaught errors/rejections from an in-process ring buffer (500 entries, oldest dropped), captured since this extension loaded. This is the only way to see a React render error or a failed fetch over MCP: DevTools is not reachable from here, and Vortex's own log file only carries what Vortex explicitly logs, not what the browser runtime reports. Non-destructive — pass the returned \`lastSeq\` back as \`since\` to get only what is new. \`dropped: true\` means the buffer wrapped and entries were lost between your last poll and this one.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1472).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1510).
 
 ```json title="Input schema"
 {
@@ -1146,7 +1215,7 @@ Read the renderer's console output and uncaught errors/rejections from an in-pro
 
 Click an element, addressed by \`ref\` from ui\_snapshot or by CSS \`selector\`. Dispatches a full pointer/mouse sequence (pointerdown, mousedown, focus, pointerup, mouseup, click) rather than HTMLElement.click(), because several Vortex widgets — dropdown toggles, table row selection — listen on mousedown and ignore a bare click event. Refuses to click an invisible or disabled element with an explanatory error instead of silently doing nothing; pass requireActionable=false to force it anyway. Scrolls the element into view first. This performs a REAL action in a REAL Vortex: it can start downloads, remove mods, or launch a game.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1510).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1548).
 
 ```json title="Input schema"
 {
@@ -1183,6 +1252,30 @@ Click an element, addressed by \`ref\` from ui\_snapshot or by CSS \`selector\`.
     "requireActionable": {
       "description": "Throw when the element is hidden or disabled. Defaults to true — turning it off is for deliberately testing that a disabled control does nothing.",
       "type": "boolean"
+    },
+    "confirmation": {
+      "description": "Recheck a Bootstrap modal title suffix, exact direct-body question and its two direct-footer buttons immediately before clicking. Nested curator prose cannot satisfy the question. Refuses changed, ambiguous or disabled confirmations.",
+      "type": "object",
+      "properties": {
+        "titleSuffix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "button": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alternative": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["titleSuffix", "question", "button", "alternative"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
@@ -1193,7 +1286,7 @@ Click an element, addressed by \`ref\` from ui\_snapshot or by CSS \`selector\`.
 
 Set the value of an \<input\>, \<textarea\> or contenteditable, then fire input+change so React's onChange actually runs. Uses the prototype's native value setter first: assigning \`.value\` directly updates the DOM but leaves React's internal value tracker stale, so React swallows the event and the component never updates — the classic 'typed into the box but nothing happened' failure. Replaces the existing value rather than appending. For a \<select\> use ui\_select\_option; for a button use ui\_click.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1542).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1593).
 
 ```json title="Input schema"
 {
@@ -1222,7 +1315,7 @@ Set the value of an \<input\>, \<textarea\> or contenteditable, then fire input+
 
 Dispatch a keydown/keypress/keyup on a target element, or on whatever currently has focus when no target is given. Use for Escape (dismiss a Vortex modal), Enter (submit a search/filter), Tab, and arrow-key navigation. Note this dispatches DOM key events only — it does not drive the OS-level keyboard, so it will not reach a native menu or an OS file-picker dialog.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1560).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1611).
 
 ```json title="Input schema"
 {
@@ -1258,7 +1351,7 @@ Dispatch a keydown/keypress/keyup on a target element, or on whatever currently 
 
 Move the pointer over an element, firing the pointerover/mouseover/mouseenter sequence. Needed before clicking controls that appear on hover, where a JS handler (React's onMouseEnter and friends) is what reveals them. IMPORTANT LIMIT: this dispatches DOM events, which do NOT change the browser's own hover state, so a control revealed purely by a CSS \`:hover\` rule stays hidden — only a real mouse move can do that, and nothing in the renderer can produce one. Vortex's game tiles are exactly this case: the 'Manage' button sits in a \`.hover-content\` wrapper at opacity 0, so after ui\_hover it is still correctly reported as hidden. Two ways through: click it anyway with ui\_click + requireActionable=false (the handler fires regardless of opacity), or use the harness's \`realHover\`, which drives a real mouse over CDP.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1580).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1631).
 
 ```json title="Input schema"
 {
@@ -1282,7 +1375,7 @@ Move the pointer over an element, firing the pointerover/mouseover/mouseenter se
 
 Choose an option in a native \<select\>, by \`value\` or by visible \`label\`, firing input+change. Lists every available option in the error when nothing matches, so a failed guess immediately tells you what the valid choices were. Does NOT work on Vortex's custom React dropdowns, which are not \<select\> elements — drive those with ui\_click on the toggle, then ui\_click on the revealed item.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1599).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1650).
 
 ```json title="Input schema"
 {
@@ -1314,7 +1407,7 @@ Choose an option in a native \<select\>, by \`value\` or by visible \`label\`, f
 
 Scroll the window, or a specific scrollable element when given a ref/selector. Also dispatches a scroll event, which is what makes Vortex's virtualised tables actually mount the newly-revealed rows — without it the rows stay absent from the DOM and a following ui\_snapshot still cannot see them.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1620).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1671).
 
 ```json title="Input schema"
 {
@@ -1346,7 +1439,7 @@ Scroll the window, or a specific scrollable element when given a ref/selector. A
 
 Resize the real Electron window to test responsive layout. Unmaximises first, because setSize on a maximised window is silently ignored on Windows — without that, every size in a sweep reports the same maximised dimensions and the results are meaningless. Returns both the requested and the ACTUAL resulting size: the OS enforces the window's minimum, so a request below it is clamped, and comparing the two is how you tell. This moves the window of whoever is sitting in front of Vortex.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1637).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1688).
 
 ```json title="Input schema"
 {
@@ -1375,7 +1468,7 @@ Resize the real Electron window to test responsive layout. Unmaximises first, be
 
 Resize through a list of viewports, running the ui\_detect\_layout\_issues scan at each, then restore the original size — the restore runs even if the sweep fails partway, so it cannot strand the user's window at 1024x720. Defaults to 1024x720, 1280x800, 1600x900 and 1920x1080. Read the results as a DIFF across sizes rather than as pass/fail: an issue present at every width is usually a pre-existing quirk, while one that appears only below a threshold is the actual responsive regression. Structure only: an extension cannot screenshot (capturePage is main-process only), so for images at each size use the harness's \`doodlebot responsive --screenshots\`, which captures over CDP.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1657).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1708).
 
 ```json title="Input schema"
 {
@@ -1424,7 +1517,7 @@ Resize through a list of viewports, running the ui\_detect\_layout\_issues scan 
 
 Reload the renderer window, picking up a rebuilt renderer bundle WITHOUT restarting Electron — the hot-reload path after editing renderer code. Much cheaper than vortex\_restart: the main process, and so the open state database, survives. Does NOT pick up a change to MAIN-process code (nothing in the renderer can reload main) — use vortex\_restart for that. All ui\_snapshot refs are invalidated; take a fresh snapshot after the reload settles. The MCP connection drops briefly while the renderer tears down and this extension re-registers.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1687).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1738).
 
 ```json title="Input schema"
 {

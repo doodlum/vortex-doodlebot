@@ -1,56 +1,29 @@
-# Manage app sessions
+# Manage a test app
 
-Continue an investigation with `up`, or repeat it from a known baseline with `up --fresh`.
-Each instance has a target, owner, cache, game and debug ports; keep those consistent from
-setup through shutdown. `--slot auto` selects a stable slot for your owner.
+For a script or test, use `withVortex()`. It starts a released Vortex with an isolated profile, prepares a disposable local game, and closes the app when the callback returns or throws.
 
-## Understand the three kinds of start
+```typescript title="session.mts"
+import { withVortex } from "./harness/benchmarks/index";
 
-| Start                  | What happens                                                                      | Use it for                                                 |
-| ---------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Cold baseline creation | Provision the profile, game and extension, then capture a reusable baseline       | First setup, changed game setup or rebuilding the baseline |
-| Warm `up`              | Reuse a matching working profile and its current app state                        | Continue the same investigation                            |
-| Fresh `up --fresh`     | Restore the working profile from its baseline while retaining current saved OAuth | Repeat a workflow from a known app baseline                |
-
-Saved OAuth survives a fresh start because baseline restore and login persistence are separate.
-`--rebuild-snapshot` rebuilds the baseline, while `--rebuild-extension` forces an extension
-build. Those are different from simply reopening an existing working profile.
-
-```powershell
-pnpm run ai -- up --installed --sandbox --owner operator
-pnpm run ai -- down --installed --sandbox --owner operator
-pnpm run ai -- up --installed --sandbox --owner operator --fresh
-pnpm run ai -- down --installed --sandbox --owner operator
+await withVortex({}, async (vortex) => {
+  await vortex.seedMods(150);
+  await vortex.openPage("Mods");
+  console.log(await vortex.call("list_mods"));
+});
 ```
 
-## A global UI session
+Run `pnpm exec tsx session.mts`. A successful run removes its disposable workspace. A failed run preserves the workspace for diagnosis and reports its path.
 
-Use `--no-game` when inspecting global settings rather than a managed game:
+## Start fresh for a comparison
 
-```powershell
-pnpm run ai -- up --installed --no-game --owner settings-check
-pnpm run ai -- snapshot --installed --no-game --owner settings-check
-pnpm run ai -- down --installed --no-game --owner settings-check
-```
+Each `runBenchmarks()` repeat starts a fresh session. Put your starting state in the case: generated rows, installed collection, cached archives, or deployed files. Do not depend on clicks from a previous run.
 
-## Targets and fixtures
+For real collection work, supply a read-only source game fixture in the manifest. The runner deploys into a private copy. Use a QA-only Windows account or test machine because game-support extensions may also write that account's Documents and LocalAppData. Confirm this with `collection.dedicatedWindowsAccount: true`; the SDK does not clean those folders. A separate profile alone would not protect a normal mod setup.
 
-- `--installed` selects released Vortex even if a managed source checkout exists.
-- `--exe` selects a specific executable; `--dev-dir` and `--worktree` select source targets.
-- `--sandbox` uses the disposable fake game for local install/deploy workflows.
-- `--bethesda-sandbox` supplies a fake Fallout 4 fixture with private user folders.
-- `--game` and `--game-path` select an actual game; use a disposable copy for mutation tests.
+## Advanced: keep a session open
 
-Bethesda sandbox and `--isolate-user-folders` need a source build: packaged Vortex ignores
-the preload responsible for folder redirection. The harness refuses that combination to
-protect your real Documents and LocalAppData folders.
+For a long interactive reproduction, the lower-level launcher can leave Vortex open between scripts. Set a consistent owner, then run `pnpm run ai -- setup --installed --sandbox`. Execute attachment scripts through `pnpm run ai -- script file.mts --installed --sandbox`, and finish with `pnpm run ai -- down --installed --sandbox`.
 
-## Confirm cleanup
+Those scripts import `loadConfig()` and `clientFor()` from `./harness/src/kit`. Use the same instance settings each time. `bootstrap` restores the prepared working profile and discards changes left by the previous session.
 
-`down` asks the owned app to quit and waits for exit. On failure, inspect the recorded PID,
-ownership and logs, including any child processes still running. Wait for confirmed exit
-before removing its profile, releasing ownership or overwriting source build output.
-Keep the original failure and evidence before retrying.
-
-See [parallel sessions](parallel-sessions.md) for leases and [configuration](../reference/configuration.md)
-for environment values and paths.
+Most tests can use the wrapper without this manual setup.
