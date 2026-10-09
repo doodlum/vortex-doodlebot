@@ -3,6 +3,7 @@ import path from "node:path";
 import type { RunManifest } from "../harness/benchmarks/index";
 import type { Configuration } from "./types";
 import { downloadsInBackground, downloadsWorkload } from "./workloads";
+import { preparedCollections } from "./setup";
 
 // Formal conditions are deliberately undecided. Do not silently approve targets.
 export const localManifest: RunManifest = {
@@ -26,7 +27,7 @@ export const configuration: Configuration = {
   },
   // Configure C1, C2 (base), C2-AE (paid content), C3 and C5 (see README).
   // Absence is a prerequisite, not a synthetic collection or an approval.
-  collections: {},
+  collections: preparedCollections(),
   // Configure each table through realGameTable(bindings) from workloads.ts.
   gameTables: {},
   downloads: downloadsWorkload,

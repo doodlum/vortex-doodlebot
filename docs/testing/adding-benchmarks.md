@@ -95,7 +95,9 @@ A table definition supplies `page` (its visible navigation label), `root`, `rows
 
 ## Collection cases
 
-A real collection manifest needs:
+For the supplied collections, run [guided setup](../getting-started/setup.md) first, then load the saved configuration with `preparedCollection("C2")` from `./benchmarks/setup`. It finds the Steam game, manages the private login path and verifies reusable snapshots. You do not need to transcribe those paths into `benchmarks/config.ts`.
+
+For a custom collection or store, a directly written manifest needs:
 
 - `url`: a Nexus collection URL ending in `/revisions/<number>`.
 - `engine`, `gameId`, and `expectedMods`: the confirmed pinned collection identity.
@@ -107,14 +109,17 @@ A real collection manifest needs:
 
 Complete [login setup](../getting-started/authentication.md) first. The unattended runner requires a Premium account. Run real game cases in a QA-only Windows account or test machine: game-support extensions may write that account's Documents and LocalAppData even though Vortex's profile and the copied game are isolated. Set `dedicatedWindowsAccount: true` only when that condition is met. A [clean restart](benchmarks.md#restart-a-real-collection-from-scratch) also backs up and resets supported game settings.
 
-An installed Steam game is a valid source fixture. In Steam, choose **Manage → Browse local files**, then use that directory as `gameFixture`. For example, Skyrim Special Edition can be at `C:/Program Files (x86)/Steam/steamapps/common/Skyrim Special Edition`. Wait for Steam's installation and updates to finish first. The runner copies these real game files into its test workspace; it needs enough disk space for that copy as well as the collection downloads and staging files.
+An installed Steam game is a valid source fixture. Guided setup discovers supported Steam games. For a custom source it cannot locate, use Steam’s **Manage → Browse local files** and supply that directory. Wait for Steam's installation and updates to finish first. The runner copies these real game files into its test workspace; it needs enough disk space for that copy as well as the collection downloads and staging files.
 
 If Skyrim needs to download your Anniversary creations on first launch, finish that download and close the game before making a reusable snapshot. Keep the clean snapshot separate from any collection's installed game copy. This small script caches the real game files once:
 
 ```typescript title="cache-steam-game.mts"
 import { createSkyrimSnapshot } from "./harness/benchmarks/index";
 
-const source = "C:/Program Files (x86)/Steam/steamapps/common/Skyrim Special Edition";
+import { discoverBenchmarkGames } from "./benchmarks/setup";
+
+const source = discoverBenchmarkGames().find((game) => game.id === "skyrimse")?.directory;
+if (!source) throw new Error("Install Skyrim in Steam or use guided setup with another directory.");
 await createSkyrimSnapshot({
   source,
   destination: "harness/.artifacts/game-fixtures/skyrim-base",
@@ -139,12 +144,12 @@ Before using a Skyrim snapshot, check the executable's version and the pinned cu
 
 Account access, available downloads, the game installation, and a suitable QA account remain prerequisites. Without the account confirmation, real cases are blocked before launch.
 
-This example uses the paid Anniversary variant of the pinned Gate to Sovngarde revision. For the base variant, use `gtsCollection("base", ...)`, a snapshot with only the four free Creations, and IDs B1-C2 through B5-C2. See [the two GTS workloads](benchmarks.md#gts-with-and-without-paid-anniversary-content). Replace the two local paths with your clean game copy and cached login. The machine profile is exploratory; it does not approve a release baseline.
+This example uses the paid Anniversary variant prepared by guided setup. For the base variant, load `preparedCollection("C2")` and use IDs B1-C2 through B5-C2. See [the two GTS workloads](benchmarks.md#gts-with-and-without-paid-anniversary-content). The machine profile is exploratory; it does not approve a release baseline.
 
 ```typescript title="collection-config.ts"
 import type { RealRunManifest } from "./benchmarks/types";
 import { exploratoryManifest } from "./benchmarks/config";
-import { gtsCollection } from "./benchmarks/collections";
+import { preparedCollection } from "./benchmarks/setup";
 
 const machine = exploratoryManifest();
 export const collectionManifest: RealRunManifest = {
@@ -155,20 +160,11 @@ export const collectionManifest: RealRunManifest = {
     account: "premium",
     bandwidth: "Unthrottled exploratory connection; record your actual run conditions",
   },
-  collection: gtsCollection("anniversary", {
-    authCache: "C:/my-private-test-cache/oauth.json",
-    gameFixture: "C:/dev/doodlebot/harness/.artifacts/game-fixtures/skyrim-ae",
-    allowGameFixtureCopy: true,
-    dedicatedWindowsAccount: true, // Set only in your QA-only account/test machine.
-    ready: {
-      gameFiles: ["SkyrimSE.exe", "Data/Skyrim.esm", "Data/Update.esm", "skse64_loader.exe"],
-      equals: true,
-    },
-  }),
+  collection: preparedCollection("C2-AE"),
 };
 ```
 
-The login guide shows how to [find your OAuth cache path](../getting-started/authentication.md#use-the-cache-in-a-manifest). The SDK saves refreshed credentials back to that private file after Vortex exits. Run collections sequentially with that login; the SDK blocks overlapping use of its cache.
+[Guided setup](../getting-started/setup.md) saves the private login-cache path with the collection choice. The SDK saves refreshed credentials back to that private file after Vortex exits. Run collections sequentially with that login; the SDK blocks overlapping use of its cache.
 
 `gameFiles` checks actual regular files under the copied game. Readiness also requires the exact pinned collection, all its required members, no ignored required members, no running installers, and completed deployment with verified file bytes. Optional members may remain absent only when the manifest selects `optionalMods: "skip"`. The GTS AE configuration installs every optional member; the base configuration skips them and rejects paid Creation files before launch. File presence does not prove a compatible game version: follow the pinned collection's prerequisites before starting. Constellations requires Anniversary content and a prepared downgraded game; Femme Fatale PLUS requires Phantom Liberty. Do not skip a required download to make a run pass.
 
@@ -242,7 +238,7 @@ export const c2Cases = [
 ];
 ```
 
-These are definitions, not approval to use C2 or an unpinned revision. Supply the real C2 manifest to the runner. Use the same pattern for the other matrix entries, omitting B5 for small collections.
+Supply the prepared C2-AE manifest to the runner. The supplied matrix includes B5 for every named collection. A custom workload can omit startup, but that changes the coverage and must be reported.
 
 Save this runner beside those two files, then run `pnpm exec tsx run-collection.mts`:
 

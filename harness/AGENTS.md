@@ -156,6 +156,8 @@ pnpm run ai -- up --installed --sandbox --rebuild-snapshot
 
 ## Parallel sessions: a worktree and a slot per agent
 
+Human preparation is available through `pnpm run setup` (`benchmarks/setup-cli.mts`). It creates a local example or prepares a pinned collection, discovers Steam games, reuses a saved kit login when unambiguous, and tracks verified game snapshots in gitignored `harness/.cache/benchmark-setup.json`. `--status` is read-only/offline; cached credentials and dated Premium observations do not prove current refresh/download access. `--status --verify` checks all tracked bytes. Constellations still requires a separately prepared downgrade. Guided real setup requires explicit clean-source and QA-only Windows/test-machine acknowledgements. The catalog loads these local choices; `--exploratory` supplies observed host facts without approving budgets, and `--timeout-minutes` gives a deliberate operation timeout. Setup starts no collection downloads and retains incomplete copies. Normal automation still performs no retries or recovery.
+
 Each doodlebot session works in its own worktree and slot, so their Vortex instances coexist, and
 changes the kit only under the kit lock (WORKFLOWS.md, "Several agents at once").
 

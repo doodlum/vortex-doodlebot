@@ -1,6 +1,7 @@
 # Knowledge routes
 
 Use one shared index, with focused reading paths and one canonical home per topic.
+The human API reference has a task index and authored session, runner, table, collection and result contracts. Its selected signature blocks derive from source; the exhaustive generated specialist inventory remains outside the human site. A human-only usability reviewer receives the frozen published pages, not this index or implementation code.
 Specialists share verified facts and explicit contracts; they do not maintain separate,
 competing copies of the same knowledge. Their task notes and hypotheses remain local to
 the task until promoted under [the workflow](AGENT-WORKFLOW.md#improve-from-verified-lessons).

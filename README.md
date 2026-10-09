@@ -4,6 +4,8 @@ Doodlebot runs TypeScript tests and performance benchmarks against Vortex. It st
 
 **[Read the documentation](https://doodlum.github.io/vortex-doodlebot/)** for installation, your first test, and the collection and table benchmark plan.
 
+Run `pnpm run setup` for a walkthrough. It creates a local test or finds your Steam game, checks login, and prepares reusable collection snapshots.
+
 Requires Windows, a released Vortex installation, Node.js 20.19 or newer, and pnpm 9.15.0. No LLM is required.
 
 Licensed under GPL-3.0-only. Based on [vortex-mcp](https://github.com/alandtse/vortex-mcp) by Alan Tse.

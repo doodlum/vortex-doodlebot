@@ -35,7 +35,9 @@ Use TypeScript for operations and tests. Give complete standalone snippets a fil
 
 Separate real collection prerequisites from local generated data. Keep unagreed performance targets as TBD. If an example requires an account, game, encoder, or unavailable service, say so before the code.
 
-The topic mapping is in `scripts/documentation-map.json`. Generated references should stay source-derived; human guides should explain the workflow in ordinary language.
+The topic mapping is in `scripts/documentation-map.json`. The human reference is organized by sessions, runners, tables, collections and results. Keep the purpose, inputs, return value, defaults and failures beside each method. `docs:generate` updates only the marked signature blocks on these pages; it does not replace their explanations. Add a `contract` block when documenting a source-derived signature. The complete specialist inventory is generated separately.
+
+When changing the public workflow, ask a fresh reader to use only a frozen copy of the human pages. Compile and run the example it produces separately. Preserve failures and fix the API or explanation that caused them. More generated declarations do not substitute for a usable procedure.
 
 ## Publication
 

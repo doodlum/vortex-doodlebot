@@ -23,6 +23,8 @@ pnpm install
 
 Then [write your first TypeScript test](first-session.md). Its `withVortex()` call prepares the extension, starts the released app with an isolated profile, and cleans up afterward. You do not need a separate setup command.
 
+Prefer a walkthrough? Run `pnpm run setup` to create a local example or prepare a real collection. It finds installed games and remembers your snapshots and account setup. See [guided setup](setup.md).
+
 If Vortex is installed somewhere Doodlebot cannot find, give `withVortex()` its executable path:
 
 ```typescript

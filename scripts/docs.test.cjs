@@ -171,7 +171,7 @@ test("duplicate example filenames cannot hide an unchecked example", () => {
 test("example checking rejects an invented method on the human TypeScript API", () => {
   const file = "docs/getting-started/first-session.md";
   const original = extractExample(root, file, "first-test.mts");
-  const code = original.replace("vortex.call", "vortex.inventedCall");
+  const code = original.replace("vortex.seedMods", "vortex.inventedCall");
   assert.notEqual(code, original, "The control must actually change the example");
   assert.ok(
     checkExamples(root, { [file]: code }).some((message) => message.includes("inventedCall")),

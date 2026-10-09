@@ -10,7 +10,9 @@ You need a released Vortex installation, Node.js, and pnpm. You do not need an L
 
 1. [Install Doodlebot](getting-started/installation.md).
 2. [Write your first TypeScript test](getting-started/first-session.md).
-3. [Run a benchmark and read its report](testing/benchmarks.md).
+3. Adapt it to [a UI check](guides/ui-automation.md) or [a mod workflow](guides/mod-workflows.md).
+
+For a walkthrough that creates an example or prepares a real game and collection, use [guided setup](getting-started/setup.md). For repeated timings, start with [a local benchmark](testing/benchmarks.md#try-one-local-smoke-case).
 
 ## Choose the work you want to do
 
@@ -23,4 +25,4 @@ You need a released Vortex installation, Node.js, and pnpm. You do not need an L
 | Diagnose a failed run                           | [Troubleshooting](troubleshooting.md)           |
 | Contribute code or tests                        | [Development](contributing.md)                  |
 
-The [technical references](reference/script-api.md) list the lower-level helpers when you need more control.
+The [reference](reference/index.md) explains the session, table and benchmark APIs and their options.

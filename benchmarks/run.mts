@@ -1,7 +1,10 @@
-import { allCases, catalog } from "./catalog";
+import { allCases, buildCatalog, catalog } from "./catalog";
+import { configuration, exploratoryManifest } from "./config";
 import { runSuite } from "./runner";
 
 let list = false;
+let exploratory = false;
+let timeoutMs: number | undefined;
 let repeats = 3;
 let selection: string[] | undefined;
 let outputDir = `harness/.artifacts/proposal-benchmarks/${new Date().toISOString().replace(/[:.]/g, "-")}`;
@@ -12,9 +15,13 @@ for (let index = 0; index < args.length; index++) {
     list = true;
     continue;
   }
+  if (arg === "--exploratory") {
+    exploratory = true;
+    continue;
+  }
   const equals = arg.indexOf("=");
   const flag = equals === -1 ? arg : arg.slice(0, equals);
-  if (!["--select", "--repeats", "--output"].includes(flag))
+  if (!["--select", "--repeats", "--output", "--timeout-minutes"].includes(flag))
     throw new Error(`Unknown argument: ${arg}`);
   const value = equals === -1 ? args[++index] : arg.slice(equals + 1);
   if (!value || value.startsWith("--")) throw new Error(`Missing value for ${flag}`);
@@ -25,6 +32,11 @@ for (let index = 0; index < args.length; index++) {
     repeats = Number(value);
     if (!Number.isInteger(repeats) || repeats < 1)
       throw new Error("Repeats must be a positive integer");
+  } else if (flag === "--timeout-minutes") {
+    const minutes = Number(value);
+    if (!Number.isFinite(minutes) || minutes <= 0)
+      throw new Error("Timeout minutes must be positive");
+    timeoutMs = minutes * 60_000;
   } else outputDir = value;
 }
 if (selection) {
@@ -33,9 +45,22 @@ if (selection) {
   if (unknown.length) throw new Error(`Unknown case IDs: ${unknown.join(", ")}`);
 }
 const selected = selection ? new Set(selection) : undefined;
-const groups = catalog
+const machine = exploratoryManifest();
+const configuredCatalog = exploratory
+  ? buildCatalog({
+      ...configuration,
+      localManifest: machine,
+      realProfile: {
+        ...machine.profile,
+        account: "premium",
+        bandwidth: "Actual connection; unmeasured; exploratory run",
+      },
+    })
+  : catalog;
+const groups = configuredCatalog
   .map((group) => ({
     ...group,
+    manifest: timeoutMs === undefined ? group.manifest : { ...group.manifest, timeoutMs },
     cases: group.cases.filter((item) => !selected || selected.has(item.id)),
   }))
   .filter((group) => group.cases.length > 0);
@@ -47,7 +72,9 @@ if (list) {
     groups,
     repeats,
     outputDir,
-    label: "Proposal benchmark run; conditions and budgets require agreement",
+    label: exploratory
+      ? "Exploratory run; no approved performance baseline or budgets"
+      : "Proposal benchmark run; conditions and budgets require agreement",
   });
   if (!passed) process.exitCode = 1;
 }

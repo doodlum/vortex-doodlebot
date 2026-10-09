@@ -11,7 +11,7 @@ pnpm run benchmark:smoke
 
 `benchmark:check` checks the catalog. `benchmark:smoke` runs one scroll case against released Vortex with generated mods and actual machine metadata.
 
-Edit `config.ts` for your run conditions and real collection fixtures. Use `workloads.ts` for game-specific controls, with a fixture for each table and row count. Real Steam installations can supply the source game files once installation and updates finish.
+Run `pnpm run setup` to discover a Steam game, sign in and prepare a reusable game copy. Saved choices load into the catalog automatically. Use `pnpm run setup -- --status` to inspect them. Edit `config.ts` for custom run conditions and fixtures. Use `workloads.ts` for game-specific controls, with a fixture for each table and row count. Real Steam installations can supply the source game files once installation and updates finish.
 
 The [benchmark guide](https://doodlum.github.io/vortex-doodlebot/testing/benchmarks/) covers selection and repeats. [Adding a case](https://doodlum.github.io/vortex-doodlebot/testing/adding-benchmarks/) shows TypeScript examples for custom tests, collection setup, Downloads, and game tables. [Results](https://doodlum.github.io/vortex-doodlebot/testing/results/) explains reports and missing coverage.
 

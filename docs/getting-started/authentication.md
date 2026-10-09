@@ -1,52 +1,34 @@
 # Sign in for real collections
 
-Local archives, generated mod lists, UI checks, and screenshots work without an account. Real Nexus collections need OAuth login. A personal API key alone does not authenticate collections.
+Local tests, generated tables, screenshots and local archives need no account. Real Nexus collections use OAuth; a personal API key alone is insufficient.
 
-## Save a login
+## Guided login
+
+Run `pnpm run setup` and choose **Prepare a real collection**. Setup finds an unambiguous saved kit login or opens an isolated Vortex for you to sign in. Complete the browser flow yourself. It keeps credentials in the private local cache and passes their location to subsequent runs; you do not need to find the file or put its path in TypeScript.
+
+Setup checks that a fresh profile can restore the saved credentials and records the account state Vortex reports. The actual collection run checks account and download access. These observations do not prove every file is available forever.
+
+```powershell
+pnpm run setup -- --status
+```
+
+The offline summary distinguishes missing, signed-out, unreadable and cached credentials. Cached presence and a dated Premium observation are not a current server-access check.
+
+## Collection prerequisites
+
+The current unattended real-collection benchmark runner requires Premium. Its account profile for an approved performance baseline still needs agreement; that does not make free accounts eligible for this runner. Lower-level interactive Vortex operations can have different download flows.
+
+Prepare a clean game snapshot and enough disk space. Use a QA-only Windows account/test machine because game support can write Documents and AppData. [Setup](setup.md) keeps these steps together and saves your choices. Login, captcha, unavailable files and account restrictions remain prerequisites; they cannot be bypassed by a test.
+
+## Lower-level login setup
+
+For an existing integration using the app CLI:
 
 ```powershell
 $env:VORTEX_AI_OWNER = 'my-tests'
 pnpm run ai -- setup --installed --oauth
 ```
 
-In the isolated Vortex window, click **Log in** and complete the browser login yourself. Setup waits for the login, caches it locally, and verifies that a fresh test profile can restore it. Wait for `Setup complete` before running collection tests.
+Click **Log in** in the isolated Vortex, finish the browser login, and wait for `Setup complete`. Use the same cache settings for later commands. For normal collection benchmarks, prefer guided setup so cache locations are managed for you.
 
-You can check the result in TypeScript:
-
-```typescript
-import assert from "node:assert/strict";
-import { clientFor, loadConfig } from "./harness/src/kit";
-
-const vortex = clientFor(loadConfig());
-const auth = await vortex.call<{
-  oauthPresent: boolean;
-  oauthRefreshable: boolean;
-}>("nexus_auth_status");
-assert.ok(auth.oauthPresent && auth.oauthRefreshable, "Complete OAuth setup first");
-```
-
-## Before an unattended collection run
-
-Check that the collection revision is pinned and available, you have access to every required download, and your account supports the download flow you intend to measure. The performance proposal suggests Premium for unattended runs; the agreed account profile is still **TBD**.
-
-You also need an appropriate game fixture and enough space for downloads, staging, and deployment. A generated local mod list cannot stand in for a real collection or engine-specific installer.
-
-Run real game cases in a QA-only Windows account or test machine. The runner copies the game fixture and isolates the Vortex profile, but a released game's support extension may still write that account's Documents and LocalAppData. Confirm that condition with `collection.dedicatedWindowsAccount: true`. The default session leaves those per-user folders in place. `cleanStart: true` or `restartCollectionBenchmark()` backs up and resets only the supported allowlisted settings files; saves and purchased-content catalogs remain. See [clean restart](../testing/benchmarks.md#restart-a-real-collection-from-scratch).
-
-Browser login, unavailable downloads, and account restrictions are prerequisites to resolve. If they prevent a run, record it as blocked with the reason instead of treating it as a Vortex timing result.
-
-Keep credentials in the local cache or the gitignored `harness/.env`. Do not copy them into test source or reports. See [security and privacy](../security.md).
-
-## Use the cache in a manifest
-
-After setup completes, find the cached OAuth file for the installed app:
-
-```typescript title="login-cache.mts"
-import { loadConfig, resolveTarget } from "./harness/src/config";
-import { authCacheFile } from "./harness/src/instance";
-
-const config = loadConfig({ target: resolveTarget({ preferInstalled: true }) });
-console.log(authCacheFile(config));
-```
-
-Run `pnpm exec tsx login-cache.mts` with the same cache settings as login setup. Put the printed path in your real collection manifest's `authCache`. This prints the file's location, not the credentials. Keep the file private.
+Do not copy credentials into source, reports or chat. See [security and privacy](../security.md).

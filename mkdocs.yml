@@ -50,6 +50,7 @@ nav:
       - What Doodlebot does: index.md
       - Install: getting-started/installation.md
       - First TypeScript test: getting-started/first-session.md
+      - Guided setup: getting-started/setup.md
       - Collection login: getting-started/authentication.md
   - Performance:
       - Run a benchmark: testing/benchmarks.md
@@ -65,6 +66,17 @@ nav:
   - Help:
       - Troubleshooting: troubleshooting.md
       - Development: contributing.md
-      - Technical references: reference/script-api.md
       - Security and privacy: security.md
       - Credits: credits.md
+  - Reference:
+      - Overview: reference/index.md
+      - TypeScript API: reference/script-api.md
+      - Sessions: reference/sessions.md
+      - Benchmark runner: reference/runner.md
+      - Tables: reference/tables.md
+      - Collection setup: reference/collections.md
+      - Options and results: reference/results.md
+      - CLI commands: reference/cli.md
+      - App tools: reference/mcp-tools.md
+      - Configuration: reference/configuration.md
+      - Package scripts: reference/package-scripts.md

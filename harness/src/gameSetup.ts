@@ -10,6 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 import { assertRedirected } from "./bethesdaSandbox";
 import type { HarnessConfig } from "./config";
@@ -79,6 +80,13 @@ export const KNOWN_GAMES: Record<string, GameDefinition> = {
     steamDir: "Stardew Valley",
     executable: "Stardew Valley.exe",
   },
+  cyberpunk2077: {
+    id: "cyberpunk2077",
+    name: "Cyberpunk 2077",
+    steamAppId: "1091500",
+    steamDir: "Cyberpunk 2077",
+    executable: "bin/x64/Cyberpunk2077.exe",
+  },
 };
 
 export class GameNotFoundError extends Error {}
@@ -92,7 +100,25 @@ export class GameNotFoundError extends Error {}
  * "not found" rather than a parse crash.
  */
 export function steamLibraryRoots(): string[] {
+  let registered: string | undefined;
+  if (process.platform === "win32") {
+    try {
+      const output = execFileSync(
+        "reg",
+        ["query", "HKCU\\Software\\Valve\\Steam", "/v", "SteamPath"],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 5000,
+        },
+      );
+      registered = output.match(/SteamPath\s+REG_SZ\s+(.+)/i)?.[1]?.trim();
+    } catch {
+      /* Steam may not be installed for this Windows account. */
+    }
+  }
   const steamRoots = [
+    ...(registered ? [registered] : []),
     path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Steam"),
     path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Steam"),
   ].filter((p) => fs.existsSync(p));
@@ -112,19 +138,34 @@ export function steamLibraryRoots(): string[] {
 }
 
 /** Locate a known game's install directory, or undefined when it isn't installed. */
-export function findGamePath(game: GameDefinition): string | undefined {
+export function findGamePath(
+  game: GameDefinition,
+  libraries = steamLibraryRoots(),
+): string | undefined {
   if (game.steamDir === undefined) return undefined;
 
-  for (const root of steamLibraryRoots()) {
+  for (const root of libraries) {
     // Require the appmanifest as well as the directory: Steam leaves the
     // `common/<Game>` folder behind after an uninstall often enough that the
     // directory alone is not evidence the game is actually installed. That is
     // exactly what happened with Skyrim SE on the machine this was built on.
+    let directory = game.steamDir;
     if (game.steamAppId !== undefined) {
       const manifest = path.join(root, "steamapps", `appmanifest_${game.steamAppId}.acf`);
       if (!fs.existsSync(manifest)) continue;
+      const data = fs.readFileSync(manifest, "utf8");
+      const installedDirectory = data.match(/"installdir"\s+"([^"]+)"/i)?.[1];
+      if (installedDirectory) {
+        if (
+          installedDirectory === "." ||
+          installedDirectory === ".." ||
+          /[\\/:]/.test(installedDirectory)
+        )
+          continue;
+        directory = installedDirectory;
+      }
     }
-    const candidate = path.join(root, "steamapps", "common", game.steamDir);
+    const candidate = path.join(root, "steamapps", "common", directory);
     if (fs.existsSync(path.join(candidate, game.executable))) return candidate;
   }
   return undefined;

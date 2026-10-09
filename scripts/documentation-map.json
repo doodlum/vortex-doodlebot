@@ -4,6 +4,8 @@
       "name": "Human benchmark SDK and proposal cases",
       "sources": ["^harness/benchmarks/", "^benchmarks/"],
       "human": [
+        "docs/getting-started/setup.md",
+        "docs/reference/collections.md",
         "docs/getting-started/first-session.md",
         "docs/testing/benchmarks.md",
         "docs/testing/adding-benchmarks.md",

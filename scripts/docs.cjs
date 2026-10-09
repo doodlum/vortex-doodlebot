@@ -147,6 +147,7 @@ function api() {
     ["proposal.catalog", "../../benchmarks/catalog.ts"],
     ["proposal.workloads", "../../benchmarks/workloads.ts"],
     ["proposal.runner", "../../benchmarks/runner.ts"],
+    ["proposal.setup", "../../benchmarks/setup.ts"],
   ]);
   for (const statement of entry.statements) {
     if (
@@ -202,6 +203,7 @@ function api() {
         .map((d) => (typeof d.comment === "string" ? d.comment : ""))
         .join("\n");
       symbols.push({
+        name: node.name?.getText(sf),
         signature,
         docs,
         line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1,
@@ -282,14 +284,52 @@ const apiBody = inventory.api
         .join("\n"),
   )
   .join("\n");
-result(
-  "docs/reference/script-api.md",
-  "# TypeScript helper reference\n\n" +
-    banner(
-      "Use [scratch scripts](../guides/scripting.md) for one-off automation and [test writing](../testing/integration.md) for repeatable checks. The kit exposes configuration, MCP, CDP and the namespaces below. Functions and types are generated from their declarations; read the linked implementation for cancellation and lifecycle details. Zip helpers `zipSync`, `unzipSync`, `strToU8`, `strFromU8` are also re-exported from fflate.",
-    ) +
-    apiBody,
-);
+// Human pages own the procedure and semantics. Only their explicitly selected
+// signatures are generated; the exhaustive specialist inventory stays separate.
+for (const file of [
+  "docs/reference/sessions.md",
+  "docs/reference/runner.md",
+  "docs/reference/tables.md",
+  "docs/reference/collections.md",
+  "docs/reference/results.md",
+]) {
+  const body = read(file);
+  let count = 0;
+  const expected = body.replace(
+    /<!-- contract:([\w.]+):([\w.]+) -->\n[\s\S]*?<!-- \/contract -->/g,
+    (_block, moduleName, name) => {
+      count++;
+      const module = inventory.api.find((item) => item.name === moduleName);
+      if (!module) throw new Error(`Unknown contract module ${moduleName}`);
+      const [symbolName, memberName] = name.split(".");
+      const symbol = module.symbols.find((item) => item.name === symbolName);
+      if (!symbol) throw new Error(`Unknown contract symbol ${moduleName}.${symbolName}`);
+      let signature = symbol.signature;
+      if (memberName) {
+        const sf = source(module.file);
+        const declaration = sf.statements.find(
+          (node) => ts.isClassDeclaration(node) && node.name?.text === symbolName,
+        );
+        const member = declaration?.members.find(
+          (node) =>
+            node.name?.getText(sf) === memberName &&
+            !node.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.PrivateKeyword),
+        );
+        if (!member || ts.isConstructorDeclaration(member))
+          throw new Error(`Unknown public contract member ${name}`);
+        signature =
+          member
+            .getText(sf)
+            .slice(0, member.body ? member.body.pos - member.getStart() : undefined)
+            .trim()
+            .replace(/^async\s+/, "") + (member.body ? ";" : "");
+      }
+      return `<!-- contract:${moduleName}:${name} -->\n\n\`\`\`typescript\n${signature}\n\`\`\`\n\n<!-- /contract -->`;
+    },
+  );
+  if (!count) throw new Error(`${file} has no checked API signatures`);
+  result(file, expected);
+}
 result(
   "harness/reference/script-api.md",
   "# Script contracts\n\n" +

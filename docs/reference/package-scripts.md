@@ -25,6 +25,7 @@ Run these from the repository root with `pnpm run <name>`. Test selection, accou
 | `benchmark:list`                    | `tsx benchmarks/run.mts --list`                                                                                                                                            |
 | `benchmark:smoke`                   | `tsx benchmarks/smoke.mts`                                                                                                                                                 |
 | `benchmark:check`                   | `tsx benchmarks/check-catalog.mts`                                                                                                                                         |
+| `setup`                             | `tsx benchmarks/setup-cli.mts`                                                                                                                                             |
 | `ai`                                | `tsx harness/src/cli.ts`                                                                                                                                                   |
 | `ai:doctor`                         | `tsx harness/src/cli.ts doctor`                                                                                                                                            |
 | `ai:source`                         | `tsx harness/src/cli.ts source`                                                                                                                                            |

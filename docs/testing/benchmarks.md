@@ -25,11 +25,23 @@ Its exploratory manifest records the current CPU/RAM, Windows version, and tempo
 
 The smoke output is under `harness/.artifacts/proposal-smoke`. Inspect `results.json` even when the runner exits unsuccessfully: it writes the report before throwing for blocked or failed cases.
 
+## Run a prepared real collection
+
+Run [guided setup](../getting-started/setup.md) to choose a pinned collection, verify a game snapshot and save the private login. After preparing C2, for example:
+
+```powershell
+pnpm run benchmark -- --exploratory --repeats=1 --timeout-minutes=360 --select=B1-C2
+```
+
+This performs genuine downloads and a cold install in a fresh working copy. It can take hours. The explicit six-hour operation timeout is not a performance budget. The runner loads the saved paths automatically, records available machine facts and writes a new timestamped result folder. It is exploratory, not an approved baseline.
+
+`pnpm run setup -- --status` shows the saved choices without opening an app. Use `--status --verify` to recheck every snapshot. Additional custom cases remain ordinary TypeScript; see [adding a case](adding-benchmarks.md).
+
 ## Configure a formal run
 
 Edit `benchmarks/config.ts`. Record the actual hardware, drive, bandwidth, account profile, Windows/security settings, and released installer version. Keep the proposal's unapproved selections and targets as TBD until the group agrees them.
 
-For real collections, configure C1, C2 (base), C2-AE (paid content), C3, and C5: pinned revision URL, confirmed mod count and game ID, private OAuth cache, game fixture to copy, QA-only Windows account or test-machine confirmation, and readiness check. [Collection configuration](adding-benchmarks.md#collection-cases) explains those fields.
+Guided setup supplies the saved C1, C2, C2-AE, C3 and C5 collection choices. For custom fixtures or advanced overrides, configure the pinned revision, game, private OAuth cache, clean game copy, QA acknowledgement and readiness check. [Collection configuration](adding-benchmarks.md#collection-cases) explains those fields.
 
 The default formal runner uses **three repeats** and a fresh app per repeat. Run selected cases first:
 
@@ -45,7 +57,7 @@ pnpm run benchmark -- --select=B1-C2,B2-C2,B3-C2,B4-C2,B5-C2
 
 Run the full configured plan with `pnpm run benchmark`. The runner saves a separate report for each group under a timestamped proposal-benchmarks directory. Runs stay sequential so they do not compete for CPU, disk, or network.
 
-Collection installs automatically use the account's maximum supported download threads: ten for Nexus Premium, one for a free account. You do not need to change the slider yourself. The report records the setting; Vortex may use the threads for chunks of a large file as well as separate files. Record your connection speed in the run profile too.
+The unattended real-collection runner requires Premium and automatically uses its ten download threads. The lower-level helper supports one thread for a free account, but that does not make this benchmark runner support unattended free downloads. You do not need to change the slider yourself. The report records the setting; Vortex may use the threads for chunks of a large file as well as separate files. Record your connection speed in the run profile too.
 
 B1–B5 cover the four named collections, C1, C2, C3, and C5. The [proposal](proposal.md) describes their real collection matrix, including the two GTS variants and T1–T4.
 

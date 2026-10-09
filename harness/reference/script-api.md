@@ -1433,13 +1433,13 @@ export interface BenchmarkGroup {
 export const localManifest: RunManifest;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/config.ts#L8).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/config.ts#L9).
 
 ```typescript
 export const configuration: Configuration;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/config.ts#L20).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/config.ts#L21).
 
 Actual host metadata for a convenience run; no agreed budgets or profile.
 
@@ -1447,7 +1447,7 @@ Actual host metadata for a convenience run; no agreed budgets or profile.
 export function exploratoryManifest(): RunManifest;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/config.ts#L37).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/config.ts#L38).
 
 ## proposal.collections
 
@@ -1594,6 +1594,115 @@ export async function runSuite(options: SuiteOptions): Promise<boolean>;
 ```
 
 [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/runner.ts#L55).
+
+## proposal.setup
+
+[Source](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts).
+
+```typescript
+export type BenchmarkSetup = z.infer<typeof setupSchema>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L48).
+
+```typescript
+export const benchmarkSetupFile;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L49).
+
+Read local preparation choices. No account check, app launch or file copying.
+
+```typescript
+export function readBenchmarkSetup(file = benchmarkSetupFile): BenchmarkSetup;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L52).
+
+```typescript
+export function writeBenchmarkSetup(setup: BenchmarkSetup, file = benchmarkSetupFile): void;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L57).
+
+```typescript
+export function discoverBenchmarkGames(libraries?: string[]);
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L69).
+
+Presence is a local observation; it does not prove refresh or server access.
+
+```typescript
+export function cachedAccountStatus(
+  file: string,
+): "missing" | "signed-out" | "cached" | "unreadable";
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L76).
+
+Reuse a single saved kit login when no cache exists for the released target.
+
+```typescript
+export function findBenchmarkAccountCache(preferred: string): string;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L99).
+
+Verify a tracked copy in full, including the selected Skyrim content.
+
+```typescript
+export async function verifyPreparedSnapshot(
+  snapshot: BenchmarkSetup["snapshots"][number],
+): Promise<void>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L119).
+
+```typescript
+export interface PrepareCollectionOptions {
+  code: CollectionCode;
+  /** Required acknowledgement; setup never infers that a user's account is disposable. */
+  dedicatedWindowsAccount: true;
+  /** The operator confirms the source is clean and the game/launcher are closed. */
+  cleanSource: true;
+  authCache: string;
+  owner: string;
+  /** Copy this source into a new snapshot, even when an older snapshot is saved. */
+  source?: string;
+  /** Register an existing verified copy rather than copying the installed game. */
+  snapshot?: string;
+  warningsAsErrors?: boolean;
+  setupFile?: string;
+  snapshotRoot?: string;
+}
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L128).
+
+Find the installed game and create/reuse a verified copy; never deploy into the source.
+
+```typescript
+export async function prepareCollection(options: PrepareCollectionOptions): Promise<RealCollection>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L145).
+
+Use a setup choice from TypeScript without copying local paths into source.
+
+```typescript
+export function preparedCollection(code: CollectionCode, file = benchmarkSetupFile): RealCollection;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L230).
+
+```typescript
+export function preparedCollections(
+  file = benchmarkSetupFile,
+): Partial<Record<CollectionCode, RealCollection>>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L260).
 
 ## bethesda
 
