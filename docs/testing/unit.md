@@ -19,6 +19,13 @@ it("keeps a pinned collection revision", () => {
 
 Run `pnpm exec vitest run harness/src/my-parser.test.ts`. The full unit suite is `pnpm run test`.
 
+After installing the repository dependencies, run `pnpm exec vitest run src/mcpServer.test.ts`
+to check the MCP HTTP boundary and resolved-folder diagnostics. Distinct mocked Vortex paths
+verify Home, AppData, Documents and LocalAppData responses; a failed lookup returns null
+without losing the other folders. No app, game or account is needed. This does not prove
+filesystem isolation: inspect the [running app's resolved folders](../guides/calling-tools.md#inspect-resolved-folders)
+and their physical targets before managing a game.
+
 DOM logic belongs with the extension's jsdom tests. A simulated DOM can check a selector or transformation, but cannot prove that a current Vortex screen has the expected control. Use [a real-app test](integration.md) for that contract.
 
 For collection startup, run `pnpm exec vitest run src/uiAutomation.test.ts harness/src/collectionStartup.test.ts`. These tests cover a large page whose snapshot stops before the dialog, Vortex's nested dialog wrappers, two separate dialogs with identical text, one successful **Install Now** click, and failures without another click. They need neither a game nor a Nexus account; they do not install a real collection.

@@ -6,6 +6,13 @@ feature regression is useful evidence for that feature, but is not a universal k
 
 ## Fast gate
 
+Resolved path diagnostics: `pnpm exec vitest run src/mcpServer.test.ts` needs kit dependencies,
+with no app, game or account. HTTP tool calls verify distinct Vortex-resolved Home, AppData,
+Documents and LocalAppData values and preserve other paths when one lookup throws. These
+checks do not prove filesystem isolation; inspect the actual runtime's resolved folders
+and physical targets before managing a game. Human procedure:
+[resolved folders](../docs/guides/calling-tools.md#inspect-resolved-folders).
+
 Linux VM transport: `pnpm exec vitest run harness/src/linuxVm.test.ts harness/src/cliArgs.test.ts`
 requires kit dependencies and Git, no guest. Covers argument boundaries, shell quoting, native
 backend selection and binary edits/deletions reconstructed over a bundle. Real VM verification

@@ -142,15 +142,25 @@ function registerReadTools(server: McpServer, api: IExtensionApi): void {
 }
 
 /** The per-user folders Vortex resolved, or null for one it cannot report. */
-function vortexPaths(): { documents: string | null; localAppData: string | null } {
-  const resolve = (id: "documents" | "localAppData"): string | null => {
+function vortexPaths(): {
+  home: string | null;
+  appData: string | null;
+  documents: string | null;
+  localAppData: string | null;
+} {
+  const resolve = (id: "home" | "appData" | "documents" | "localAppData"): string | null => {
     try {
       return util.getVortexPath(id);
     } catch {
       return null;
     }
   };
-  return { documents: resolve("documents"), localAppData: resolve("localAppData") };
+  return {
+    home: resolve("home"),
+    appData: resolve("appData"),
+    documents: resolve("documents"),
+    localAppData: resolve("localAppData"),
+  };
 }
 
 function registerCheckProbeTool(server: McpServer, api: IExtensionApi): void {
@@ -182,7 +192,7 @@ function registerDiscoveryTools(server: McpServer, api: IExtensionApi): void {
     "automation_status",
     {
       description:
-        "Identify this renderer lifetime, running Vortex version, and isolated harness profile. runtimeId changes after renderer reload; userDataDir is null outside the harness. `paths` are the per-user folders Vortex resolved (documents, localAppData) — what a Bethesda game's INI files and plugins.txt are written under — so a harness can refuse to manage a game unless they are its own sandbox copies. `nodeEnv` is the renderer's NODE_ENV; `react.build` is which React build the renderer actually loaded (production, development, or unknown), read from the module cache — the harness refuses a --production run unless it is production. Contains no credentials.",
+        "Identify this renderer lifetime, running Vortex version, and isolated harness profile. runtimeId changes after renderer reload; userDataDir is null outside the harness. `paths` are the per-user folders Vortex resolved (home, appData, documents, localAppData), each null if unavailable. These are observations, not proof of isolation: check the relevant folders before managing a game; game-specific paths such as a Proton prefix need separate protection. `nodeEnv` is the renderer's NODE_ENV; `react.build` is which React build the renderer actually loaded (production, development, or unknown), read from the module cache — the harness refuses a --production run unless it is production. Contains no credentials.",
       inputSchema: z.object({}),
     },
     async () => ({

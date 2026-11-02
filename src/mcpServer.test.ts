@@ -4,7 +4,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 vi.mock("@nexusmods/vortex-api", () => ({
   log: vi.fn(),
-  util: { getApplication: () => ({ version: "2.8.0" }) },
+  util: {
+    getApplication: () => ({ version: "2.8.0" }),
+    getVortexPath: vi.fn(() => {
+      throw new Error("Path unavailable");
+    }),
+  },
 }));
 
 vi.mock("./vortexControl", () => ({
@@ -60,6 +65,7 @@ vi.mock("./vortexControl", () => ({
 }));
 
 import * as control from "./vortexControl";
+import { util } from "@nexusmods/vortex-api";
 
 let startMcpServer: typeof import("./mcpServer").startMcpServer;
 let port: number;
@@ -149,6 +155,65 @@ describe("mcpServer HTTP gating", () => {
     const response = JSON.parse(line!.slice(6));
     const status = JSON.parse(response.result.content[0].text);
     expect(status.vortexVersion).toBe("2.8.0");
+  });
+
+  it("reports Vortex's resolved home and appData alongside game folders", async () => {
+    const paths = {
+      home: "/private/Home",
+      appData: "/flatpak/config",
+      documents: "/private/Home/Documents",
+      localAppData: "/private/Local",
+    };
+    vi.mocked(util.getVortexPath).mockImplementation((id) => {
+      if (!(id in paths)) throw new Error(`Unexpected path ${id}`);
+      return paths[id as keyof typeof paths];
+    });
+    try {
+      const res = await request({
+        headers: jsonHeaders,
+        body: {
+          jsonrpc: "2.0",
+          id: 32,
+          method: "tools/call",
+          params: { name: "automation_status", arguments: {} },
+        },
+      });
+      expect(res.status).toBe(200);
+      const line = res.body.split("\n").find((item) => item.startsWith("data: "));
+      const response = JSON.parse(line!.slice(6));
+      expect(JSON.parse(response.result.content[0].text).paths).toEqual(paths);
+    } finally {
+      vi.mocked(util.getVortexPath).mockReset();
+    }
+  });
+
+  it("keeps available paths when an older Vortex cannot resolve another folder", async () => {
+    vi.mocked(util.getVortexPath).mockImplementation((id) => {
+      if (id === "appData") throw new Error("Path unavailable");
+      return `/resolved/${id}`;
+    });
+    try {
+      const res = await request({
+        headers: jsonHeaders,
+        body: {
+          jsonrpc: "2.0",
+          id: 33,
+          method: "tools/call",
+          params: { name: "automation_status", arguments: {} },
+        },
+      });
+      expect(res.status).toBe(200);
+      const line = res.body.split("\n").find((item) => item.startsWith("data: "));
+      const response = JSON.parse(line!.slice(6));
+      expect(JSON.parse(response.result.content[0].text).paths).toEqual({
+        home: "/resolved/home",
+        appData: null,
+        documents: "/resolved/documents",
+        localAppData: "/resolved/localAppData",
+      });
+    } finally {
+      vi.mocked(util.getVortexPath).mockReset();
+    }
   });
 
   it("returns 404 for any path other than /mcp", async () => {

@@ -36,6 +36,19 @@ A TypeScript type annotation describes what your code expects; it does not valid
 
 For common tasks, [UI helpers](ui-automation.md) and [mod helpers](mod-workflows.md) reduce the amount of tool-specific code you need to write.
 
+## Inspect resolved folders
+
+Call `automation_status` to inspect the running version, renderer lifetime, harness profile
+(`userDataDir`) and Vortex's resolved `paths.home`, `paths.appData`, `paths.documents` and
+`paths.localAppData`. A folder is `null` if Vortex cannot report it. These paths come from
+Vortex's path API; environment variables alone may differ, particularly inside Flatpak.
+
+Before managing a real game copy, check that the relevant resolved folders belong to your
+disposable setup. Compare physical paths with the platform's case rules, including symlink
+targets. This observation does not establish startup isolation or cover every game's files:
+a Windows game running through Proton also needs a protected prefix and its user folders.
+See [session isolation](../reference/sessions.md) for the supported harness lifecycle.
+
 ## Launch a configured game
 
 Prepare a real game first, using the [Linux VM procedure](linux-vm.md#run-and-verify) when
