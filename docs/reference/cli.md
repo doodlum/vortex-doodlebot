@@ -43,6 +43,7 @@ Use [Get started](../getting-started/first-session.md) for your first test and [
 - `status`
 - `tools`
 - `up`
+- `vm`
 - `vortex-e2e`
 - `watch`
 - `worktree`

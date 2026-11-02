@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough, Readable } from "node:stream";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as operations from "./operations";
 import { ChildRegistrationError, claimOperations } from "./operations";
@@ -18,6 +19,56 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+it("forwards exact UTF-8 bytes and EOF through a Node-owned input pipe", async () => {
+  const bytes = Buffer.from("Doodlebot éλ\n", "utf8");
+  const result = await runEvidenceProcess({
+    executable: process.execPath,
+    args: [
+      "-e",
+      "const chunks=[]; process.stdin.on('data',x=>chunks.push(x)); process.stdin.on('end',()=>console.log(Buffer.concat(chunks).toString('hex')));",
+    ],
+    cwd: root,
+    input: Readable.from([bytes.subarray(0, 11), bytes.subarray(11)]),
+  });
+  expect(result.code).toBe(0);
+  expect(result.stdout.trim()).toBe(bytes.toString("hex"));
+});
+
+it("detaches and pauses an open input source when the child exits early", async () => {
+  const input = new PassThrough();
+  try {
+    const result = await runEvidenceProcess({
+      executable: process.execPath,
+      args: ["-e", "process.exit(7)"],
+      cwd: root,
+      input,
+    });
+    expect(result.code).toBe(7);
+    expect(input.listenerCount("error")).toBe(0);
+    expect(input.readableFlowing).toBe(false);
+  } finally {
+    input.destroy();
+  }
+});
+
+it("awaits child exit when the forwarding input source fails", async () => {
+  const input = new PassThrough();
+  let pid = 0;
+  const pending = runEvidenceProcess({
+    executable: process.execPath,
+    args: ["-e", "console.log(process.pid); setInterval(()=>{},1000)"],
+    cwd: root,
+    input,
+    onOutput(chunk) {
+      pid = Number(chunk.toString().trim());
+      input.destroy(new Error("inert input failure"));
+    },
+  });
+  await expect(pending).rejects.toThrow("inert input failure");
+  expect(pid).toBeGreaterThan(0);
+  expect(processAlive(pid)).toBe(false);
 });
 
 it("does not report a gracefully exited cancelled command as success", async () => {

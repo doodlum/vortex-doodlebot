@@ -24,6 +24,49 @@ documentation index and task-specific AI guidance before editing its source**.
 
 ## Initial setup
 
+Experimental native Linux: [human VM procedure](../docs/guides/linux-vm.md).
+`vm inspect|deploy|run|desktop` requires `--host`, absolute `--directory`, and named `--owner`.
+SSH keys and a trusted host key are prerequisites. Deploy creates a new directory, transferring
+HEAD and tracked working changes; opt untracked source in with repeated `--include`.
+Ignored caches, credentials and host dependencies are excluded. Run forwards the tail after
+`--` to the guest harness; guest operation guards apply and host contexts are not forwarded.
+Provision native Vortex and dependencies inside the guest. Configure actual display/runtime
+sockets and `VORTEX_AI_OZONE_PLATFORM=wayland` or `x11` on Linux; other hosts ignore it.
+Runtime prerequisites belong to the selected Vortex revision. A build with the bundled
+native Framework Mono C# installer needs no system Mono or .NET SDK; preserve its bundled
+assets. Require `DOTNET_ROOT`/SDK setup only for a revision that still documents that need.
+Verify live schemas/state/UI, MCP readiness, snapshot and clean shutdown, then applicable core.
+SSH interruption leaves remote completion uncertain; inspect guest processes and leases.
+`vm desktop` forwards JSON lines on stdin to `harness/linux_desktop.py` in the guest.
+Use it for consented Wayland input outside Vortex's DOM. Wait for `stage: approved`
+before input; status/close are accepted while pending. The portal requires a logged-in
+desktop, Python dbus/GI bindings and OS consent. Portal v2 can save rotating single-use
+tokens only in the private guest cache (default `$XDG_CACHE_HOME/doodlebot/desktop`, or
+`~/.cache/doodlebot/desktop`). `--desktop-cache-dir` selects an existing private guest
+cache; never copy/read its tokens into evidence. Flock excludes overlapping clients
+even across host aliases. The host owns `vm-desktop:<host>` until its SSH child closes.
+The guest also holds a lock in its owned 0700 runtime directory, independent of the
+selected credential cache. EOF/close drain accepted input before closing; signals
+cancel immediately after the current short input step. SSH loss still requires
+process revalidation. The host forwards stdin through Node to preserve Unicode on
+Windows rather than letting native SSH use its console code page.
+Keyboard/pointer permission can differ; `approved` alone does not establish both.
+Relative move/click/scroll, keys/chords and text require their corresponding device.
+Text defaults to layout-dependent keysyms. Explicit `method: compose` uses GTK/IBus
+Ctrl+Shift+U and yields 100ms after a non-ASCII character to commit. Verify the target
+toolkit supports it. Commands are ordered in a bounded queue, and text yields between
+characters so cancellation stays responsive. Shifted chords need the shifted keysym.
+This input session does not capture the desktop or create a desktop login.
+Known-game lookup searches Linux XDG/default, legacy, Snap and Flatpak Steam roots and
+their alternate library entries. Client aliases resolve to one physical installation;
+appmanifest plus a supported executable file are required. Linux Stardew accepts native
+`StardewValley`/`Stardew Valley` or Proton's `Stardew Valley.exe`; Windows requires the
+Windows filename. Directory impostors are rejected, and an invalid explicit `--game-path`
+never falls back. Native-only installs receive no Windows executable override; Windows
+installs on Linux retain the existing override/repair behavior. Lookup tests establish path
+validation only; inspect discovery and observe the actual native/Proton game process/window.
+Use `--game-path` for other layouts.
+
 Windows, a Node version compatible with package.json, the pinned pnpm (`pnpm@9.15.0`), Git and an
 installed Vortex. No game or Nexus account is needed for sandbox tests.
 
@@ -166,6 +209,19 @@ pnpm run ai -- up --installed --sandbox --rebuild-snapshot
 
 - Each target, game, path and `--no-game` has its own baseline; an unrelated working profile is
   never reused. The harness never edits Vortex's state database.
+- `--no-game` omits explicit game registration, while `VORTEX_E2E=1` suppresses startup and
+  `discover-game` discovery. The Games page's Steam detection can therefore list a title whose
+  `settings.gameMode.discovered` path is absent. For manual UI use, run **Refresh scan** before
+  **Add game**; for deterministic setup, pass `--game` and the actual guest `--game-path`.
+  On Linux, a Proton game's Windows executable still belongs in that guest install directory.
+  Known Windows installs record their executable override so the game's native Linux default
+  cannot select a missing binary. Setup repairs a missing override in cached profiles when
+  the known Windows file exists; it preserves explicit overrides and existing discovery timestamps.
+- SSH-launched native Wayland Vortex and its child tools have separate display requirements.
+  X11 children also need the desktop's actual `DISPLAY`/`XAUTHORITY`, even when Vortex uses
+  `WAYLAND_DISPLAY`. On systemd desktops, read those allowlisted endpoints from the user
+  manager's environment, put them in the guest-local `.env`, and restart. Refresh session
+  authority paths after a desktop login; never copy cookie contents into task artifacts.
 - `--sandbox` and `--bethesda-sandbox` don't seed the `.env` API key (with one, each local install
   waits on a 60 s Nexus lookup); `--with-api-key` does. The choice is part of the snapshot key, so
   keep it consistent.
@@ -324,6 +380,13 @@ Harness `clickByName`/`fillByName` match exact case-insensitive names (or explic
 reject ambiguity; use accessible names and scope modals to their dialog. `{ selector, index? }`
 scopes the snapshot so a large table can't exhaust its node budget. Avoid native file pickers:
 `install <archive>` or a documented event.
+
+`launch_game` resolves the primary tool or discovered game executable and passes its Vortex
+game ID with the command. It returns on a valid spawn PID or successful command completion;
+`runExecutable` itself waits for process exit. A later execution failure is logged. Check a
+new OS process/window separately. The primary-tool fallback observes the game process;
+Linux uses `/proc`, resolving truncated names against full argv and native programs with renamed
+main threads against their executable path, without logging arguments.
 
 ### Scratch scripts and renderer diagnostics
 
@@ -718,6 +781,7 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
 | `ai:test:mods-scroll -- --mods <n>`                       | sandbox                            | see below                                                                   |
 | `ai:test:zoom [-- --signed-out]`                          | source build with zoom             | zoom controls, shortcuts, timers, animation, layout                         |
 | `ai:test:panels`                                          | source build, `--bethesda-sandbox` | right-hand split view behaviour                                             |
+| `ai:test:real-mode`                                       | an installed supported game        | a renderer crash, a detected game not added, an error notification          |
 
 - **collection-scale** options (`collectionScale.ts`, deterministic; none = required members, no
   rules): `--optional <f>`, `--glob <f>`, `--duplicates <n>`, `--rules <n>`, `--update` (revision
@@ -740,6 +804,21 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
 - **panels**: match `VORTEX_AI_OWNER` to the instance owner; it saves and restores workspaces and
   window size. The toggle is `[data-split-view-toggle]` (`aria-pressed`), the chooser
   `[data-panel-chooser="panel"]`; both panes stay at least 440 px.
+- **real-mode** launches the selected target without `VORTEX_E2E` in `<cache>/real-mode/<time>`,
+  so detection, discovery and Add game behave as for users. Linux isolates the profile with
+  `XDG_CONFIG_HOME` and `XDG_DATA_HOME`; Windows uses Electron's `--user-data-dir`, needs a packaged or installed
+  target (a source build picks its own data folder) and exports then restores
+  `HKCU\Software\Classes\nxm`, which a normal first start rewrites. Other platforms refuse. It
+  stops unless Vortex's log appears inside the run's folder, adds every detected game with real
+  CDP mouse input, closes Vortex through its title bar and writes `real-mode-<time>.json`
+  (detected game names, crashes, error notifications, exit code, signal and forced-stop status)
+  for cross-platform comparison. The instance/checkout operation is held throughout the run,
+  and the child is registered on its ownership leases. A surviving child retains protection;
+  a forced stop or any exit other than code zero without a signal fails the check. Windows
+  protocol registration is serialized and restored only after the child stops. Every other
+  harness check runs in E2E mode with JavaScript or MCP clicks, which neither discovers games nor
+  runs inside Blink's user-input tasks; use this for game onboarding and input-path changes. It
+  writes only the game files that adding the game normally writes.
 
 ## Configuration and recovery
 

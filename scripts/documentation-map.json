@@ -1,6 +1,12 @@
 {
   "groups": [
     {
+      "name": "Native Linux VM transport",
+      "sources": ["^harness/src/linuxVm\\.ts$", "^harness/linux_desktop(?:_test)?\\.py$"],
+      "human": ["docs/guides/linux-vm.md"],
+      "ai": ["harness/AGENTS.md", "harness/TESTING.md"]
+    },
+    {
       "name": "Human benchmark SDK and proposal cases",
       "sources": ["^harness/benchmarks/", "^benchmarks/"],
       "human": [

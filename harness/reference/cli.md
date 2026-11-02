@@ -43,6 +43,7 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `status`
 - `tools`
 - `up`
+- `vm`
 - `vortex-e2e`
 - `watch`
 - `worktree`
@@ -83,6 +84,13 @@ Instance lifecycle
     --update             Fetch origin and upstream in an existing clone
     --no-build           Clone only
     --where              Print managed source path
+  vm inspect|deploy|run|desktop  Native Linux guest over SSH (key authentication required)
+    desktop             JSON-lines Wayland input; approve the guest portal once
+      --desktop-cache-dir </private/guest/directory>  Optional guest-only restore token cache
+    --host <user@host> --directory </guest/path> --owner <name>
+    --include <file>      Include an untracked source file in deploy; repeatable
+                         deploy creates a new directory, never overwrites one
+                         run -- <harness arguments> runs the guest's harness
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
   readiness              Evaluate strict revision-bound task evidence; never runs gates

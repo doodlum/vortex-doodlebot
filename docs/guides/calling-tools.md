@@ -35,3 +35,25 @@ const gameId = await vortex.call<string | null>("vortex_query", {
 A TypeScript type annotation describes what your code expects; it does not validate the response. Add assertions when a test depends on the value. Check an operation's rendered UI or resulting files as well as the app's reported state.
 
 For common tasks, [UI helpers](ui-automation.md) and [mod helpers](mod-workflows.md) reduce the amount of tool-specific code you need to write.
+
+## Launch a configured game
+
+Prepare a real game first, using the [Linux VM procedure](linux-vm.md#run-and-verify) when
+appropriate. Call `launch_game` with its Vortex game ID and guard the active game:
+
+```json
+{ "gameId": "stardewvalley", "expectedActiveGameId": "stardewvalley" }
+```
+
+The tool selects the primary tool or the discovered game executable. It returns when Vortex
+reports a process spawn or successful command completion, so your next command can run while
+the game remains open. A returned start is not evidence of a playable game: check a newly
+observed process and window separately. Deployment prompts may need an answer before launch.
+Later execution failures are logged by the app. The game ID accompanies the command so
+Linux Proton tools use the associated game's runtime and prefix; stock Windows Vortex
+continues using its normal executable launch API.
+
+After a primary tool starts, doodlebot looks for the game's process before falling back to
+its own executable. Linux checks truncated Wine names against full arguments and native
+programs with renamed main threads against their executable path. This check can recognize
+an existing process too; verify a new process separately when you need proof of this launch.

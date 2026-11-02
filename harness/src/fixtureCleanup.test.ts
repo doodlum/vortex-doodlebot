@@ -145,3 +145,38 @@ it("forgets a confirmed exited app and permits profile and cache cleanup", async
   cleanup.remove(path.dirname(profile));
   expect(fs.existsSync(sentinel)).toBe(false);
 });
+
+it("retains a failed test's evidence after confirmed shutdown while releasing its lease", async () => {
+  cleanup.preserveTestEvidence();
+  await closeFixtureApp(
+    app(async () => {
+      alive.delete(pid);
+    }),
+    [lease.lease],
+    cleanup,
+    env,
+  );
+  lease.release();
+  expect(readLease(lease.lease.resource, env)).toBeUndefined();
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    expect(() => cleanup.remove(profile)).not.toThrow();
+    expect(() => cleanup.remove(path.dirname(profile))).not.toThrow();
+    expect(fs.readFileSync(sentinel, "utf8")).toBe("retained profile");
+  } finally {
+    warning.mockRestore();
+  }
+});
+
+it("retaining test evidence never hides a failed shutdown or releases a live app", async () => {
+  cleanup.preserveTestEvidence();
+  await expect(
+    closeFixtureApp(
+      app(async () => {}),
+      [lease.lease],
+      cleanup,
+      env,
+    ),
+  ).rejects.toThrow(/still running/);
+  expectRetained();
+});

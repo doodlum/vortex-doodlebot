@@ -984,7 +984,7 @@ Enable or disable a set of mods for a profile (defaults to the active profile). 
 
 ## launch_game
 
-Launch a game's configured primary tool (e.g. SKSE, or the vanilla exe if none is set) — the same operation as Vortex's own 'Play' button, including its suggestDeploy check, which can surface a blocking dialog (see list\_dialogs/vortex\_dispatch's closeDialog) if files changed outside Vortex since the last deploy. Throws if the game has no primary tool configured.
+Launch a game's configured primary tool, or its discovered game executable when no usable primary tool is set. Returns after Vortex reports a process spawn or successful command completion, without waiting for the game to exit. This proves a start was reported, not that the game reached a playable window. Uses Vortex's runExecutable and suggestDeploy check, which may require answering a deployment dialog. The resolved game id accompanies the command so Linux Proton tools use their associated game.
 
 **Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1268).
 
@@ -1010,7 +1010,7 @@ Launch a game's configured primary tool (e.g. SKSE, or the vanilla exe if none i
 
 Restart Vortex via its own graceful relaunch (same path as Vortex's 'Restart now' button): closes windows and lets Vortex's normal shutdown sequence finish — finalizing in-progress operations, flushing its database — before actually quitting. Not a hard process kill. The MCP connection drops during restart and this server reconnects automatically once Vortex is back up.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1297).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1298).
 
 ```json title="Input schema"
 {
@@ -1025,7 +1025,7 @@ Restart Vortex via its own graceful relaunch (same path as Vortex's 'Restart now
 
 Quit Vortex cleanly — the same path as clicking the window's close button, NOT a process kill. The renderer flushes its pending state diffs and main waits for it to release its file handles before quitting, which is what leaves the state database consistent on disk. Use this rather than killing the process whenever the on-disk state matters afterwards (snapshotting a profile, reusing the user-data directory for a later run): a hard kill can leave state half-written, and that surfaces later as a stale or corrupt profile rather than as an error here. The MCP connection drops and does not come back — unlike vortex\_restart, nothing restarts it.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1317).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1318).
 
 ```json title="Input schema"
 {
@@ -1040,7 +1040,7 @@ Quit Vortex cleanly — the same path as clicking the window's close button, NOT
 
 Read what is actually ON SCREEN in Vortex right now, as a compact accessibility tree with a stable \`ref\` per node — the primary 'look at the UI' call, and the one that hands out the refs every ui\_click/ui\_fill/ui\_hover consumes. Complements, rather than replaces, the state tools: vortex\_query/list\_mods tell you what Vortex BELIEVES, ui\_snapshot tells you what it is SHOWING, and the two genuinely disagree (a pending render, a mod hidden by an active filter, a modal covering the page). Layout wrappers with no role, name, test id or own text are collapsed into their children, so the tree describes controls rather than React's div soup. Hidden elements are excluded by default. Any open modal's text is ALSO surfaced at the top level as \`activeDialogs\` — check it first when a click appears to do nothing, since a modal is the most common reason. Every call allocates a new ref generation and invalidates the previous one.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1378).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1379).
 
 ```json title="Input schema"
 {
@@ -1086,7 +1086,7 @@ Read what is actually ON SCREEN in Vortex right now, as a compact accessibility 
 
 Poll until a CSS selector or a piece of visible text reaches the given state, then return how long it took. Use this instead of guessing at sleeps after an action that kicks off real work — installing a mod, deploying, switching profile — all of which take wildly variable wall-clock time. Returns \`matched: false\` on timeout rather than throwing, so a caller can branch on it; a timeout is not by itself an error, since 'the notification never appeared' is sometimes the expected outcome.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1432).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1433).
 
 ```json title="Input schema"
 {
@@ -1127,7 +1127,7 @@ Poll until a CSS selector or a piece of visible text reaches the given state, th
 
 Report the Electron window's outer size, the renderer's inner (CSS px) size, and the device pixel ratio. The two sizes differ by the window chrome, so compare layout findings against \`inner\`, not \`window\`.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1467).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1468).
 
 ```json title="Input schema"
 {
@@ -1142,7 +1142,7 @@ Report the Electron window's outer size, the renderer's inner (CSS px) size, and
 
 Scan the rendered UI at its CURRENT size for responsive-layout breakage: content overflowing the right edge, elements pushed fully offscreen, text clipped by an overflow:hidden box with no way to scroll to it, and interactive targets that shrank below 24px. Heuristic and purely advisory — it reports, it never fails. A horizontal scrollbar on a deliberately-scrollable pane is normal and will show up here, so the caller decides what counts as a regression; the useful signal is a DIFFERENCE between two widths, which is what ui\_responsive\_sweep automates. Each issue carries a descriptive selector so it can be re-examined with ui\_snapshot.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1479).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1480).
 
 ```json title="Input schema"
 {
@@ -1164,7 +1164,7 @@ Scan the rendered UI at its CURRENT size for responsive-layout breakage: content
 
 The visible text of each open modal dialog (the same \`activeDialogs\` a ui\_snapshot returns), without walking or measuring the rest of the UI. Use it to poll for a dialog: a full ui\_snapshot every second with thousands of mods rendered costs the renderer seconds and skews any timing being taken.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1498).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1499).
 
 ```json title="Input schema"
 {
@@ -1179,7 +1179,7 @@ The visible text of each open modal dialog (the same \`activeDialogs\` a ui\_sna
 
 Read the renderer's console output and uncaught errors/rejections from an in-process ring buffer (500 entries, oldest dropped), captured since this extension loaded. This is the only way to see a React render error or a failed fetch over MCP: DevTools is not reachable from here, and Vortex's own log file only carries what Vortex explicitly logs, not what the browser runtime reports. Non-destructive — pass the returned \`lastSeq\` back as \`since\` to get only what is new. \`dropped: true\` means the buffer wrapped and entries were lost between your last poll and this one.
 
-**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1510).
+**Availability:** Registered without a token; with a configured token, supply it. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1511).
 
 ```json title="Input schema"
 {
@@ -1215,7 +1215,7 @@ Read the renderer's console output and uncaught errors/rejections from an in-pro
 
 Click an element, addressed by \`ref\` from ui\_snapshot or by CSS \`selector\`. Dispatches a full pointer/mouse sequence (pointerdown, mousedown, focus, pointerup, mouseup, click) rather than HTMLElement.click(), because several Vortex widgets — dropdown toggles, table row selection — listen on mousedown and ignore a bare click event. Refuses to click an invisible or disabled element with an explanatory error instead of silently doing nothing; pass requireActionable=false to force it anyway. Scrolls the element into view first. Returns the target's role/name before input handlers run; a handler may immediately relabel or remove it. This performs a REAL action in a REAL Vortex: it can start downloads, remove mods, or launch a game.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1548).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1549).
 
 ```json title="Input schema"
 {
@@ -1286,7 +1286,7 @@ Click an element, addressed by \`ref\` from ui\_snapshot or by CSS \`selector\`.
 
 Set the value of an \<input\>, \<textarea\> or contenteditable, then fire input+change so React's onChange actually runs. Uses the prototype's native value setter first: assigning \`.value\` directly updates the DOM but leaves React's internal value tracker stale, so React swallows the event and the component never updates — the classic 'typed into the box but nothing happened' failure. Replaces the existing value rather than appending. For a \<select\> use ui\_select\_option; for a button use ui\_click.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1594).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1595).
 
 ```json title="Input schema"
 {
@@ -1315,7 +1315,7 @@ Set the value of an \<input\>, \<textarea\> or contenteditable, then fire input+
 
 Dispatch a keydown/keypress/keyup on a target element, or on whatever currently has focus when no target is given. Use for Escape (dismiss a Vortex modal), Enter (submit a search/filter), Tab, and arrow-key navigation. Note this dispatches DOM key events only — it does not drive the OS-level keyboard, so it will not reach a native menu or an OS file-picker dialog.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1612).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1613).
 
 ```json title="Input schema"
 {
@@ -1351,7 +1351,7 @@ Dispatch a keydown/keypress/keyup on a target element, or on whatever currently 
 
 Move the pointer over an element, firing the pointerover/mouseover/mouseenter sequence. Needed before clicking controls that appear on hover, where a JS handler (React's onMouseEnter and friends) is what reveals them. IMPORTANT LIMIT: this dispatches DOM events, which do NOT change the browser's own hover state, so a control revealed purely by a CSS \`:hover\` rule stays hidden — only a real mouse move can do that, and nothing in the renderer can produce one. Vortex's game tiles are exactly this case: the 'Manage' button sits in a \`.hover-content\` wrapper at opacity 0, so after ui\_hover it is still correctly reported as hidden. Two ways through: click it anyway with ui\_click + requireActionable=false (the handler fires regardless of opacity), or use the harness's \`realHover\`, which drives a real mouse over CDP.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1632).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1633).
 
 ```json title="Input schema"
 {
@@ -1375,7 +1375,7 @@ Move the pointer over an element, firing the pointerover/mouseover/mouseenter se
 
 Choose an option in a native \<select\>, by \`value\` or by visible \`label\`, firing input+change. Lists every available option in the error when nothing matches, so a failed guess immediately tells you what the valid choices were. Does NOT work on Vortex's custom React dropdowns, which are not \<select\> elements — drive those with ui\_click on the toggle, then ui\_click on the revealed item.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1651).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1652).
 
 ```json title="Input schema"
 {
@@ -1407,7 +1407,7 @@ Choose an option in a native \<select\>, by \`value\` or by visible \`label\`, f
 
 Scroll the window, or a specific scrollable element when given a ref/selector. Also dispatches a scroll event, which is what makes Vortex's virtualised tables actually mount the newly-revealed rows — without it the rows stay absent from the DOM and a following ui\_snapshot still cannot see them.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1672).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1673).
 
 ```json title="Input schema"
 {
@@ -1439,7 +1439,7 @@ Scroll the window, or a specific scrollable element when given a ref/selector. A
 
 Resize the real Electron window to test responsive layout. Unmaximises first, because setSize on a maximised window is silently ignored on Windows — without that, every size in a sweep reports the same maximised dimensions and the results are meaningless. Returns both the requested and the ACTUAL resulting size: the OS enforces the window's minimum, so a request below it is clamped, and comparing the two is how you tell. This moves the window of whoever is sitting in front of Vortex.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1689).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1690).
 
 ```json title="Input schema"
 {
@@ -1468,7 +1468,7 @@ Resize the real Electron window to test responsive layout. Unmaximises first, be
 
 Resize through a list of viewports, running the ui\_detect\_layout\_issues scan at each, then restore the original size — the restore runs even if the sweep fails partway, so it cannot strand the user's window at 1024x720. Defaults to 1024x720, 1280x800, 1600x900 and 1920x1080. Read the results as a DIFF across sizes rather than as pass/fail: an issue present at every width is usually a pre-existing quirk, while one that appears only below a threshold is the actual responsive regression. Structure only: an extension cannot screenshot (capturePage is main-process only), so for images at each size use the harness's \`doodlebot responsive --screenshots\`, which captures over CDP.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1709).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1710).
 
 ```json title="Input schema"
 {
@@ -1517,7 +1517,7 @@ Resize through a list of viewports, running the ui\_detect\_layout\_issues scan 
 
 Reload the renderer window, picking up a rebuilt renderer bundle WITHOUT restarting Electron — the hot-reload path after editing renderer code. Much cheaper than vortex\_restart: the main process, and so the open state database, survives. Does NOT pick up a change to MAIN-process code (nothing in the renderer can reload main) — use vortex\_restart for that. All ui\_snapshot refs are invalidated; take a fresh snapshot after the reload settles. The MCP connection drops briefly while the renderer tears down and this extension re-registers.
 
-**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1739).
+**Availability:** Bearer token required. [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/src/mcpServer.ts#L1740).
 
 ```json title="Input schema"
 {

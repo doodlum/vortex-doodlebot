@@ -62,14 +62,12 @@ export interface AiFixtures {
 }
 
 /**
- * No test-scoped fixtures: every fixture here is worker-scoped, because
- * launching Vortex costs minutes of Electron startup and nothing in these tests
- * needs a pristine app per assertion.
- *
- * `Record<string, never>` would look like the empty type but actually declares
- * an index signature that swallows the worker fixtures below.
+ * Apps and profiles are worker-scoped: startup is expensive and assertions share
+ * them. Test-scoped bookkeeping only marks failures so teardown retains evidence.
  */
-type NoTestFixtures = Record<never, never>;
+interface TestBookkeeping {
+  retainTestEvidence: void;
+}
 
 export async function freePort(): Promise<number> {
   const server = net.createServer();
@@ -84,7 +82,14 @@ export async function freePort(): Promise<number> {
   return port;
 }
 
-export const test = base.extend<NoTestFixtures, AiFixtures>({
+export const test = base.extend<TestBookkeeping, AiFixtures>({
+  retainTestEvidence: [
+    async ({ fixtureCleanup }, use, testInfo) => {
+      await use();
+      if (testInfo.status !== testInfo.expectedStatus) fixtureCleanup.preserveTestEvidence();
+    },
+    { auto: true },
+  ],
   fixtureCleanup: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
@@ -105,7 +110,9 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
             mcpPort,
             cdpPort,
             apiKey: undefined,
-            owner: `core-worker-${process.pid}`,
+            // Source fixtures intentionally join the suite's checkout lease. A new
+            // worker identity would conflict with the global setup holding it.
+            owner: process.env.VORTEX_AI_OWNER ?? `core-worker-${process.pid}`,
           }),
         );
         // New profiles stay anonymous even when slot 0 has an operator's cached OAuth.
@@ -158,6 +165,8 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
               env: buildInstanceEnv(userDataDir, config),
               cwd: path.dirname(config.target.executable),
               timeout: 180_000,
+              // Playwright otherwise adds --no-sandbox on Linux; test the sandbox users get.
+              chromiumSandbox: true,
             });
             // Preserve the parent cache if registration cannot confirm child shutdown.
             await registerLaunchedProcess(launched.process(), lease.identities, { context });
@@ -205,11 +214,10 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
   ],
 
   managedGame: [
-    async ({ config, mcp }, use) => {
-      const game = await ensureGameManaged(mcp, config.gameId, {
-        gamePath: config.gamePath,
-        config,
-      });
+    async ({ config, mcp, fixtureCleanup }, use) => {
+      const game = await fixtureCleanup.preserveOnFailure(() =>
+        ensureGameManaged(mcp, config.gameId, { gamePath: config.gamePath, config }),
+      );
       await use({ gameId: game.gameId, gamePath: game.gamePath });
     },
     { scope: "worker", timeout: 240_000 },

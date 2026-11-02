@@ -206,16 +206,41 @@ export async function waitForNode(
   timeoutMs = 30_000,
   selector?: string,
 ): Promise<SnapshotNode> {
-  const started = Date.now();
+  const deadline = Date.now() + timeoutMs;
+  const timeoutError = new DOMException(`UI wait timed out after ${timeoutMs} ms`, "TimeoutError");
+  const acquisition = new AbortController();
+  const timer = setTimeout(() => acquisition.abort(timeoutError), Math.max(0, timeoutMs));
   let last: Snapshot | undefined;
-  for (;;) {
-    last = await snapshot(mcp, selector);
-    const found = findNodes(last, query);
-    if (found.length > 0) return found[0] as SnapshotNode;
-    if (Date.now() - started > timeoutMs) {
-      return findOne(last, query); // throws with the useful candidate list
+  try {
+    for (;;) {
+      if (Date.now() >= deadline) {
+        if (last !== undefined) return findOne(last, query);
+        throw timeoutError;
+      }
+      last = await withUiLock(
+        mcp,
+        () => {
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) throw timeoutError;
+          return mcp.call<Snapshot>(
+            "ui_snapshot",
+            selector === undefined ? {} : { selector },
+            Math.min(5_000, remaining),
+          );
+        },
+        acquisition.signal,
+      );
+      const found = findNodes(last, query);
+      if (found.length > 0) return found[0] as SnapshotNode;
+      if (Date.now() >= deadline) {
+        return findOne(last, query); // throws with the useful candidate list
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))),
+      );
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  } finally {
+    clearTimeout(timer);
   }
 }
 

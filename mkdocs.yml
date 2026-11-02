@@ -59,6 +59,7 @@ nav:
       - Install and deploy a mod: guides/mod-workflows.md
       - Save a screenshot: guides/capture.md
       - Call app tools: guides/calling-tools.md
+      - Native Linux VM: guides/linux-vm.md
   - Test plan:
       - Collection and table coverage: testing/proposal.md
   - Reference:

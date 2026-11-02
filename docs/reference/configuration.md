@@ -14,6 +14,10 @@ can take precedence over an installed app. Select the runtime explicitly when ch
 
 ## Environment settings
 
+On Linux, `VORTEX_AI_OZONE_PLATFORM=wayland` or `x11` selects Electron's display backend.
+The corresponding guest display/runtime environment must already exist. See the
+[Linux VM guide](../guides/linux-vm.md); this setting does not start a desktop.
+
 | Setting                                     | Purpose and default                                                                     |
 | ------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `VORTEX_AI_OWNER`                           | Named operator/task; required by live/provisioning commands                             |

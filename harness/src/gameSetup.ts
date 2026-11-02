@@ -9,6 +9,7 @@
  * every machine, with no dependence on what a scan happens to turn up.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -37,6 +38,8 @@ export interface GameDefinition {
   steamDir?: string;
   /** Executable relative to the game's base path — used to sanity-check a candidate. */
   executable: string;
+  /** Additional native executable names accepted on Linux only. */
+  linuxExecutables?: string[];
 }
 
 /**
@@ -79,6 +82,7 @@ export const KNOWN_GAMES: Record<string, GameDefinition> = {
     steamAppId: "413150",
     steamDir: "Stardew Valley",
     executable: "Stardew Valley.exe",
+    linuxExecutables: ["StardewValley", "Stardew Valley"],
   },
   cyberpunk2077: {
     id: "cyberpunk2077",
@@ -91,12 +95,45 @@ export const KNOWN_GAMES: Record<string, GameDefinition> = {
 
 export class GameNotFoundError extends Error {}
 
+function unavailablePath(error: unknown): boolean {
+  return ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(
+    (error as NodeJS.ErrnoException).code ?? "",
+  );
+}
+
+function executableCandidates(game: GameDefinition): string[] {
+  return [game.executable, ...(process.platform === "linux" ? (game.linuxExecutables ?? []) : [])];
+}
+
+function gameFileExists(directory: string, executable: string): boolean {
+  try {
+    return fs.statSync(path.join(directory, executable)).isFile();
+  } catch (error) {
+    if (unavailablePath(error)) return false;
+    throw error;
+  }
+}
+
+/** A game directory must contain a supported executable file, not merely a matching name. */
+function validGamePath(directory: string, game?: GameDefinition): boolean {
+  try {
+    if (!fs.statSync(directory).isDirectory()) return false;
+  } catch (error) {
+    if (unavailablePath(error)) return false;
+    throw error;
+  }
+  return (
+    game === undefined ||
+    executableCandidates(game).some((executable) => gameFileExists(directory, executable))
+  );
+}
+
 /**
  * Every Steam library root on this machine, read from libraryfolders.vdf.
  *
  * Parsed with a regex rather than a full VDF parser: the only thing needed is
  * the `"path"` values, and pulling in a VDF dependency to read one key would be
- * disproportionate. A malformed file yields no roots, which surfaces as a clear
+ * disproportionate. A malformed file yields no extra roots, which surfaces as a clear
  * "not found" rather than a parse crash.
  */
 export function steamLibraryRoots(): string[] {
@@ -117,21 +154,62 @@ export function steamLibraryRoots(): string[] {
       /* Steam may not be installed for this Windows account. */
     }
   }
-  const steamRoots = [
-    ...(registered ? [registered] : []),
-    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Steam"),
-    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Steam"),
-  ].filter((p) => fs.existsSync(p));
+  const home = os.homedir();
+  const xdgData = process.env.XDG_DATA_HOME;
+  const candidates =
+    process.platform === "linux"
+      ? [
+          ...(xdgData && path.isAbsolute(xdgData) ? [path.join(xdgData, "Steam")] : []),
+          path.join(home, ".local", "share", "Steam"),
+          path.join(home, ".steam", "debian-installation"),
+          path.join(home, ".steam", "steam"),
+          path.join(home, ".steam", "root"),
+          path.join(home, "snap", "steam", "common", ".local", "share", "Steam"),
+          path.join(home, ".var", "app", "com.valvesoftware.Steam", "data", "Steam"),
+          path.join(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"),
+        ]
+      : [
+          ...(registered ? [registered] : []),
+          path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Steam"),
+          path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Steam"),
+        ];
+  const steamRoots = new Set<string>();
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isDirectory()) {
+        steamRoots.add(process.platform === "linux" ? fs.realpathSync(candidate) : candidate);
+      }
+    } catch (err) {
+      if (!unavailablePath(err)) throw err;
+    }
+  }
 
   const roots = new Set<string>(steamRoots);
   for (const steamRoot of steamRoots) {
-    const vdf = path.join(steamRoot, "steamapps", "libraryfolders.vdf");
-    if (!fs.existsSync(vdf)) continue;
-    const content = fs.readFileSync(vdf, "utf8");
-    for (const match of content.matchAll(/"path"\s+"([^"]+)"/g)) {
-      // VDF escapes backslashes.
-      const value = match[1];
-      if (value !== undefined) roots.add(value.replace(/\\\\/g, "\\"));
+    for (const directory of ["steamapps", "config"]) {
+      let content: string;
+      try {
+        content = fs.readFileSync(path.join(steamRoot, directory, "libraryfolders.vdf"), "utf8");
+      } catch (err) {
+        if (unavailablePath(err)) continue;
+        throw err;
+      }
+      for (const match of content.matchAll(/"path"\s+"([^"]+)"/g)) {
+        // VDF escapes backslashes.
+        const value = match[1];
+        if (value === undefined) continue;
+        let library = value.replace(/\\\\/g, "\\");
+        if (process.platform === "linux") {
+          try {
+            library = fs.realpathSync(library);
+          } catch (err) {
+            // Retain unavailable libraries in the search diagnostics; aliases that exist
+            // resolve to the same physical root as the client candidates above.
+            if (!unavailablePath(err)) throw err;
+          }
+        }
+        roots.add(library);
+      }
     }
   }
   return [...roots];
@@ -153,7 +231,13 @@ export function findGamePath(
     if (game.steamAppId !== undefined) {
       const manifest = path.join(root, "steamapps", `appmanifest_${game.steamAppId}.acf`);
       if (!fs.existsSync(manifest)) continue;
-      const data = fs.readFileSync(manifest, "utf8");
+      let data: string;
+      try {
+        data = fs.readFileSync(manifest, "utf8");
+      } catch (err) {
+        if (unavailablePath(err)) continue;
+        throw err;
+      }
       const installedDirectory = data.match(/"installdir"\s+"([^"]+)"/i)?.[1];
       if (installedDirectory) {
         if (
@@ -166,7 +250,7 @@ export function findGamePath(
       }
     }
     const candidate = path.join(root, "steamapps", "common", directory);
-    if (fs.existsSync(path.join(candidate, game.executable))) return candidate;
+    if (validGamePath(candidate, game)) return candidate;
   }
   return undefined;
 }
@@ -211,17 +295,13 @@ export async function ensureGameManaged(
   }
 
   const game = KNOWN_GAMES[gameId];
-  if (
-    options.gamePath !== undefined &&
-    (!fs.existsSync(options.gamePath) ||
-      (game !== undefined && !fs.existsSync(path.join(options.gamePath, game.executable))))
-  ) {
+  if (options.gamePath !== undefined && !validGamePath(options.gamePath, game)) {
     throw new GameNotFoundError(
       `Invalid explicit game path: ${options.gamePath}. Correct it or use --sandbox; an explicit path never falls back to your installed game.`,
     );
   }
 
-  const existing = await mcp.call<{ path?: string } | null>("vortex_query", {
+  const existing = await mcp.call<{ path?: string; executable?: string } | null>("vortex_query", {
     path: ["settings", "gameMode", "discovered", gameId],
   });
   const alreadyKnown = existing?.path !== undefined && fs.existsSync(existing.path);
@@ -238,24 +318,39 @@ export async function ensureGameManaged(
     if (gamePath === undefined) {
       throw new GameNotFoundError(
         `${game.name} does not appear to be installed — no Steam appmanifest ` +
-          `(appmanifest_${game.steamAppId ?? "?"}.acf) plus ${game.executable} in any Steam ` +
+          `(appmanifest_${game.steamAppId ?? "?"}.acf) plus ${executableCandidates(game).join(" or ")} in any Steam ` +
           `library on this machine. Install it, or pass an explicit --game-path.`,
       );
     }
   }
 
-  if (!alreadyKnown || existing?.path !== gamePath) {
+  const registerPath = !alreadyKnown || existing?.path !== gamePath;
+  // Linux game support can declare a native executable by default. A known
+  // Windows installation needs the same override native discovery would record.
+  // Repair old harness profiles without replacing an explicit user override.
+  const registerExecutable =
+    process.platform === "linux" &&
+    game !== undefined &&
+    /\.(exe|bat|cmd)$/i.test(game.executable) &&
+    gameFileExists(gamePath, game.executable) &&
+    (registerPath || !existing?.executable);
+  if (registerPath || registerExecutable) {
     await mcp.call("vortex_dispatch", {
       action: "type:ADD_DISCOVERED_GAME",
       args: [
         {
           id: gameId,
           result: {
-            path: gamePath,
-            pathSetManually: true,
-            store: "steam",
-            // "Found at" rather than "last seen" — matches the field's own contract.
-            timestamp: Date.now(),
+            ...(registerPath
+              ? {
+                  path: gamePath,
+                  pathSetManually: true,
+                  store: "steam",
+                  // "Found at" rather than "last seen" — matches the field's own contract.
+                  timestamp: Date.now(),
+                }
+              : {}),
+            ...(registerExecutable ? { executable: game.executable } : {}),
           },
         },
       ],
@@ -274,10 +369,26 @@ export async function ensureGameManaged(
     // The activation is also genuinely asynchronous (it sets up the profile and
     // can deploy), so returning the moment the event is emitted would hand back
     // a game that is not active yet.
-    activated = await activateGame(mcp, options.config, gameId, game?.name ?? gameId);
+    activated = await activateGame(
+      mcp,
+      options.config,
+      gameId,
+      game?.name ?? (await knownGameName(mcp, gameId)) ?? gameId,
+    );
   }
 
   return { gameId, gamePath, activated, alreadyKnown };
+}
+
+/**
+ * The name Vortex shows for `gameId`: the Games page is searched by it, and an id such as
+ * `7daystodie` matches no tile ("7 Days to Die").
+ */
+async function knownGameName(mcp: VortexMcpClient, gameId: string): Promise<string | undefined> {
+  const known = await mcp.call<{ id: string; name?: string }[] | null>("vortex_query", {
+    path: ["session", "gameMode", "known"],
+  });
+  return known?.find((entry) => entry.id === gameId)?.name;
 }
 
 /**

@@ -1,10 +1,13 @@
+import type { Frame } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { captureScreenshot, realHover } from "../cdp";
-import { clickByName, fillByName, snapshot, flatten, waitForNode } from "../uiDriver";
+import { clickByName, fillByName, flatten, waitForNode } from "../uiDriver";
+import type { Snapshot } from "../uiDriver";
 import { expect, test } from "./fixtures";
 import { runResponsiveSweep } from "../responsive";
 import { expectScreenshot } from "./screenshotAssertions";
+import { observeApp } from "./appDiagnostics";
 
 test("records screenshots and layout evidence for independent width and height changes", async ({
   config,
@@ -153,18 +156,68 @@ test("screenshots contain a real PNG and leave the app connected", async ({
 test("renderer reload completes and invalidates earlier references", async ({
   mcp,
   vortexWindow,
-}) => {
-  const old = await mcp.call<{ runtimeId: string }>("automation_status");
-  const ref = flatten((await snapshot(mcp)).tree)[0]!.ref;
-  await mcp.call("ui_reload_renderer");
-  await expect
-    .poll(
-      async () =>
-        (await mcp.call<{ runtimeId: string }>("automation_status").catch(() => old)).runtimeId,
-      { timeout: 60_000 },
-    )
-    .not.toBe(old.runtimeId);
-  await snapshot(mcp);
-  await expect(mcp.call("ui_click", { ref })).rejects.toThrow(/stale or unknown ref/i);
-  await expect(vortexWindow.locator("body")).toBeVisible();
+  vortexApp,
+}, testInfo) => {
+  // Keep the full 60-second reload assertion, with time left for bounded RPCs
+  // and the diagnostic attachment even when that assertion fails.
+  test.setTimeout(90_000);
+  const old = await mcp.call<{ runtimeId: string }>("automation_status", {}, 3_000);
+  const ref = flatten((await mcp.call<Snapshot>("ui_snapshot", {}, 3_000)).tree)[0]!.ref;
+  const pageBefore = await vortexWindow.evaluate(() => ({
+    url: location.href,
+    timeOrigin: performance.timeOrigin,
+    visibility: document.visibilityState,
+  }));
+  const navigations: string[] = [];
+  const pageErrors: string[] = [];
+  const probes: unknown[] = [];
+  const appObservation = await observeApp(vortexApp, vortexWindow);
+  const started = Date.now();
+  const onNavigation = (frame: Frame) => {
+    if (frame === vortexWindow.mainFrame()) navigations.push(frame.url());
+  };
+  const onError = (error: Error) => pageErrors.push(error.message);
+  vortexWindow.on("framenavigated", onNavigation);
+  vortexWindow.on("pageerror", onError);
+  try {
+    await mcp.call("ui_reload_renderer", {}, 3_000);
+    await expect
+      .poll(
+        async () => {
+          // A disconnected status request must not consume the whole reload deadline.
+          try {
+            const status = await mcp.call<{ runtimeId: string }>("automation_status", {}, 1_000);
+            probes.push({ elapsedMs: Date.now() - started, runtimeId: status.runtimeId });
+            return status.runtimeId;
+          } catch (error) {
+            probes.push({
+              elapsedMs: Date.now() - started,
+              error: error instanceof Error ? error.message : String(error),
+              cause:
+                error instanceof Error && error.cause instanceof Error
+                  ? error.cause.message
+                  : undefined,
+            });
+            return old.runtimeId;
+          }
+        },
+        { timeout: 60_000 },
+      )
+      .not.toBe(old.runtimeId);
+    await mcp.call<Snapshot>("ui_snapshot", {}, 3_000);
+    await expect(mcp.call("ui_click", { ref }, 3_000)).rejects.toThrow(/stale or unknown ref/i);
+    await expect(vortexWindow.locator("body")).toBeVisible({ timeout: 5_000 });
+  } finally {
+    vortexWindow.off("framenavigated", onNavigation);
+    vortexWindow.off("pageerror", onError);
+    const app = await appObservation();
+    await testInfo.attach("renderer-reload-observations", {
+      body: JSON.stringify(
+        { before: old.runtimeId, pageBefore, navigations, pageErrors, probes, app },
+        null,
+        2,
+      ),
+      contentType: "application/json",
+    });
+  }
 });

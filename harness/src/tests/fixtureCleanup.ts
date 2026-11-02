@@ -6,6 +6,11 @@ import { processAlive, type LeaseEnv, type LeaseIdentity } from "../lease";
 export class FixtureCleanup {
   private failed = false;
   private failure: unknown;
+  private testFailed = false;
+
+  preserveTestEvidence(): void {
+    this.testFailed = true;
+  }
 
   async preserveOnFailure<T>(action: () => Promise<T>): Promise<T> {
     try {
@@ -23,6 +28,10 @@ export class FixtureCleanup {
         `Preserved ${dir} because fixture validation, launch or shutdown failed; inspect its evidence and any running app before cleanup.`,
         { cause: this.failure },
       );
+    if (this.testFailed) {
+      console.warn(`Preserved ${dir} because a core test failed; inspect its logs and profile.`);
+      return;
+    }
     removeInstanceDir(dir);
   }
 }

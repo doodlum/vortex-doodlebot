@@ -29,6 +29,7 @@ import { parseJson, stripBom } from "./jsonFile";
 import { RendererEvalRefused, evalInRenderer } from "./rendererEval";
 import { assertStandaloneWatch, watchAndReload } from "./hotReload";
 import { abortOnSignals } from "./processRunner";
+import { deployLinuxVm, inspectLinuxVm, runLinuxDesktop, runLinuxVm } from "./linuxVm";
 import { LIVE_COMMANDS, withLiveOperation } from "./liveOperation";
 import { inheritedOperation, type OperationContext } from "./operations";
 import {
@@ -175,6 +176,13 @@ Instance lifecycle
     --update             Fetch origin and upstream in an existing clone
     --no-build           Clone only
     --where              Print managed source path
+  vm inspect|deploy|run|desktop  Native Linux guest over SSH (key authentication required)
+    desktop             JSON-lines Wayland input; approve the guest portal once
+      --desktop-cache-dir </private/guest/directory>  Optional guest-only restore token cache
+    --host <user@host> --directory </guest/path> --owner <name>
+    --include <file>      Include an untracked source file in deploy; repeatable
+                         deploy creates a new directory, never overwrites one
+                         run -- <harness arguments> runs the guest's harness
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
   readiness              Evaluate strict revision-bound task evidence; never runs gates
@@ -342,6 +350,32 @@ async function main(): Promise<number> {
     );
     log(flags.json === true ? JSON.stringify(report, null, 2) : formatPullRequestChecks(report));
     return pullRequestChecksPassed(report) ? 0 : 1;
+  }
+
+  if (command === "vm") {
+    const host = flags.host;
+    const directory = flags.directory;
+    if (typeof host !== "string" || typeof directory !== "string")
+      throw new ConfigError(
+        "vm needs --host <SSH alias|user@host> --directory </absolute/guest/path>.",
+      );
+    const options = {
+      host,
+      directory,
+      owner: requireNamedOwner(typeof flags.owner === "string" ? flags.owner : undefined),
+      include: lists.include,
+      onOutput: (chunk: Buffer) => process.stdout.write(chunk),
+    };
+    if (positional[0] === "inspect") return inspectLinuxVm(options);
+    if (positional[0] === "deploy") return deployLinuxVm(options);
+    if (positional[0] === "run") return runLinuxVm(options, passthrough);
+    if (positional[0] === "desktop")
+      return runLinuxDesktop({
+        ...options,
+        desktopCacheDir:
+          typeof flags["desktop-cache-dir"] === "string" ? flags["desktop-cache-dir"] : undefined,
+      });
+    throw new ConfigError("Use vm inspect, deploy, desktop, or run -- <harness arguments>.");
   }
 
   if (command === "readiness") {

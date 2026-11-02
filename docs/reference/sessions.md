@@ -1,5 +1,24 @@
 # Sessions
 
+For experimental native Linux sessions, the [VM guide](../guides/linux-vm.md) describes SSH
+deployment and display setup. `VORTEX_AI_OZONE_PLATFORM=wayland` or `x11` adds a Linux-only
+Electron backend flag before launch. It neither creates a display nor disables sandboxing;
+the usual isolated profile and clean shutdown checks still apply inside the guest.
+
+When a known game has no explicit install path, the harness searches Steam manifests.
+Linux lookup includes the XDG/default data directory, legacy aliases, Snap and Flatpak
+clients, plus additional libraries in each client's `libraryfolders.vdf`. It deduplicates
+client aliases and requires a supported executable file alongside the app manifest.
+Linux Stardew accepts `StardewValley` or `Stardew Valley` for a native install and
+`Stardew Valley.exe` for Proton; Windows accepts the Windows filename. Directories named
+like executables are refused. An invalid explicit `--game-path` never falls back to another
+installation. See the [VM game setup procedure](../guides/linux-vm.md#run-and-verify).
+For a known Windows installation on Linux, setup records its executable override and
+repairs a missing override in a cached profile when that file exists. Explicit executable
+overrides and the existing discovery timestamp are preserved when only repairing the filename.
+Native-only installs receive no Windows override. Path validation is separate from observing
+the actual native or Proton game process and window.
+
 Import from `./harness/benchmarks/index`. The callback's `vortex` argument is a `BenchmarkSession`; do not construct it yourself.
 
 ## withVortex

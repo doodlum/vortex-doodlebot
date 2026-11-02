@@ -2,6 +2,9 @@
 
 The site uses MkDocs Material. Human guides live in `docs/`, navigation is in `mkdocs.yml`, and the repository README links to the published site.
 
+The experimental Linux VM guide is paired with the harness operating/testing manuals through
+`scripts/documentation-map.json`; update these together when SSH deployment behavior changes.
+
 ## Install the site tools
 
 With Python available, install the pinned documentation dependencies:

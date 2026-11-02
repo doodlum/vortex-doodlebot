@@ -9,6 +9,10 @@ The human CLI reference contains the command inventory and canonical guide links
 
 ## Common context
 
+Native Linux VM transport: `harness/src/linuxVm.ts`, its regression tests, and
+[human VM guide](../docs/guides/linux-vm.md). Runtime specialists distinguish source transfer,
+guest dependency/build readiness, graphical session setup and verified app lifecycle.
+
 Every worker receives the user's scope and exclusions, the neutral task, acceptance criteria,
 revision, relevant repository instructions and resource/cleanup responsibilities. Load this
 small common context and the applicable paths below, then follow referenced contracts when

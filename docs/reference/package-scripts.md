@@ -50,3 +50,4 @@ Run these from the repository root with `pnpm run <name>`. Test selection, accou
 | `ai:test:plugins-page`              | `tsx harness/src/tests/plugins-page.e2e.ts`                                                                                                                                |
 | `ai:test:download-churn`            | `tsx harness/src/tests/download-churn.e2e.ts`                                                                                                                              |
 | `ai:test:mods-scroll`               | `tsx harness/src/tests/mods-scroll.e2e.ts`                                                                                                                                 |
+| `ai:test:real-mode`                 | `tsx harness/src/tests/real-mode.e2e.ts`                                                                                                                                   |

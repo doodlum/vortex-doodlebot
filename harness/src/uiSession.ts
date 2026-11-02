@@ -4,14 +4,34 @@ import type { VortexMcpClient } from "./mcpClient";
 const owners = new AsyncLocalStorage<VortexMcpClient>();
 const queues = new WeakMap<VortexMcpClient, Promise<unknown>>();
 
-/** Keep background dialog snapshots from invalidating a foreground action's refs. */
-export async function withUiLock<T>(mcp: VortexMcpClient, action: () => Promise<T>): Promise<T> {
+/** Keep snapshots serialized. A signal cancels acquisition, never the current holder's action. */
+export async function withUiLock<T>(
+  mcp: VortexMcpClient,
+  action: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted();
   if (owners.getStore() === mcp) return action();
   const previous = queues.get(mcp) ?? Promise.resolve();
-  const result = previous.catch(() => undefined).then(() => owners.run(mcp, action));
+  let started = false;
+  const result = previous
+    .catch(() => undefined)
+    .then(() => {
+      signal?.throwIfAborted();
+      started = true;
+      return owners.run(mcp, action);
+    });
   queues.set(
     mcp,
     result.catch(() => undefined),
   );
-  return result;
+  if (signal === undefined) return result;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      if (!started) reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    result.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+    if (signal.aborted) onAbort();
+  });
 }

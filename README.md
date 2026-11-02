@@ -1,5 +1,10 @@
 # Doodlebot
 
+Experimental native Linux VM deployment is being developed on `codex/linux-vm`.
+It includes SSH orchestration and consented Wayland desktop input with private
+permission restoration. See the [Linux VM guide](docs/guides/linux-vm.md) for setup
+and verification.
+
 Doodlebot is a development and testing toolkit for [Vortex](https://github.com/Nexus-Mods/Vortex), the Nexus Mods mod manager. It lets developers and AI agents inspect a running Vortex, operate its UI, and verify what happened through app state, visible results and deployed files.
 
 It combines two parts:

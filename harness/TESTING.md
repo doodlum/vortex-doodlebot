@@ -6,6 +6,38 @@ feature regression is useful evidence for that feature, but is not a universal k
 
 ## Fast gate
 
+Linux VM transport: `pnpm exec vitest run harness/src/linuxVm.test.ts harness/src/cliArgs.test.ts`
+requires kit dependencies and Git, no guest. Covers argument boundaries, shell quoting, native
+backend selection and binary edits/deletions reconstructed over a bundle. Real VM verification
+is separate: native revision, guest dependencies/display, MCP readiness, live schemas, snapshot,
+clean shutdown and applicable core. Human instructions: [Linux VM](../docs/guides/linux-vm.md).
+
+Desktop transport adds Node-owned JSON-stdin forwarding, child exit/cancellation and operation
+ownership checks to `linuxVm.test.ts`; `processRunner.test.ts` covers exact UTF-8/EOF,
+early child exit and reaped children after input failure. Run `python3 -m unittest discover -s harness
+-p linux_desktop_test.py -v` inside Linux for actual private modes, no-follow paths,
+FIFO refusal, flock exclusion and token rotation, plus input validation, release of
+partially sent chords, buffered/fragmented input and a full queue finishing without
+dropping accepted commands. These use inert notifications,
+need no dbus/GI or desktop, and do not establish portal behavior. The ten pure
+input tests also run on Windows; the six Linux cache tests skip there. A real portal
+check needs Python dbus/GI and a logged-in Wayland desktop: grant once, close/reconnect,
+verify token flags and actual keyboard/pointer effects, then close/reap the session.
+Verify text separately against the target toolkit/layout. The explicit compose mode
+needs GTK/IBus Unicode composition; ordinary Unicode keysyms can be dropped by the
+compositor. Check actual returned text rather than accepting a `sent` acknowledgment.
+Use a private guest cache; never collect its token contents. Follow the human VM guide.
+
+`pnpm exec vitest run harness/src/gameSetup.test.ts` needs kit dependencies only. Real
+temporary-directory fixtures cover Linux Steam locations, absolute/relative XDG settings,
+client directory aliases, alternate libraries, unreadable library files and the required
+manifest/executable pair. Native Stardew explicit-path and manifest fixtures cover both
+Linux names, Windows-only rejection, executable directories and strict invalid-path refusal
+even when another installed copy exists. Windows executable override/repair controls remain.
+The Windows registry/fallback case retains escaped-library-path coverage. These fixtures do
+not prove native or Proton game activation; check the actual guest path and managed state
+with the live tools and observe the intended game process/window separately.
+
 Cold setup regressions: `pnpm exec vitest run harness/src/bootstrap.test.ts` requires installed
 kit dependencies but no Vortex, game or account. Mocked launches and temporary directories
 verify register/flush/native-startup ordering, delayed activation, private path validation,
@@ -19,6 +51,15 @@ enable/deploy/purge, warm/reset reuse and graceful shutdown.
 helpers with fake clocks and MCP transport. Watcher failures are captured immediately, abort
 further active-game polling, and await in-flight work before rejecting. Separate UI activation
 and watcher errors remain distinct causes. These tests need no Vortex, game or account.
+
+Launch/process regressions: `pnpm exec vitest run src/vortexControl.test.ts src/linuxProcess.test.ts`
+requires installed kit dependencies, with no Vortex, game or account. Mocked public API calls
+check spawn responses, completion without a child, pre/post-spawn rejection and primary-tool
+fallback. Linux starts and cleans up owned Node children with a long process name and with a
+renamed main thread. The latter uses a temporary copy of the runtime to prove native executable
+identity independently of the thread name; no compiler is needed. Windows skips both cases. Pure matching
+tests cover truncated names, Windows filename case and unrelated interpreter arguments. These
+checks do not prove real Vortex/Proton launch; observe a new game process and window separately.
 
 `pnpm run ci` runs types, lint, formatting, paired documentation checks and their negative
 controls, unit and filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials and an
@@ -67,6 +108,15 @@ Watch tests check source edits/additions/deletions, contention without lost upda
 build/copy/reload guards, immutable inputs through edit/Undo, build failure and cancellation,
 verified generation freshness, staged publication/copy rollback and foreign profiles at every
 attachment/reload boundary. Fixture tests include rejected shutdowns without an error value.
+UI wait deadline coverage uses an intentionally unanswered local HTTP request:
+`pnpm exec vitest run harness/src/uiDriver.test.ts harness/src/uiSession.test.ts` needs no app, game or account. A
+snapshot request is capped by the remaining wait and five seconds, so a lost renderer
+fails promptly. Actual-lock contention controls require a queued wait to expire
+without a later snapshot; nested and admitted transactions retain their lock until
+their action finishes. The core suite checks active game state and explicitly opens its Mods
+workspace; modern Vortex can keep global navigation open after game activation. Failure
+attachments include bounded process, window and navigation observations alongside RPC
+probes. A renderer context's `exit` event alone is not evidence of an OS process crash.
 Evidence tests
 check real CLI exclusion/cancellation, source/runtime drift, applicable gates, nonempty complete
 selection and changed E2E failures. A happy-path schema test alone cannot prove these contracts.
@@ -91,6 +141,22 @@ evidence that this run passed, or force shutdown/delete the fixture to hide the 
 files. It uses disposable profiles, games, and credentials, independent of the operator's
 login. Run it after changes to the extension, launch/cache code, UI driver or deployment,
 and before releasing the kit.
+
+Set `VORTEX_AI_OWNER` for the run. The single worker intentionally uses the suite's
+named owner to join its source-checkout lease; each fixture still has a disposable
+profile, anonymous credentials and separate debug ports. A different worker owner
+cannot join the parent runner's source checkout.
+
+For a native Linux source run, expose a user-installed runtime through `DOTNET_ROOT`
+and `PATH`; a successful SDK check in a different shell is insufficient. The core
+viewport fixtures need a 1920×1080 desktop at 100% scaling to avoid compositor
+constraints on the requested 1600×900 windows. Retain prerequisite failures separately
+from subsequent app assertions.
+
+Unexpected test failures retain the worker's disposable profile and parent cache even
+when shutdown succeeds; teardown still checks logs and confirms process exit. Failed
+shutdown continues to fail teardown and retain ownership. Reload failures attach bounded
+MCP probe results and independent navigation/page errors for diagnosis.
 
 - Launch and clean shutdown; cold/warm/fresh profile semantics and game activation.
 - No unrecoverable errors in the fixture's main/renderer logs, including rotated logs.

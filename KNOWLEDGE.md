@@ -140,6 +140,27 @@ single-instance lock, so a harness instance runs beside the user's Vortex (relea
 three). It also disables quick discovery and `discover-game`, so the Games page never lists a
 game by itself. Register the path with a raw `type:ADD_DISCOVERED_GAME` dispatch.
 
+### Playwright's Electron launch disables Chromium's sandbox on Linux
+
+`_electron.launch` prepends `--no-sandbox` on Linux unless `chromiumSandbox: true`, so core
+tests passed against an unpacked package whose `chrome-sandbox` was not root-owned 4755, while
+`up`/`bootstrap` (plain `spawn`) aborted with SIGTRAP and a "SUID sandbox helper" FATAL in
+`vortex-stdio.log`. The core fixture now passes `chromiumSandbox: true`. Repair a rebuilt unpacked
+helper with `sudo chown root:root` and `chmod 4755`; installed DEB/RPM packages set it themselves.
+Evidence: playwright-core 1.61.1 `Electron.launch`; VM run 2026-10-22, linux-unpacked of `e68d1bc5f`.
+
+### Test mode and JavaScript clicks hid a real-click renderer crash
+
+Every harness check ran with `VORTEX_E2E=1` (no detection or discovery) and clicked through
+JavaScript/MCP. A real click on Games → Add game reloaded Vortex: the renderer aborted with
+`Fatal error in V8: Isolate::PushStackTraceAndDie null prototype chain root` (exit 139, minidump
+frame `V8FatalErrorCallback`). Node 24's `AsyncLocalStorage.getStore()` reads V8's
+continuation-preserved embedder data, which Blink sets during user-input tasks; the Linux port's
+game-path context called it synchronously from the click. Upstream's renderer telemetry avoids
+AsyncLocalStorage for the same reason. Remedy: no AsyncLocalStorage in renderer code; reproduce
+input paths with `ai:test:real-mode` (real CDP mouse, Playwright `locator.click`), not
+`element.click()`. Evidence: VM 2026-10-22, linux `2e3888e8d`; crash stderr names `getStore`.
+
 ## Building Vortex from here
 
 ### lease run ran the kit's scripts, under the kit's pnpm
@@ -607,9 +628,10 @@ the game as needing a deploy, so a Deploy button or reminder never appears. The
 
 Clearing a primary tool writes `null`, which an `!== undefined` check launches as a tool named
 "null"; treat `null` and `""` as unset. A restored snapshot's tool path may be gone, or its binary
-stale, spawning and exiting having started nothing. `runExecutable` resolving means only that a
-process started, and a working loader exits too. Watch for the **game's** process and fall back to
-launching it directly, as `launchGame` does (`processWaitMs` for tests).
+stale, spawning and exiting having started nothing. The public `runExecutable` promise resolves
+after command completion; its `onSpawned(pid)` callback reports a child start. Neither proves a
+loader started the game. Watch for the **game's** process and fall back to launching it directly,
+as `launchGame` does (`processWaitMs` for tests; `src/vortexControl.test.ts`).
 
 ### Deploy prompts whose default destroys files
 

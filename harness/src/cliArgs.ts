@@ -71,7 +71,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   // separator makes the documented invocation work instead of printing help.
   const args = argv[0] === "--" ? argv.slice(1) : argv;
   const [command = "help", ...rest] = args;
-  const runsCommand = command === "lease" || command === "evidence";
+  const runsCommand = command === "lease" || command === "evidence" || command === "vm";
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
   const lists: Record<string, string[]> = {};

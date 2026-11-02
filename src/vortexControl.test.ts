@@ -1,6 +1,8 @@
 import path from "node:path";
 import os from "node:os";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -888,12 +890,17 @@ describe("vortexControl: games", () => {
 
       await launchGame(api);
 
-      expect(runExecutable).toHaveBeenCalledWith(toolPath, [], {
-        cwd: undefined,
-        shell: false,
-        detach: true,
-        suggestDeploy: true,
-      });
+      expect(runExecutable).toHaveBeenCalledWith(
+        toolPath,
+        [],
+        expect.objectContaining({
+          gameId: "skyrimse",
+          cwd: undefined,
+          shell: false,
+          detach: true,
+          suggestDeploy: true,
+        }),
+      );
     } finally {
       await rm(toolRoot, { recursive: true, force: true });
     }
@@ -924,6 +931,165 @@ describe("vortexControl: games", () => {
       expect.objectContaining({ suggestDeploy: true }),
     );
   });
+
+  it.each(["game", "primary tool"])(
+    "launchGame returns after spawn for %s without waiting for exit",
+    async (kind) => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "vortex-spawn-contract-"));
+      const toolPath = path.join(directory, "external-loader.exe");
+      await writeFile(toolPath, "loader fixture");
+      const primary = kind === "primary tool";
+      vi.mocked(selectors.knownGames).mockReturnValue([
+        { id: "skyrimse", ...(primary ? {} : { executable: "Game.exe" }) },
+      ] as never);
+      const api = fakeApi();
+      (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+        settings: {
+          interface: { primaryTool: primary ? { skyrimse: "external" } : {} },
+          gameMode: {
+            discovered: {
+              skyrimse: {
+                path: path.join(directory, "game"),
+                tools: { external: { path: toolPath } },
+              },
+            },
+          },
+        },
+      });
+      let complete!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      let captured: { onSpawned?: (pid?: number) => void; gameId?: string } | undefined;
+      const runExecutable = vi.fn(
+        (_exe: string, _args: string[], options: NonNullable<typeof captured>) => {
+          captured = options;
+          return completion;
+        },
+      );
+      (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
+      let settled = false;
+      const launching = launchGame(api, "skyrimse").then((value) => {
+        settled = true;
+        return value;
+      });
+      try {
+        await vi.waitFor(() => expect(captured).toBeDefined());
+        captured?.onSpawned?.(12345);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(settled).toBe(true);
+        expect(captured?.gameId).toBe("skyrimse");
+        expect(runExecutable).toHaveBeenCalledTimes(1);
+      } finally {
+        complete();
+        await launching;
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("launchGame rejects a spawn error even when Vortex calls onSpawned without a PID", async () => {
+    vi.mocked(selectors.knownGames).mockReturnValue([
+      { id: "skyrimse", executable: "missing.exe" },
+    ] as never);
+    const api = fakeApi();
+    (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+      settings: {
+        interface: { primaryTool: {} },
+        gameMode: { discovered: { skyrimse: { path: "missing-game" } } },
+      },
+    });
+    const failure = Object.assign(new Error("executable missing"), { code: "ENOENT" });
+    const runExecutable = vi.fn(
+      (_exe: string, _args: string[], options: { onSpawned?: (pid?: number) => void }) => {
+        options.onSpawned?.(undefined);
+        return Promise.reject(failure);
+      },
+    );
+    (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
+    await expect(launchGame(api, "skyrimse")).rejects.toBe(failure);
+  });
+
+  it("launchGame handles a later execution rejection after returning the spawn response", async () => {
+    vi.mocked(selectors.knownGames).mockReturnValue([
+      { id: "skyrimse", executable: "Game.exe" },
+    ] as never);
+    const api = fakeApi();
+    (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+      settings: {
+        interface: { primaryTool: {} },
+        gameMode: { discovered: { skyrimse: { path: "game" } } },
+      },
+    });
+    let fail!: (error: Error) => void;
+    const completion = new Promise<void>((_resolve, reject) => {
+      fail = reject;
+    });
+    const runExecutable = vi.fn(
+      (_exe: string, _args: string[], options: { onSpawned?: (pid?: number) => void }) => {
+        options.onSpawned?.(12345);
+        return completion;
+      },
+    );
+    (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
+    const result = await launchGame(api, "skyrimse");
+    fail(new Error("game subsequently exited with an error"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(result).toContain("Game.exe");
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "launchGame recognizes a live long Linux game name after a primary tool starts",
+    async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "vortex-live-process-"));
+      const image = `dbot-${process.pid}-long-game.exe`;
+      const child = spawn(
+        process.execPath,
+        [
+          "-e",
+          "process.title = process.argv[1]; process.send('ready'); setInterval(() => {}, 1000)",
+          image,
+        ],
+        { stdio: ["ignore", "ignore", "inherit", "ipc"] },
+      );
+      const exit = once(child, "exit");
+      const toolPath = path.join(directory, "external-loader.exe");
+      try {
+        await once(child, "message");
+        await writeFile(toolPath, "loader fixture");
+        vi.mocked(selectors.knownGames).mockReturnValue([
+          { id: "skyrimse", executable: image },
+        ] as never);
+        const api = fakeApi();
+        (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+          settings: {
+            interface: { primaryTool: { skyrimse: "external" } },
+            gameMode: {
+              discovered: {
+                skyrimse: { path: directory, tools: { external: { path: toolPath } } },
+              },
+            },
+          },
+        });
+        const runExecutable = vi.fn(
+          async (
+            _exe: string,
+            _args: string[],
+            options: { onSpawned?: (pid?: number) => void },
+          ) => {
+            options.onSpawned?.(child.pid);
+          },
+        );
+        (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
+        expect(await launchGame(api, "skyrimse", { processWaitMs: 1000 })).toBe(toolPath);
+        expect(runExecutable).toHaveBeenCalledTimes(1);
+      } finally {
+        child.kill("SIGTERM");
+        await exit;
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("launchGame treats a cleared primary tool as no primary tool", async () => {
     // Clearing one leaves `null` behind rather than removing the key, so an

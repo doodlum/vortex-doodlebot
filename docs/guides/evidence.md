@@ -15,3 +15,10 @@ Record the collection revision and cache mode for real downloads. Record the gen
 Use [screenshots](capture.md) to explain visual problems. CPU profiles can help explain a slowdown after you reproduce it; profiling itself adds overhead, so collect it in a separate diagnostic run.
 
 Before sharing an artifact, check for account information, credentials, personal paths, or unrelated content. See [security and privacy](../security.md).
+
+For [Linux desktop input](linux-vm.md#control-the-wayland-desktop), retain the device
+and restoration flags, a visible result and the session's shutdown outcome. An input
+acknowledgment proves event submission; a screenshot or returned field value proves
+what the target received. The controller does not echo typed text or export its
+guest-only permission token. Collect only the test text and screenshots needed for
+the case. A transport exit alone does not prove that a remote process stopped.

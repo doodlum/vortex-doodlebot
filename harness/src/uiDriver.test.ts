@@ -1,6 +1,8 @@
+import { createServer } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
-import { McpError, type VortexMcpClient } from "./mcpClient";
+import { McpError, VortexMcpClient } from "./mcpClient";
+import { withUiLock } from "./uiSession";
 import {
   DialogClickError,
   clickByName,
@@ -66,6 +68,59 @@ function fakeMcp(bySelector: Record<string, SnapshotNode[]>): {
 const NAV = "#fomod-installer-dialog .fomod-nav-buttons";
 
 describe("target matching", () => {
+  it("expires while queued without invalidating the current action's refs later", async () => {
+    const { mcp, selectors } = fakeMcp({ "": [node("Mods")] });
+    let release!: () => void;
+    let acquired!: () => void;
+    const entered = new Promise<void>((resolve) => (acquired = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const holder = withUiLock(mcp, async () => {
+      acquired();
+      await gate;
+    });
+    await entered;
+    const fallback = setTimeout(release, 700);
+    const started = Date.now();
+    try {
+      await expect(waitForNode(mcp, { name: "Mods" }, 75)).rejects.toMatchObject({
+        name: "TimeoutError",
+      });
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(selectors).toEqual([]);
+    } finally {
+      clearTimeout(fallback);
+      release();
+      await holder;
+    }
+    await withUiLock(mcp, async () => undefined);
+    expect(selectors).toEqual([]);
+    await expect(waitForNode(mcp, { name: "Mods" }, 100)).resolves.toMatchObject({ name: "Mods" });
+  });
+  it("bounds an unanswered snapshot by the UI wait deadline", async () => {
+    let requests = 0;
+    const server = createServer(() => {
+      requests++;
+      // Deliberately leave this RPC unanswered, as a disconnected renderer can.
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string")
+      throw new Error("Missing test server port");
+    const mcp = new VortexMcpClient({ port: address.port, token: "fixture", timeoutMs: 3_000 });
+    const started = Date.now();
+    try {
+      await expect(waitForNode(mcp, { name: "Mods" }, 100)).rejects.toMatchObject({
+        name: "TimeoutError",
+      });
+      expect(requests).toBe(1);
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error === undefined ? resolve() : reject(error))),
+      );
+    }
+  });
   it("waits inside a game tile when the page-wide snapshot omits its action", async () => {
     const selector = '.nxm-image-game:has(img[alt="Fallout 4"])';
     const { mcp, selectors } = fakeMcp({

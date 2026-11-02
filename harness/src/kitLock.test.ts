@@ -212,7 +212,10 @@ it("untracked files block Git mutations and ignored files are excluded by git", 
 
 it("keeps ownership alive during a long Git operation and stops its heartbeat afterward", async () => {
   vi.useFakeTimers();
+  let now = Date.now();
+  env = { ...env, now: () => now };
   lockKit("author", env);
+  const originalExpiry = Date.parse(readLease("kit", env)!.lease.expiresAt!);
   let finishFetch!: () => void;
   const fetch = new Promise<void>((resolve) => {
     finishFetch = resolve;
@@ -227,7 +230,15 @@ it("keeps ownership alive during a long Git operation and stops its heartbeat af
       return "";
     },
   });
-  await vi.advanceTimersByTimeAsync(35 * 60_000);
+  // Drive two real heartbeat callbacks across the original expiry without replaying
+  // hundreds of filesystem writes, which depends on host I/O speed under suite load.
+  await vi.advanceTimersByTimeAsync(0);
+  now += 20 * 60_000;
+  await vi.advanceTimersByTimeAsync(10_000);
+  now += 20 * 60_000;
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(now).toBeGreaterThan(originalExpiry);
+  expect(readLease("kit", env)!.lease.heartbeatAt).toBe(new Date(now).toISOString());
   expect(kitLockHolder(env)).toBe("author");
   finishFetch();
   await started;

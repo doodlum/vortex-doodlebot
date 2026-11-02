@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { open, readdir, readFile, stat } from "node:fs/promises";
 
 import { actions, selectors, util, fs, log, types } from "@nexusmods/vortex-api";
+import { linuxProcessRunning } from "./linuxProcess";
 
 const execFileAsync = promisify(execFile);
 
@@ -1673,7 +1674,8 @@ export async function launchGame(
         path: tool.path,
       });
     } else {
-      await api.runExecutable(tool.path, tool.parameters ?? [], {
+      await runUntilStarted(api, tool.path, tool.parameters ?? [], {
+        gameId: targetGameId,
         cwd: tool.workingDirectory,
         shell: tool.shell ?? false,
         detach: tool.detach ?? true,
@@ -1732,7 +1734,8 @@ export async function launchGame(
   }
 
   const fullPath = path.isAbsolute(executable) ? executable : path.join(discovery.path, executable);
-  await api.runExecutable(fullPath, [], {
+  await runUntilStarted(api, fullPath, [], {
+    gameId: targetGameId,
     cwd: path.dirname(fullPath),
     shell: false,
     detach: true,
@@ -1743,6 +1746,44 @@ export async function launchGame(
     path: fullPath,
   });
   return fullPath;
+}
+
+function runUntilStarted(
+  api: IExtensionApi,
+  executable: string,
+  args: string[],
+  options: types.IRunOptions & { gameId: string },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let spawned = false;
+    const failed = (error: unknown): void => {
+      if (spawned) {
+        log("warn", "[vortex-mcp] a started executable later reported failure", {
+          path: executable,
+        });
+      } else {
+        reject(error);
+      }
+    };
+    try {
+      // runExecutable resolves on process exit. Its public spawn callback lets
+      // automation continue while the game runs; failed spawns have no PID.
+      const completion = api.runExecutable(executable, args, {
+        ...options,
+        onSpawned: (pid) => {
+          if (pid !== undefined && Number.isInteger(pid) && pid > 0) {
+            spawned = true;
+            resolve();
+          }
+        },
+      });
+      // A hook/interpreter can complete without a Node child. Keep handling
+      // both completion paths, including failures after the spawn response.
+      void Promise.resolve(completion).then(() => resolve(), failed);
+    } catch (error) {
+      failed(error);
+    }
+  });
 }
 
 /**
@@ -1771,6 +1812,7 @@ async function waitForProcess(imageName: string, timeoutMs: number = 15_000): Pr
 }
 
 async function processRunning(imageName: string): Promise<boolean> {
+  if (process.platform === "linux") return linuxProcessRunning(imageName);
   const [command, args] =
     process.platform === "win32"
       ? (["tasklist", ["/FI", `IMAGENAME eq ${imageName}`, "/NH"]] as const)

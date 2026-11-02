@@ -11,6 +11,13 @@ coverage/
 # Per-session Vortex worktrees of .vortex-src (see harness/src/worktree.ts)
 .vortex-worktrees/
 
+# aether-vfs integration source and isolated verification checkouts.
+.aether-vfs/
+.aether-worktrees/
+
 # Human documentation output and local Python environment.
 site/
 .venv-docs/
+
+# Guest desktop controller test bytecode.
+harness/__pycache__/

@@ -324,7 +324,19 @@ export function buildInstanceEnv(
  */
 export function prepareUserDataDir(userDataDir: string, appName: string): void {
   fs.mkdirSync(path.join(userDataDir, "appData", ...appName.split("/")), { recursive: true });
-  fs.mkdirSync(path.join(userDataDir, "userData", "plugins"), { recursive: true });
+  const plugins = path.join(userDataDir, "userData", "plugins");
+  fs.mkdirSync(plugins, { recursive: true });
+  markPluginsCommonJs(plugins);
+}
+
+/**
+ * Profiles live under `harness/`, whose package.json says `"type": "module"`, so Node would load
+ * an extension Vortex downloads (CommonJS `index.js`, as Nexus ships them) as an ES module, and
+ * Vortex reports it "corrupt". A user's profile has no such package.json above it.
+ */
+export function markPluginsCommonJs(plugins: string): void {
+  const marker = path.join(plugins, "package.json");
+  if (!fs.existsSync(marker)) fs.writeFileSync(marker, '{ "type": "commonjs" }\n');
 }
 
 /**
@@ -608,9 +620,21 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
   );
 }
 
+/** SSH sessions can select the guest desktop backend explicitly without disabling sandboxing. */
+export function linuxDisplayArgs(
+  platform: NodeJS.Platform = process.platform,
+  backend = process.env.VORTEX_AI_OZONE_PLATFORM,
+): string[] {
+  if (platform !== "linux" || backend === undefined || backend === "") return [];
+  if (backend !== "wayland" && backend !== "x11")
+    throw new Error("VORTEX_AI_OZONE_PLATFORM must be wayland or x11.");
+  return [`--ozone-platform=${backend}`];
+}
+
 async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
   const { userDataDir, config } = options;
   const { target } = config;
+  const displayArgs = linuxDisplayArgs();
   if (target.kind === "dev" && target.args[0] !== undefined && !fs.existsSync(target.executable))
     target.executable = resolveDevElectron(target.args[0]);
   const lease = claimInstanceLease(config, "launch Vortex", options.leaseEnv);
@@ -640,7 +664,7 @@ async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
     options.onSpawn?.(performance.now());
     child = spawn(
       target.executable,
-      [...target.args, `--remote-debugging-port=${String(config.cdpPort)}`],
+      [...target.args, ...displayArgs, `--remote-debugging-port=${String(config.cdpPort)}`],
       { env, cwd: path.dirname(target.executable), ...launchStdio(logFd) },
     );
   } finally {

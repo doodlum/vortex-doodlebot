@@ -514,6 +514,16 @@ export function prepareUserDataDir(userDataDir: string, appName: string): void;
 
 [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L325).
 
+Profiles live under `harness/`, whose package.json says `"type": "module"`, so Node would load
+an extension Vortex downloads (CommonJS `index.js`, as Nexus ships them) as an ES module, and
+Vortex reports it "corrupt". A user's profile has no such package.json above it.
+
+```typescript
+export function markPluginsCommonJs(plugins: string): void;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L337).
+
 Copy the built extension into an instance's plugins directory.
 
 Vortex loads user extensions from `<userData>/plugins/<id>`, and `<id>` must
@@ -527,7 +537,7 @@ export function installMcpExtension(
 ): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L336).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L348).
 
 Ensure the extension is built, building it when needed. Returns this repo's root.
 
@@ -537,7 +547,7 @@ export async function ensureExtensionBuilt(
 ): Promise<string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L399).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L411).
 
 Remove an instance directory, retrying past transient Windows locks.
 
@@ -549,7 +559,7 @@ turns that into a short wait rather than a failed run.
 export function removeInstanceDir(dir: string, attempts = 5): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L426).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L438).
 
 Shut down an instance left behind by an earlier run.
 
@@ -568,7 +578,7 @@ export async function stopStaleInstance(
 ): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L493).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L505).
 
 ```typescript
 export interface LaunchOptions extends OperationOptions {
@@ -583,7 +593,7 @@ export interface LaunchOptions extends OperationOptions {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L547).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L559).
 
 Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio.log`.
 
@@ -591,7 +601,7 @@ Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio
 export function stdioLogFile(userDataDir: string): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L559).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L571).
 
 How Vortex is spawned. Detached, so it outlives the `doodlebot` process that started it, and
 with none of that process's stdio: stdin is ignored and stdout/stderr go to a log file (or
@@ -607,7 +617,7 @@ export function launchStdio(logFd: number | undefined): {
 };
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L579).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L591).
 
 Start Vortex and wait until its MCP server answers.
 
@@ -626,7 +636,18 @@ screen, and every subsequent tool call would fail confusingly.
 export async function launchVortex(options: LaunchOptions): Promise<VortexInstance>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L602).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L614).
+
+SSH sessions can select the guest desktop backend explicitly without disabling sandboxing.
+
+```typescript
+export function linuxDisplayArgs(
+  platform: NodeJS.Platform = process.platform,
+  backend = process.env.VORTEX_AI_OZONE_PLATFORM,
+): string[];
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L624).
 
 Stop an instance, preferring Vortex's own graceful shutdown.
 
@@ -647,7 +668,7 @@ export async function stopInstance(
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L760).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L784).
 
 ## jsonFile
 
@@ -3816,7 +3837,7 @@ Dismiss any open modal with Escape, and report whether one was there.
 export async function dismissDialogs(mcp: VortexMcpClient): Promise<string[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L223).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L248).
 
 ```typescript
 export interface DialogPolicy {
@@ -3835,7 +3856,7 @@ export interface DialogPolicy {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L234).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L259).
 
 The policy list, with the purge prompt answered according to intent.
 
@@ -3851,13 +3872,13 @@ export function dialogPolicies(
 ): DialogPolicy[];
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L290).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L315).
 
 ```typescript
 export const DEFAULT_DIALOG_POLICIES: DialogPolicy[];
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L307).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L332).
 
 ```typescript
 export interface AnsweredDialog {
@@ -3867,7 +3888,7 @@ export interface AnsweredDialog {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L366).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L391).
 
 The text of every open modal. Observation errors propagate to the caller.
 
@@ -3880,7 +3901,7 @@ install being measured.
 export async function openDialogs(mcp: VortexMcpClient): Promise<string[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L380).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L405).
 
 Watch for modals and answer the known ones until stopped.
 
@@ -3917,7 +3938,7 @@ export function autoAnswerDialogs(
 ): Promise<AnsweredDialog[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L400).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L425).
 
 Whether a scoped snapshot is of the dialog whose text was read from `activeDialogs`.
 
@@ -3933,13 +3954,13 @@ the dialog's text appear in it in order.
 export function snapshotIsDialog(snap: Snapshot, dialogText: string): boolean;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L504).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L529).
 
 ```typescript
 export class DialogClickError {}
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L519).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L544).
 
 ```typescript
 export interface ClickInsideDialogOptions {
@@ -3952,7 +3973,7 @@ export interface ClickInsideDialogOptions {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L521).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L546).
 
 Click a button within the dialog whose text matches, and only within it.
 
@@ -3973,7 +3994,7 @@ export async function clickInsideDialog(
 ): Promise<string | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L541).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L566).
 
 The buttons of the dialog whose text matches, disabled ones included, or undefined when no
 such dialog is open. For deciding what a dialog offers before clicking: `clickInsideDialog`
@@ -3986,7 +4007,7 @@ export async function dialogButtons(
 ): Promise<Array<{ name: string; disabled: boolean }> | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L605).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L630).
 
 Advance a FOMOD installer by one step, accepting whatever it has pre-selected.
 
@@ -4006,7 +4027,7 @@ Returns the label clicked, or undefined when no FOMOD dialog is open.
 export async function advanceFomod(mcp: VortexMcpClient): Promise<string | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L663).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L688).
 
 Click through FOMOD installers until stopped.
 
@@ -4023,7 +4044,7 @@ export function autoAdvanceFomods(
 ): Promise<number>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L689).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L714).
 
 ## vortexLog
 

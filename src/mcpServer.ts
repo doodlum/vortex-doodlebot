@@ -1269,11 +1269,12 @@ function registerWriteTools(server: McpServer, api: IExtensionApi): void {
     "launch_game",
     {
       description:
-        "Launch a game's configured primary tool (e.g. SKSE, or the vanilla exe if none " +
-        "is set) — the same operation as Vortex's own 'Play' button, including its " +
-        "suggestDeploy check, which can surface a blocking dialog (see list_dialogs/" +
-        "vortex_dispatch's closeDialog) if files changed outside Vortex since the last " +
-        "deploy. Throws if the game has no primary tool configured.",
+        "Launch a game's configured primary tool, or its discovered game executable when no " +
+        "usable primary tool is set. Returns after Vortex reports a process spawn or successful " +
+        "command completion, without waiting for the game to exit. This proves a start was " +
+        "reported, not that the game reached a playable window. Uses Vortex's runExecutable " +
+        "and suggestDeploy check, which may require answering a deployment dialog. The resolved " +
+        "game id accompanies the command so Linux Proton tools use their associated game.",
       inputSchema: z.object({
         gameId: z.string().optional().describe("Game id; defaults to the active game"),
         expectedActiveGameId: expectedContextSchema.expectedActiveGameId,

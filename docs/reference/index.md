@@ -15,3 +15,9 @@ Look up an option or method while writing a test. If you are starting from scrat
 | [Package scripts](package-scripts.md) | Repository checks and development commands                     |
 
 Ordinary tests import `./harness/benchmarks/index`. The supplied proposal catalog lives in `./benchmarks/`; its saved collection choices come from `./benchmarks/setup`.
+
+For lower-level UI scripts, `waitForNode` polls role/name matches in a fresh snapshot,
+optionally within a selector. Its timeout includes waiting for another UI transaction;
+an expired waiter cannot take a late snapshot and invalidate that transaction's references.
+Each issued snapshot request is capped by the remaining wait and five seconds. See
+[running checks](../testing/running.md) for the local deadline and transaction regressions.

@@ -17,6 +17,8 @@ export interface ProcessEvidenceOptions extends OperationOptions {
   /** Executable is an already quoted command line when true; args must be empty. */
   shell?: boolean;
   stdin?: "ignore" | "inherit";
+  /** Pipe through Node (including Unicode console input) instead of inheriting a native fd. */
+  input?: NodeJS.ReadableStream;
 }
 
 /** Resolves only after close, including cancellation: callers may then restore source safely. */
@@ -46,7 +48,7 @@ export async function runEvidenceProcess(options: ProcessEvidenceOptions): Promi
           ? {}
           : { VORTEX_AI_LEASE_DIR: options.leaseEnv.dir }),
       },
-      stdio: [options.stdin ?? "ignore", "pipe", "pipe"],
+      stdio: [options.input === undefined ? (options.stdin ?? "ignore") : "pipe", "pipe", "pipe"],
     });
     let release: (() => void) | undefined;
     let registrationError: unknown;
@@ -104,15 +106,22 @@ export async function runEvidenceProcess(options: ProcessEvidenceOptions): Promi
         abort();
       }
     };
-    child.stdout.on("data", (chunk: Buffer) => {
+    // Both output descriptors are explicitly configured as pipes above.
+    child.stdout!.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
       receive(chunk);
     });
-    child.stderr.on("data", receive);
+    child.stderr!.on("data", receive);
     child.once("error", (error) => {
       spawnError = error;
     });
     child.once("close", (code, signal) => {
+      if (options.input !== undefined && child.stdin !== null) {
+        options.input.unpipe(child.stdin);
+        options.input.pause();
+        options.input.removeListener("error", inputError);
+        child.stdin.removeListener("error", pipeError);
+      }
       void termination
         .then(() => {
           options.signal?.removeEventListener("abort", abort);
@@ -148,6 +157,19 @@ export async function runEvidenceProcess(options: ProcessEvidenceOptions): Promi
         if (error instanceof ChildRegistrationError) release = error.release;
         abort();
       }
+    }
+    function inputError(error: Error): void {
+      processError = error;
+      abort();
+    }
+    function pipeError(error: NodeJS.ErrnoException): void {
+      // A child may finish before consuming all input; its exit code is authoritative.
+      if (error.code !== "EPIPE") inputError(error);
+    }
+    if (options.input !== undefined && child.stdin !== null && registrationError === undefined) {
+      options.input.on("error", inputError);
+      child.stdin.on("error", pipeError);
+      options.input.pipe(child.stdin);
     }
   });
 }

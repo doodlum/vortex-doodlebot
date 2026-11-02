@@ -9,6 +9,7 @@
 
 import { clickByName, findNodes, flatten, snapshot, waitForNode } from "../uiDriver";
 import { expect, test } from "./fixtures";
+import { observeApp } from "./appDiagnostics";
 
 test.describe("MCP surface", () => {
   test("exposes the UI tools, with writes unlocked", async ({ mcp }) => {
@@ -189,13 +190,30 @@ test.describe("diagnostics", () => {
 });
 
 test.describe("game management", () => {
-  test("brings the configured game up as active", async ({ mcp, managedGame }) => {
+  test("brings the configured game up as active", async ({
+    mcp,
+    managedGame,
+    vortexApp,
+    vortexWindow,
+  }, testInfo) => {
+    test.setTimeout(90_000);
     expect(managedGame.gamePath).not.toBe("");
 
     const active = await mcp.call<string | null>("vortex_query", { selector: "activeGameId" });
     expect(active).toBe(managedGame.gameId);
 
     // And the UI agrees — the per-game workspace is what a user would see.
-    await waitForNode(mcp, { name: "Mods" }, 60_000);
+    const appObservation = await observeApp(vortexApp, vortexWindow);
+    try {
+      // Modern Vortex keeps global navigation open after activation. Open the
+      // workspace through the same event as the active game's Open button.
+      await mcp.call("vortex_dispatch", { action: "show-main-page", args: ["Mods"] }, 3_000);
+      await waitForNode(mcp, { name: "Mods" }, 60_000);
+    } finally {
+      await testInfo.attach("game-activation-app-observations", {
+        body: JSON.stringify(await appObservation(), null, 2),
+        contentType: "application/json",
+      });
+    }
   });
 });

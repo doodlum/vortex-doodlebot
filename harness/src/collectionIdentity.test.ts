@@ -4,6 +4,18 @@ import { installCollection, parseCollectionRef, resolveCollection, toNxmUrl } fr
 import type { VortexMcpClient } from "./mcpClient";
 
 describe("Nexus domains and Vortex game IDs", () => {
+  it.each([
+    ["newvegas", "falloutnv"],
+    ["skyrimspecialedition", "skyrimse"],
+    ["fallout4", "fallout4"],
+  ])("maps the %s domain to the %s game and back", (domain, gameId) => {
+    expect(vortexCollectionGameId(domain)).toBe(gameId);
+    expect(nexusCollectionDomain(gameId)).toBe(domain);
+    expect(
+      parseCollectionRef(`https://www.nexusmods.com/games/${domain}/collections/fixture`).gameId,
+    ).toBe(gameId);
+  });
+
   it.each(["skyrimse", "skyrimspecialedition"])(
     "accepts %s URLs while using canonical API and nxm domain",
     async (domain) => {
