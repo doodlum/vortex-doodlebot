@@ -26,6 +26,12 @@ without losing the other folders. No app, game or account is needed. This does n
 filesystem isolation: inspect the [running app's resolved folders](../guides/calling-tools.md#inspect-resolved-folders)
 and their physical targets before managing a game.
 
+That HTTP suite also checks `game_store_entry` with mocked catalogs: store-ID forwarding,
+installation and optional Proton fields, native false, omitted account/plugin data, catalog
+errors and an unavailable API. It does not prove real Steam discovery or a working prefix;
+inspect the [running store entry](../guides/calling-tools.md#inspect-a-store-installation)
+separately before a game workflow.
+
 DOM logic belongs with the extension's jsdom tests. A simulated DOM can check a selector or transformation, but cannot prove that a current Vortex screen has the expected control. Use [a real-app test](integration.md) for that contract.
 
 For collection startup, run `pnpm exec vitest run src/uiAutomation.test.ts harness/src/collectionStartup.test.ts`. These tests cover a large page whose snapshot stops before the dialog, Vortex's nested dialog wrappers, two separate dialogs with identical text, one successful **Install Now** click, and failures without another click. They need neither a game nor a Nexus account; they do not install a real collection.

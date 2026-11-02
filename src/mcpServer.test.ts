@@ -9,6 +9,7 @@ vi.mock("@nexusmods/vortex-api", () => ({
     getVortexPath: vi.fn(() => {
       throw new Error("Path unavailable");
     }),
+    GameStoreHelper: { findByAppId: vi.fn() },
   },
 }));
 
@@ -127,6 +128,21 @@ function parseToolNames(body: string): string[] {
   return (parsed.result?.tools ?? []).map((tool) => tool.name);
 }
 
+async function lookupStore(appId: string, storeId?: string) {
+  const res = await request({
+    headers: jsonHeaders,
+    body: {
+      jsonrpc: "2.0",
+      id: 41,
+      method: "tools/call",
+      params: { name: "game_store_entry", arguments: { appId, storeId } },
+    },
+  });
+  expect(res.status).toBe(200);
+  const line = res.body.split("\n").find((item) => item.startsWith("data: "));
+  return JSON.parse(line!.slice(6)).result;
+}
+
 describe("mcpServer HTTP gating", () => {
   beforeAll(async () => {
     process.env.VORTEX_MCP_PORT = "38173";
@@ -219,6 +235,85 @@ describe("mcpServer HTTP gating", () => {
   it("returns 404 for any path other than /mcp", async () => {
     const res = await request({ path: "/nope", headers: jsonHeaders });
     expect(res.status).toBe(404);
+  });
+
+  describe("game-store diagnostics", () => {
+    afterEach(() => vi.mocked(util.GameStoreHelper.findByAppId).mockReset());
+
+    it("forwards the store identity and reports only installation/runtime metadata", async () => {
+      const entry = {
+        appid: "489830",
+        gameStoreId: "steam",
+        name: "Skyrim Special Edition",
+        gamePath: "/private/Steam/steamapps/common/Skyrim",
+        usesProton: true,
+        compatDataPath: "/private/Steam/steamapps/compatdata/489830",
+        protonPath: "/private/Steam/steamapps/common/Proton",
+        lastUser: "private-account-id",
+        arbitraryPluginData: "private-plugin-value",
+      };
+      vi.mocked(util.GameStoreHelper.findByAppId).mockResolvedValueOnce(entry);
+      const result = await lookupStore("489830", "steam");
+      expect(result.isError).not.toBe(true);
+      expect(util.GameStoreHelper.findByAppId).toHaveBeenCalledWith("489830", "steam");
+      expect(JSON.parse(result.content[0].text)).toEqual({
+        appid: entry.appid,
+        gameStoreId: entry.gameStoreId,
+        name: entry.name,
+        gamePath: entry.gamePath,
+        usesProton: true,
+        compatDataPath: entry.compatDataPath,
+        protonPath: entry.protonPath,
+      });
+      expect(JSON.stringify(result)).not.toContain(entry.lastUser);
+      expect(JSON.stringify(result)).not.toContain(entry.arbitraryPluginData);
+    });
+
+    it.each([false, undefined])(
+      "preserves native false and tolerates absent Proton fields (%s)",
+      async (usesProton) => {
+        const entry = {
+          appid: "413150",
+          gameStoreId: undefined,
+          name: "Stardew Valley",
+          gamePath: "/games/Stardew",
+          usesProton,
+        };
+        vi.mocked(util.GameStoreHelper.findByAppId).mockResolvedValueOnce(entry);
+        const result = await lookupStore("413150");
+        expect(JSON.parse(result.content[0].text)).toEqual({
+          appid: "413150",
+          gameStoreId: null,
+          name: "Stardew Valley",
+          gamePath: "/games/Stardew",
+          usesProton: usesProton ?? null,
+          compatDataPath: null,
+          protonPath: null,
+        });
+        expect(util.GameStoreHelper.findByAppId).toHaveBeenCalledWith("413150", undefined);
+      },
+    );
+
+    it("preserves catalog lookup failures as tool errors", async () => {
+      vi.mocked(util.GameStoreHelper.findByAppId).mockRejectedValueOnce(
+        new Error("Steam catalog is not ready"),
+      );
+      const result = await lookupStore("489830", "steam");
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Steam catalog is not ready");
+    });
+
+    it("reports an unavailable API without failing server registration", async () => {
+      const helper = util.GameStoreHelper;
+      Object.assign(util, { GameStoreHelper: undefined });
+      try {
+        const result = await lookupStore("489830", "steam");
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("does not expose GameStoreHelper.findByAppId");
+      } finally {
+        Object.assign(util, { GameStoreHelper: helper });
+      }
+    });
   });
 
   it("rejects a request whose Host header isn't localhost/127.0.0.1 (DNS-rebinding guard)", async () => {
@@ -314,6 +409,7 @@ describe("mcpServer HTTP gating", () => {
     expect(names).toEqual(
       expect.arrayContaining([
         "vortex_query",
+        "game_store_entry",
         "vortex_describe",
         "scan_extension_actions",
         "list_mods",

@@ -163,6 +163,29 @@ function vortexPaths(): {
   };
 }
 
+/** Keep account IDs and unrelated store/plugin metadata out of diagnostics. */
+async function gameStoreEntry(appId: string, storeId?: string) {
+  const helper = util.GameStoreHelper;
+  if (typeof helper?.findByAppId !== "function") {
+    throw new Error("This Vortex does not expose GameStoreHelper.findByAppId.");
+  }
+  const entry = await helper.findByAppId(appId, storeId);
+  const proton = entry as typeof entry & {
+    usesProton?: unknown;
+    compatDataPath?: unknown;
+    protonPath?: unknown;
+  };
+  return {
+    appid: entry.appid,
+    gameStoreId: entry.gameStoreId ?? null,
+    name: entry.name,
+    gamePath: entry.gamePath,
+    usesProton: typeof proton.usesProton === "boolean" ? proton.usesProton : null,
+    compatDataPath: typeof proton.compatDataPath === "string" ? proton.compatDataPath : null,
+    protonPath: typeof proton.protonPath === "string" ? proton.protonPath : null,
+  };
+}
+
 function registerCheckProbeTool(server: McpServer, api: IExtensionApi): void {
   const jsonText = makeJsonText(api);
   server.registerTool(
@@ -221,6 +244,18 @@ function registerDiscoveryTools(server: McpServer, api: IExtensionApi): void {
       inputSchema: z.object({}),
     },
     async () => ({ content: [jsonText(authStatus(api))] }),
+  );
+  server.registerTool(
+    "game_store_entry",
+    {
+      description:
+        "Look up one installation through Vortex's GameStoreHelper.findByAppId, optionally restricted to a store such as steam. appId is the store's ID (for example Steam 489830), not Vortex's game ID (skyrimse). Returns appid, gameStoreId, name, gamePath and optional usesProton/compatDataPath/protonPath (null when unavailable). Omits account IDs and arbitrary store metadata. Does not activate or launch the game. Lookup errors, including an unavailable store/catalog, remain tool errors; a returned path is an observation, not proof of filesystem isolation.",
+      inputSchema: z.object({
+        appId: z.string().min(1),
+        storeId: z.string().min(1).optional(),
+      }),
+    },
+    async ({ appId, storeId }) => ({ content: [jsonText(await gameStoreEntry(appId, storeId))] }),
   );
   server.registerTool(
     "vortex_describe",

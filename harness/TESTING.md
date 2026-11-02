@@ -13,6 +13,12 @@ checks do not prove filesystem isolation; inspect the actual runtime's resolved 
 and physical targets before managing a game. Human procedure:
 [resolved folders](../docs/guides/calling-tools.md#inspect-resolved-folders).
 
+The same HTTP test file covers `game_store_entry`: exact store-ID forwarding, installation
+and Proton metadata, native false versus absent fields, omitted account/plugin data, and
+lookup/missing-API errors. These mocked lookups do not establish a real Steam catalog or
+prefix; query the running app separately before a game workflow. Human use:
+[store installations](../docs/guides/calling-tools.md#inspect-a-store-installation).
+
 Linux VM transport: `pnpm exec vitest run harness/src/linuxVm.test.ts harness/src/cliArgs.test.ts`
 requires kit dependencies and Git, no guest. Covers argument boundaries, shell quoting, native
 backend selection and binary edits/deletions reconstructed over a bundle. Real VM verification

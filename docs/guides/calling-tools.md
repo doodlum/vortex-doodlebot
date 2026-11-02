@@ -49,6 +49,25 @@ targets. This observation does not establish startup isolation or cover every ga
 a Windows game running through Proton also needs a protected prefix and its user folders.
 See [session isolation](../reference/sessions.md) for the supported harness lifecycle.
 
+## Inspect a store installation
+
+Use `game_store_entry` to ask Vortex which installation a store ID identifies:
+
+```json
+{ "appId": "489830", "storeId": "steam" }
+```
+
+Here `489830` is Steam's Skyrim Special Edition ID; Vortex calls that game `skyrimse`.
+The result includes `appid`, `gameStoreId`, `name` and `gamePath`. On a Linux Vortex that
+reports Proton metadata, it also includes `usesProton`, `compatDataPath` and `protonPath`;
+unavailable fields are null. Native `usesProton: false` remains false. Account identifiers
+and unrelated store metadata are omitted.
+
+The lookup does not activate or launch a game. An unavailable API, store or catalog is a
+tool error; refresh Games or finish the normal store setup before retrying. Compare the
+reported installation and prefix with the intended physical directories before management.
+Returned paths alone do not establish that files or user-folder symlink targets are isolated.
+
 ## Launch a configured game
 
 Prepare a real game first, using the [Linux VM procedure](linux-vm.md#run-and-verify) when
