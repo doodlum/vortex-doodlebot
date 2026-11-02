@@ -47,6 +47,14 @@ These checks do not prove native staging creation. Run the released-app core and
 source runtime separately, including actual staging tag/instance identity, archive install,
 enable/deploy/purge, warm/reset reuse and graceful shutdown.
 
+Preload startup regressions: `pnpm exec vitest run harness/src/instance.test.ts harness/src/mainPreload.test.ts`
+needs kit dependencies and Node, with no Vortex, game or account. The public launcher starts
+a real child that writes stderr and exits with code 23 before path isolation is verified.
+Check the reported exit status, retained stdio path/content and underlying preload cause.
+The preload tests separately cover applied, rejected and absent path records. These checks
+do not prove Electron sandbox setup or successful real-app startup; run the released-app core
+and the affected source runtime separately. Human diagnosis: [startup failures](../docs/troubleshooting.md#vortex-exits-during-startup).
+
 `pnpm exec vitest run harness/src/gameStartup.test.ts` exercises the actual activation/dialog
 helpers with fake clocks and MCP transport. Watcher failures are captured immediately, abort
 further active-game polling, and await in-flight work before rejecting. Separate UI activation

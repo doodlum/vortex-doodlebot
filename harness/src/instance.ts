@@ -682,6 +682,14 @@ async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
       // first thing that writes under Documents, is seconds later in the renderer.
       await verifyPreload(preload.recordFile, { documents: redirect.documents }, 5_000);
     } catch (err) {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(
+          `Vortex exited (code=${String(child.exitCode)} signal=${String(child.signalCode)}) ` +
+            `before its isolated paths were verified. Check ${stdioLogFile(userDataDir)} ` +
+            `for startup errors.`,
+          { cause: err },
+        );
+      }
       // Stopped before a game could activate: nothing reached the real folders.
       child.kill();
       throw err;

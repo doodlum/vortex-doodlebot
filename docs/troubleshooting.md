@@ -14,6 +14,12 @@ await withVortex({ executable: "D:/Apps/Vortex/Vortex.exe" }, async (vortex) => 
 
 Do not point this option at a source Electron runtime. The benchmark API uses released Vortex builds.
 
+## Vortex exits during startup
+
+If Vortex exits before its isolated paths can be verified, the error reports its exit code or signal and the location of `vortex-stdio.log`. Read that retained log for the startup failure, resolve the reported prerequisite, and retry the same session. For example, Electron can abort when its Linux sandbox helper has the wrong owner or permissions.
+
+An early process exit does not establish that the build ignores `NODE_OPTIONS`. Keep the sandbox enabled while diagnosing the startup failure.
+
 ## The script does not start
 
 Run `pnpm install` from the repository root. Use Node.js 20.19 or newer and pnpm 9.15.0. Save scripts using top-level `await` as `.mts`, and run them with `pnpm exec tsx filename.mts`.

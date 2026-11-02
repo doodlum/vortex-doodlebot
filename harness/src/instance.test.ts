@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -15,9 +16,12 @@ import {
   forgetLaunchedPid,
   instanceLeaseResources,
   launchStdio,
+  launchVortex,
   recordLaunchedPid,
   registerLaunchedProcess,
+  stdioLogFile,
 } from "./instance";
+import { PreloadError } from "./mainPreload";
 import {
   LeaseHeldError,
   acquireLease,
@@ -68,6 +72,59 @@ function installedConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfig 
     ...overrides,
   });
 }
+
+describe("launch failure before path isolation", () => {
+  it("reports the actual child exit and retained stderr instead of blaming NODE_OPTIONS", async () => {
+    const servers = [net.createServer(), net.createServer()];
+    await Promise.all(
+      servers.map(
+        (server) =>
+          new Promise<void>((resolve, reject) => {
+            server.once("error", reject);
+            server.listen(0, "127.0.0.1", resolve);
+          }),
+      ),
+    );
+    const ports = servers.map((server) => (server.address() as net.AddressInfo).port);
+    await Promise.all(
+      servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+    );
+    env = { dir: path.join(dir, "leases"), isAlive: processAlive };
+    const userDataDir = path.join(dir, "instance");
+    const config = installedConfig({
+      owner: "early-exit-test",
+      mcpPort: ports[0]!,
+      cdpPort: ports[1]!,
+      target: {
+        kind: "installed",
+        executable: process.execPath,
+        args: [
+          "-e",
+          "process.stderr.write('startup prerequisite failed\\n'); process.exit(23)",
+          "--",
+        ],
+        appName: "EarlyExitFixture",
+      },
+      profileRedirect: {
+        localAppData: path.join(dir, "local"),
+        documents: path.join(dir, "documents"),
+      },
+    });
+    const failure: unknown = await launchVortex({ config, userDataDir, leaseEnv: env }).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
+      message: expect.stringContaining(
+        "Vortex exited (code=23 signal=null) before its isolated paths were verified.",
+      ),
+      cause: expect.any(PreloadError),
+    });
+    expect((failure as Error).message).toContain(stdioLogFile(userDataDir));
+    expect(fs.readFileSync(stdioLogFile(userDataDir), "utf8")).toContain(
+      "startup prerequisite failed",
+    );
+  }, 15_000);
+});
 
 describe("buildInstanceEnv", () => {
   it("launches a --production source build with NODE_ENV=production, not without one", () => {
