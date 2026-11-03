@@ -1,5 +1,66 @@
 import { readdir, readFile, readlink } from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+
+// Only the boolean leaves the host. As in the native scanner, argv is read only
+// for a matching truncated comm, and is never returned or logged.
+const HOST_PROCESS_PROBE = String.raw`
+import errno, json, os, sys
+if sys.version_info < (3, 10): raise SystemExit('Python 3.10 or newer is required')
+image = sys.argv[1]
+windows = image.lower().endswith(('.exe', '.bat', '.cmd'))
+fold = (lambda value: value.lower()) if windows else (lambda value: value)
+expected = image.encode()[:15].decode(errors='replace')
+def running():
+    for pid in os.listdir('/proc'):
+        if not pid.isdecimal(): continue
+        try:
+            base = '/proc/' + pid
+            with open(base + '/comm', encoding='utf-8', errors='replace') as stream:
+                comm = stream.read().removesuffix('\n')
+            matching = fold(comm) == fold(expected)
+            if not matching and (windows or os.path.basename(os.readlink(base + '/exe')) != image):
+                continue
+            with open(base + '/stat', encoding='utf-8', errors='replace') as stream:
+                status = stream.read()
+            if status[status.rfind(')') + 2:].startswith('Z '): continue
+            if not matching: return True
+            if len(image.encode()) <= 15: return True
+            with open(base + '/cmdline', 'rb') as stream:
+                arguments = stream.read().decode(errors='replace').split('\0')
+            if any(fold(arg.replace('\\', '/').rsplit('/', 1)[-1]) == fold(image) for arg in arguments):
+                return True
+        except OSError as error:
+            if error.errno not in (errno.ENOENT, errno.ESRCH, errno.EACCES, errno.EPERM): raise
+    return False
+print(json.dumps(running()))
+`;
+
+function hostProcessRunning(imageName: string): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const failed = (cause: unknown): void =>
+      reject(
+        new Error(
+          "Could not inspect host processes from Flatpak. Check flatpak-spawn host access and Python 3.10 or newer.",
+          { cause },
+        ),
+      );
+    execFile(
+      "flatpak-spawn",
+      ["--host", "python3", "-c", HOST_PROCESS_PROBE, imageName],
+      { encoding: "utf8", timeout: 5_000, maxBuffer: 1024, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          failed(error);
+          return;
+        }
+        const value = stdout.trim();
+        if (value === "true" || value === "false") resolve(value === "true");
+        else failed(new Error("Unexpected host process response"));
+      },
+    );
+  });
+}
 
 /** Match Linux's comm field, checking full argv for names truncated at 15 bytes. */
 export function linuxProcessMatches(imageName: string, comm: string, cmdline: string): boolean {
@@ -17,6 +78,11 @@ export function linuxProcessMatches(imageName: string, comm: string, cmdline: st
 
 /** Read only matching processes' argv; do not retain or log process arguments. */
 export async function linuxProcessRunning(imageName: string): Promise<boolean> {
+  // Proton launched with --host is outside the application's PID namespace.
+  // An unavailable host observer is not evidence that a game has stopped.
+  if (process.env.IS_FLATPAK === "true" || process.env.FLATPAK_ID) {
+    return hostProcessRunning(imageName);
+  }
   const expected = Buffer.from(imageName).subarray(0, 15).toString("utf8");
   const windows = /\.(exe|bat|cmd)$/i.test(imageName);
   for (const pid of await readdir("/proc")) {

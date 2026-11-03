@@ -86,6 +86,13 @@ Linux Proton tools use the associated game's runtime and prefix; stock Windows V
 continues using its normal executable launch API.
 
 After a primary tool starts, doodlebot looks for the game's process before falling back to
-its own executable. Linux checks truncated Wine names against full arguments and native
-programs with renamed main threads against their executable path. This check can recognize
+its own executable. It also keeps the primary tool when its launch command is pending or
+the tool is still running, including a loader waiting for a dialog. A missing or empty
+tool working directory defaults to the executable's directory, as Vortex's own launcher does.
+Linux checks truncated Wine names against full arguments and native programs with renamed
+main threads against their executable path. Inside Flatpak it queries the host through
+`flatpak-spawn --host` and Python 3.10 or newer, because host Proton processes are outside the app's
+PID namespace. A failed host query is an observation error; it cannot justify fallback.
+Only a boolean is returned from that query; process arguments are not returned or logged.
+This check can recognize
 an existing process too; verify a new process separately when you need proof of this launch.

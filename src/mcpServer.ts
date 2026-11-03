@@ -1319,7 +1319,10 @@ function registerWriteTools(server: McpServer, api: IExtensionApi): void {
         "command completion, without waiting for the game to exit. This proves a start was " +
         "reported, not that the game reached a playable window. Uses Vortex's runExecutable " +
         "and suggestDeploy check, which may require answering a deployment dialog. The resolved " +
-        "game id accompanies the command so Linux Proton tools use their associated game.",
+        "game id accompanies the command so Linux Proton tools use their associated game. " +
+        "A pending primary command or live primary tool suppresses fallback. An empty tool " +
+        "working directory defaults to its executable's directory. Flatpak process checks " +
+        "query the host through flatpak-spawn and Python 3.10+; failed observation is an error, not absence.",
       inputSchema: z.object({
         gameId: z.string().optional().describe("Game id; defaults to the active game"),
         expectedActiveGameId: expectedContextSchema.expectedActiveGameId,

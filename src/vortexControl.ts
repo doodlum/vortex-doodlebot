@@ -1674,25 +1674,31 @@ export async function launchGame(
         path: tool.path,
       });
     } else {
-      await runUntilStarted(api, tool.path, tool.parameters ?? [], {
+      const launch = await runUntilStarted(api, tool.path, tool.parameters ?? [], {
         gameId: targetGameId,
-        cwd: tool.workingDirectory,
+        cwd: tool.workingDirectory || path.dirname(tool.path),
         shell: tool.shell ?? false,
         detach: tool.detach ?? true,
         suggestDeploy: true,
       });
 
-      // Spawning the tool proves nothing about whether the game started. A
-      // loader-style tool exits as soon as it has handed off, so the tool's own
-      // process is not the thing to watch — and a stale one (a backup F4SE
-      // built for another game version, say) exits the same way having started
-      // nothing. Both look identical from here, so watch for the *game*.
+      // A loader can exit after handing off, so check the game first. If it
+      // has not appeared, a pending command or live loader can still need time
+      // or user input; neither justifies starting a second executable.
       const gameExe = resolveGameExecutable(api, targetGameId, discovery ?? {});
       const started =
         gameExe === undefined ||
         (await waitForProcess(path.basename(gameExe), expectedContext?.processWaitMs));
       if (started) {
         log("info", "[vortex-mcp] launched game", {
+          gameId: targetGameId,
+          toolId,
+          path: tool.path,
+        });
+        return tool.path;
+      }
+      if (launch.pending() || (await processRunning(path.basename(tool.path)))) {
+        log("info", "[vortex-mcp] primary tool is still active; not starting another executable", {
           gameId: targetGameId,
           toolId,
           path: tool.path,
@@ -1753,10 +1759,13 @@ function runUntilStarted(
   executable: string,
   args: string[],
   options: types.IRunOptions & { gameId: string },
-): Promise<void> {
+): Promise<{ pending: () => boolean }> {
   return new Promise((resolve, reject) => {
     let spawned = false;
+    let completed = false;
+    const receipt = { pending: (): boolean => !completed };
     const failed = (error: unknown): void => {
+      completed = true;
       if (spawned) {
         log("warn", "[vortex-mcp] a started executable later reported failure", {
           path: executable,
@@ -1773,13 +1782,16 @@ function runUntilStarted(
         onSpawned: (pid) => {
           if (pid !== undefined && Number.isInteger(pid) && pid > 0) {
             spawned = true;
-            resolve();
+            resolve(receipt);
           }
         },
       });
       // A hook/interpreter can complete without a Node child. Keep handling
       // both completion paths, including failures after the spawn response.
-      void Promise.resolve(completion).then(() => resolve(), failed);
+      void Promise.resolve(completion).then(() => {
+        completed = true;
+        resolve(receipt);
+      }, failed);
     } catch (error) {
       failed(error);
     }

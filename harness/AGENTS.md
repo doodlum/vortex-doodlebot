@@ -385,9 +385,14 @@ scopes the snapshot so a large table can't exhaust its node budget. Avoid native
 `launch_game` resolves the primary tool or discovered game executable and passes its Vortex
 game ID with the command. It returns on a valid spawn PID or successful command completion;
 `runExecutable` itself waits for process exit. A later execution failure is logged. Check a
-new OS process/window separately. The primary-tool fallback observes the game process;
-Linux uses `/proc`, resolving truncated names against full argv and native programs with renamed
-main threads against their executable path, without logging arguments.
+new OS process/window separately. Fallback requires the game to be absent, the primary command
+to have completed and the primary process to be absent. A pending/live loader can need user
+input. A missing/empty tool cwd defaults to its executable directory; explicit cwd is retained.
+Linux resolves truncated names against full argv and renamed native threads against their
+executable path. Native instances inspect local `/proc`; Flatpak queries the host through
+`flatpak-spawn --host` and Python 3.10+. Only a boolean returns, with no argument logging.
+Host-observation failure propagates and cannot trigger fallback. None of these checks proves
+a newly rendered game; an existing process can match.
 
 ### Scratch scripts and renderer diagnostics
 

@@ -75,12 +75,18 @@ and watcher errors remain distinct causes. These tests need no Vortex, game or a
 
 Launch/process regressions: `pnpm exec vitest run src/vortexControl.test.ts src/linuxProcess.test.ts`
 requires installed kit dependencies, with no Vortex, game or account. Mocked public API calls
-check spawn responses, completion without a child, pre/post-spawn rejection and primary-tool
-fallback. Linux starts and cleans up owned Node children with a long process name and with a
+check spawn responses, completion without a child, pre/post-spawn rejection, pending-command
+suppression, cwd defaults/overrides and dead-primary fallback. A real copied Node loader remains
+alive after a mocked launch completes, proving detached-primary suppression on both hosts.
+Flatpak routing tests mock only the host command boundary, checking literal image arguments,
+explicit absence and failure/malformed responses that must not become absence. They need no
+Flatpak or Python. Linux starts and cleans up owned Node children with a long process name and with a
 renamed main thread. The latter uses a temporary copy of the runtime to prove native executable
 identity independently of the thread name; no compiler is needed. Windows skips both cases. Pure matching
 tests cover truncated names, Windows filename case and unrelated interpreter arguments. These
-checks do not prove real Vortex/Proton launch; observe a new game process and window separately.
+checks do not prove real Flatpak host visibility or Vortex/Proton launch. Verify the observer
+inside an actual registered Flatpak against a known live host process and after its exit;
+this needs host access and Python 3.10+. Observe a new game process and window separately.
 
 `pnpm run ci` runs types, lint, formatting, paired documentation checks and their negative
 controls, unit and filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials and an

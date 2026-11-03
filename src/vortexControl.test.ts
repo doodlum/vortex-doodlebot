@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 
@@ -869,40 +869,126 @@ describe("vortexControl: games", () => {
     );
   });
 
-  it("launchGame resolves the primary tool via settings.interface/gameMode.discovered and runs it", async () => {
-    // The tool has to exist on disk: launchGame skips one whose path is gone,
-    // so a made-up path here would exercise the fallback instead.
-    const toolRoot = await mkdtemp(path.join(os.tmpdir(), "vortex-mcp-test-tool-"));
-    const toolPath = path.join(toolRoot, "skse64_loader.exe");
-    await writeFile(toolPath, "");
+  it.each([undefined, "", "explicit-working-directory"])(
+    "launchGame defaults the primary cwd to its executable directory (%s)",
+    async (workingDirectory) => {
+      // The tool has to exist on disk: launchGame skips one whose path is gone,
+      // so a made-up path here would exercise the fallback instead.
+      const toolRoot = await mkdtemp(path.join(os.tmpdir(), "vortex-mcp-test-tool-"));
+      const toolPath = path.join(toolRoot, "skse64_loader.exe");
+      await writeFile(toolPath, "");
 
+      try {
+        vi.mocked(selectors.activeGameId).mockReturnValue("skyrimse");
+        const api = fakeApi();
+        (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+          settings: {
+            interface: { primaryTool: { skyrimse: "skse64" } },
+            gameMode: {
+              discovered: { skyrimse: { tools: { skse64: { path: toolPath, workingDirectory } } } },
+            },
+          },
+        });
+        const runExecutable = vi.fn(async () => undefined);
+        (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
+
+        await launchGame(api);
+
+        expect(runExecutable).toHaveBeenCalledWith(
+          toolPath,
+          [],
+          expect.objectContaining({
+            gameId: "skyrimse",
+            cwd: workingDirectory || toolRoot,
+            shell: false,
+            detach: true,
+            suggestDeploy: true,
+          }),
+        );
+      } finally {
+        await rm(toolRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("launchGame does not fall back while the primary launch command is pending", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "vortex-pending-loader-"));
+    const toolPath = path.join(directory, `dbot-pending-${process.pid}.exe`);
+    await writeFile(toolPath, "loader fixture");
+    vi.mocked(selectors.knownGames).mockReturnValue([
+      { id: "skyrimse", executable: "AbsentPendingGame.exe" },
+    ] as never);
+    const api = fakeApi();
+    (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
+      settings: {
+        interface: { primaryTool: { skyrimse: "loader" } },
+        gameMode: {
+          discovered: { skyrimse: { path: directory, tools: { loader: { path: toolPath } } } },
+        },
+      },
+    });
+    let complete!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const runExecutable = vi.fn(
+      (_exe: string, _args: string[], options: { onSpawned?: (pid?: number) => void }) => {
+        options.onSpawned?.(12345);
+        return completion;
+      },
+    );
+    (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
     try {
-      vi.mocked(selectors.activeGameId).mockReturnValue("skyrimse");
+      expect(await launchGame(api, "skyrimse", { processWaitMs: 0 })).toBe(toolPath);
+      expect(runExecutable).toHaveBeenCalledTimes(1);
+    } finally {
+      complete();
+      await completion;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("launchGame does not fall back when the command completed but its detached primary remains alive", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "vortex-live-loader-"));
+    const image = `dbot-loader-${process.pid}.exe`;
+    const toolPath = path.join(directory, image);
+    let child: ReturnType<typeof spawn> | undefined;
+    try {
+      await copyFile(process.execPath, toolPath);
+      await chmod(toolPath, 0o755);
+      child = spawn(
+        toolPath,
+        [
+          "-e",
+          'process.title=process.argv[1]; process.send("ready"); setInterval(()=>{},1000)',
+          image,
+        ],
+        { stdio: ["ignore", "ignore", "ignore", "ipc"] },
+      );
+      await once(child, "message");
+      vi.mocked(selectors.knownGames).mockReturnValue([
+        { id: "skyrimse", executable: "AbsentDetachedGame.exe" },
+      ] as never);
       const api = fakeApi();
       (api as unknown as { store: { getState: () => unknown } }).store.getState = () => ({
         settings: {
-          interface: { primaryTool: { skyrimse: "skse64" } },
-          gameMode: { discovered: { skyrimse: { tools: { skse64: { path: toolPath } } } } },
+          interface: { primaryTool: { skyrimse: "loader" } },
+          gameMode: {
+            discovered: { skyrimse: { path: directory, tools: { loader: { path: toolPath } } } },
+          },
         },
       });
       const runExecutable = vi.fn(async () => undefined);
       (api as unknown as { runExecutable: typeof runExecutable }).runExecutable = runExecutable;
-
-      await launchGame(api);
-
-      expect(runExecutable).toHaveBeenCalledWith(
-        toolPath,
-        [],
-        expect.objectContaining({
-          gameId: "skyrimse",
-          cwd: undefined,
-          shell: false,
-          detach: true,
-          suggestDeploy: true,
-        }),
-      );
+      expect(await launchGame(api, "skyrimse", { processWaitMs: 0 })).toBe(toolPath);
+      expect(runExecutable).toHaveBeenCalledTimes(1);
     } finally {
-      await rm(toolRoot, { recursive: true, force: true });
+      if (child && child.exitCode === null && child.signalCode === null) {
+        const exit = once(child, "exit");
+        child.kill("SIGTERM");
+        await exit;
+      }
+      await rm(directory, { recursive: true, force: true });
     }
   });
 
@@ -1127,7 +1213,7 @@ describe("vortexControl: games", () => {
     // indistinguishable from a loader that handed off correctly, because both
     // leave no tool process behind, so the game itself is what gets watched.
     const toolRoot = await mkdtemp(path.join(os.tmpdir(), "vortex-mcp-test-tool-"));
-    const toolPath = path.join(toolRoot, "loader.exe");
+    const toolPath = path.join(toolRoot, `dbot-exited-loader-${process.pid}.exe`);
     await writeFile(toolPath, "");
 
     try {

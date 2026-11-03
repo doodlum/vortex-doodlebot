@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { constants } from "node:fs";
@@ -7,7 +7,67 @@ import os from "node:os";
 import path from "node:path";
 import { linuxProcessMatches, linuxProcessRunning } from "./linuxProcess";
 
+type HostExec = (
+  command: string,
+  args: string[],
+  options: Record<string, unknown>,
+  callback: (error: Error | null, stdout: string, stderr: string) => void,
+) => void;
+const { hostExec } = vi.hoisted(() => ({ hostExec: vi.fn<HostExec>() }));
+vi.mock("node:child_process", async (original) => ({
+  ...(await original<typeof import("node:child_process")>()),
+  execFile: hostExec,
+}));
+beforeEach(() => {
+  vi.stubEnv("FLATPAK_ID", "");
+  vi.stubEnv("IS_FLATPAK", "");
+});
+afterEach(() => {
+  hostExec.mockReset();
+  vi.unstubAllEnvs();
+});
+
 describe("Linux game process identity", () => {
+  it.each(["FLATPAK_ID", "IS_FLATPAK"])(
+    "queries the host through %s with a literal image argument",
+    async (flag) => {
+      vi.stubEnv(flag, flag === "IS_FLATPAK" ? "true" : "com.example.ProcessProbe");
+      const image = "Long quote'$(literal) game.exe";
+      hostExec.mockImplementation((_command, _args, _options, callback) =>
+        callback(null, "true\n", ""),
+      );
+      expect(await linuxProcessRunning(image)).toBe(true);
+      expect(hostExec).toHaveBeenCalledWith(
+        "flatpak-spawn",
+        ["--host", "python3", "-c", expect.any(String), image],
+        expect.objectContaining({ timeout: 5000, maxBuffer: 1024, encoding: "utf8" }),
+        expect.any(Function),
+      );
+    },
+  );
+  it("accepts an explicit host absence response", async () => {
+    vi.stubEnv("FLATPAK_ID", "com.example.ProcessProbe");
+    hostExec.mockImplementation((_command, _args, _options, callback) =>
+      callback(null, "false\n", ""),
+    );
+    expect(await linuxProcessRunning("absent.exe")).toBe(false);
+  });
+  it.each(["command failure", "malformed response"])(
+    "keeps %s as an observation error rather than absence",
+    async (kind) => {
+      vi.stubEnv("FLATPAK_ID", "com.example.ProcessProbe");
+      hostExec.mockImplementation((_command, _args, _options, callback) =>
+        callback(
+          kind === "command failure" ? new Error("host access denied") : null,
+          "unrecognized response",
+          "",
+        ),
+      );
+      await expect(linuxProcessRunning("game.exe")).rejects.toThrow(
+        "Could not inspect host processes from Flatpak",
+      );
+    },
+  );
   it.skipIf(process.platform !== "linux")(
     "finds a native executable after its main thread changes its name",
     async () => {
