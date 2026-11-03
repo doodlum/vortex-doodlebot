@@ -630,8 +630,12 @@ Clearing a primary tool writes `null`, which an `!== undefined` check launches a
 "null"; treat `null` and `""` as unset. A restored snapshot's tool path may be gone, or its binary
 stale, spawning and exiting having started nothing. The public `runExecutable` promise resolves
 after command completion; its `onSpawned(pid)` callback reports a child start. Neither proves a
-loader started the game. Watch for the **game's** process and fall back to launching it directly,
-as `launchGame` does (`processWaitMs` for tests; `src/vortexControl.test.ts`).
+loader started the game. Observe the game first; fall back only after the primary command
+completes and its process is absent. A pending/live loader can be waiting for input. In Flatpak,
+host Proton processes need host observation from a shared cwd (`/`), not sandbox-only `/app/main`.
+An observer error cannot establish absence. Verified with the private SKSE dialog and host/Flatpak
+live, absent and denied-host controls; source/tests: `src/linuxProcess.ts`,
+`src/linuxProcess.test.ts` and `src/vortexControl.test.ts` (`processWaitMs` for tests).
 
 ### Deploy prompts whose default destroys files
 

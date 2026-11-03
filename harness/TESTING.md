@@ -79,6 +79,7 @@ check spawn responses, completion without a child, pre/post-spawn rejection, pen
 suppression, cwd defaults/overrides and dead-primary fallback. A real copied Node loader remains
 alive after a mocked launch completes, proving detached-primary suppression on both hosts.
 Flatpak routing tests mock only the host command boundary, checking literal image arguments,
+a shared root cwd (the packaged renderer's `/app/main` is absent on the host),
 explicit absence and failure/malformed responses that must not become absence. They need no
 Flatpak or Python. Linux starts and cleans up owned Node children with a long process name and with a
 renamed main thread. The latter uses a temporary copy of the runtime to prove native executable

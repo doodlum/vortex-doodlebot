@@ -93,6 +93,7 @@ Linux checks truncated Wine names against full arguments and native programs wit
 main threads against their executable path. Inside Flatpak it queries the host through
 `flatpak-spawn --host` and Python 3.10 or newer, because host Proton processes are outside the app's
 PID namespace. A failed host query is an observation error; it cannot justify fallback.
+The host query starts from `/`, because the app's packaged working directory may exist only inside Flatpak.
 Only a boolean is returned from that query; process arguments are not returned or logged.
 This check can recognize
 an existing process too; verify a new process separately when you need proof of this launch.

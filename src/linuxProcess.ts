@@ -48,7 +48,8 @@ function hostProcessRunning(imageName: string): Promise<boolean> {
     execFile(
       "flatpak-spawn",
       ["--host", "python3", "-c", HOST_PROCESS_PROBE, imageName],
-      { encoding: "utf8", timeout: 5_000, maxBuffer: 1024, windowsHide: true },
+      // A packaged renderer can run in /app/main, which does not exist on the host.
+      { cwd: "/", encoding: "utf8", timeout: 5_000, maxBuffer: 1024, windowsHide: true },
       (error, stdout) => {
         if (error) {
           failed(error);

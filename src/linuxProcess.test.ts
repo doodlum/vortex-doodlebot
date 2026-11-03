@@ -40,7 +40,7 @@ describe("Linux game process identity", () => {
       expect(hostExec).toHaveBeenCalledWith(
         "flatpak-spawn",
         ["--host", "python3", "-c", expect.any(String), image],
-        expect.objectContaining({ timeout: 5000, maxBuffer: 1024, encoding: "utf8" }),
+        expect.objectContaining({ cwd: "/", timeout: 5000, maxBuffer: 1024, encoding: "utf8" }),
         expect.any(Function),
       );
     },

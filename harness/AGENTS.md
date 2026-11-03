@@ -391,6 +391,7 @@ input. A missing/empty tool cwd defaults to its executable directory; explicit c
 Linux resolves truncated names against full argv and renamed native threads against their
 executable path. Native instances inspect local `/proc`; Flatpak queries the host through
 `flatpak-spawn --host` and Python 3.10+. Only a boolean returns, with no argument logging.
+The observer uses cwd `/` so the host never inherits a sandbox-only path such as `/app/main`.
 Host-observation failure propagates and cannot trigger fallback. None of these checks proves
 a newly rendered game; an existing process can match.
 
