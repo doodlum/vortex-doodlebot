@@ -21,3 +21,8 @@ optionally within a selector. Its timeout includes waiting for another UI transa
 an expired waiter cannot take a late snapshot and invalidate that transaction's references.
 Each issued snapshot request is capped by the remaining wait and five seconds. See
 [running checks](../testing/running.md) for the local deadline and transaction regressions.
+
+`ui.dialogButtons` inspects a named dialog's available buttons; `ui.clickInsideDialog`
+selects an enabled matching button in that dialog. Both enumerate matching modal roots
+past nested or hidden wrappers. See [collection dialogs](../guides/mod-workflows.md#collections)
+for the workflow and [unit checks](../testing/unit.md) for the isolated regression command.

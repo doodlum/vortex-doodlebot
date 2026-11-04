@@ -406,7 +406,7 @@ export async function openDialogs(mcp: VortexMcpClient): Promise<string[]> {
   return mcp.call<string[]>("ui_active_dialogs");
 }
 
-/** Containers Vortex renders modals into, most specific first. */
+/** Containers Vortex renders modals into, most specific first; nested wrappers count separately. */
 const DIALOG_SELECTORS = ['[role="dialog"]', ".modal.in", ".modal.show", "dialog[open]"];
 
 /**
@@ -579,9 +579,12 @@ export async function clickInsideDialog(
       // was therefore unreachable: a purge prompt sat unanswered behind a
       // collection report and blocked an install, looking like a policy that
       // failed to match.
-      for (let index = 0; index < 4; index++) {
+      // A visible prompt can follow several nested or hidden modal containers.
+      // Only an absent selector index ends enumeration; an empty root does not.
+      for (let index = 0; ; index++) {
         const snap = await snapshotIfPresent(mcp, selector, index);
-        if (snap === undefined || snap.nodeCount === 0) break;
+        if (snap === undefined) break;
+        if (snap.nodeCount === 0) continue;
 
         // Only answer the dialog we actually matched on.
         const buttons = findNodes(snap, { role: "button", enabledOnly: false });
@@ -633,9 +636,10 @@ export async function dialogButtons(
 ): Promise<Array<{ name: string; disabled: boolean }> | undefined> {
   return withUiLock(mcp, async () => {
     for (const selector of DIALOG_SELECTORS) {
-      for (let index = 0; index < 4; index++) {
+      for (let index = 0; ; index++) {
         const snap = await snapshotIfPresent(mcp, selector, index);
-        if (snap === undefined || snap.nodeCount === 0) break;
+        if (snap === undefined) break;
+        if (snap.nodeCount === 0) continue;
         if (!snapshotIsDialog(snap, dialogText)) continue;
         return findNodes(snap, { role: "button", enabledOnly: false }).map((b) => ({
           name: b.name ?? b.text ?? "",

@@ -6,6 +6,12 @@ feature regression is useful evidence for that feature, but is not a universal k
 
 ## Fast gate
 
+Scoped dialog readers: `pnpm exec vitest run harness/src/uiDriver.test.ts` needs only kit
+dependencies. Mocked transport fixtures cover a target after four/eight unrelated roots,
+an earlier empty hidden root, absent targets and unchanged button-identity checks. Both
+button inspection and clicking must reach the real selector boundary without acting in
+another dialog. Run a real stacked-dialog collection workflow separately.
+
 Resolved path diagnostics: `pnpm exec vitest run src/mcpServer.test.ts` needs kit dependencies,
 with no app, game or account. HTTP tool calls verify distinct Vortex-resolved Home, AppData,
 Documents and LocalAppData values and preserve other paths when one lookup throws. These

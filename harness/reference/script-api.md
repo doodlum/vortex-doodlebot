@@ -4007,7 +4007,7 @@ export async function dialogButtons(
 ): Promise<Array<{ name: string; disabled: boolean }> | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L630).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L633).
 
 Advance a FOMOD installer by one step, accepting whatever it has pre-selected.
 
@@ -4027,7 +4027,7 @@ Returns the label clicked, or undefined when no FOMOD dialog is open.
 export async function advanceFomod(mcp: VortexMcpClient): Promise<string | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L688).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L692).
 
 Click through FOMOD installers until stopped.
 
@@ -4044,7 +4044,7 @@ export function autoAdvanceFomods(
 ): Promise<number>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L714).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L718).
 
 ## vortexLog
 

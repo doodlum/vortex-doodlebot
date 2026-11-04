@@ -46,3 +46,9 @@ This archive's `Data/textures` destination belongs to the disposable test game. 
 Real collection runs need [OAuth and download access](../getting-started/setup.md). Use the [benchmark runner](../testing/benchmarks.md) with a pinned revision, cache mode, and explicit game fixture. See the [proposal matrix](../testing/proposal.md) for intended real-data coverage.
 
 Doodlebot presses **Install Now** in the collection's own dialog, even with a large mod library open behind it. It treats Vortex's nested dialog wrappers as one dialog and rechecks that the collection still owns the install driver before clicking. Two separate matching dialogs, a missing dialog, or a failed click fail the run and keep its evidence. It does not retry the click or restart installation.
+
+Later confirmations can appear after several other modal containers. Scoped button
+inspection and clicking scan until there are no more matching containers, skipping hidden
+empty roots and leaving unrelated dialogs alone. For example, a game-version confirmation
+can remain reachable behind nested collection and account windows. An unexpected prompt
+still pauses automation; inspect it before deciding how to continue.

@@ -45,6 +45,12 @@ For collection startup, run `pnpm exec vitest run src/uiAutomation.test.ts harne
 
 The DOM click tests also check buttons that change their label or role during the action. The click result must describe the original target so a successful transition to another dialog step does not look like a wrong click.
 
+Run `pnpm exec vitest run harness/src/uiDriver.test.ts` for scoped dialog selection.
+Fixtures include a confirmation after four or eight unrelated modal containers, a hidden
+empty container before the target, and an absent target. Helpers inspect the matching set
+without clicking another dialog's button. These mocked transport checks need no app or
+account; verify a real stacked-dialog workflow separately.
+
 When changing measurements, test the timing arithmetic and status handling with unit tests, then verify the actual app action separately.
 
 Run `pnpm exec vitest run harness/benchmarks/stagingIntegrity.test.ts` to check collection staging validation. It needs no Vortex, game or account. The tests use real temporary directories with mocked Vortex state, UI and timing recorder. They check that missing or unsafe staging fails before cleanup, and that both timing routes reject failed validation without counting validation time. They do not install a real collection or measure native phases.

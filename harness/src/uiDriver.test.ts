@@ -15,6 +15,7 @@ import {
   autoAnswerDialogs,
   DEFAULT_DIALOG_POLICIES,
   dialogPolicies,
+  dialogButtons,
   snapshotIsDialog,
   type Snapshot,
   type SnapshotNode,
@@ -485,6 +486,51 @@ function conflictEditorMcp(options: { rootText?: boolean; clickReports?: string 
 }
 
 describe("clickInsideDialog", () => {
+  it.each([4, 8])("reaches a target after %i unrelated modal containers", async (preceding) => {
+    const clicked: string[] = [];
+    const target = "Game version mismatchOwned version confirmation";
+    const mcp = {
+      call: async (tool: string, args: Record<string, unknown>) => {
+        if (tool === "ui_click") {
+          clicked.push(String(args.ref));
+          return { role: "button", name: "Continue" };
+        }
+        const index = Number(args.index);
+        if (args.selector !== '[role="dialog"]' || index > preceding)
+          throw new McpError("No element matches selector", tool);
+        return {
+          ...snapshotOf([node("Continue")]),
+          rootText: index === preceding ? target : `Unrelated dialog ${index}`,
+        };
+      },
+    } as unknown as VortexMcpClient;
+    expect(await dialogButtons(mcp, target)).toEqual([{ name: "Continue", disabled: false }]);
+    await expect(clickInsideDialog(mcp, target, /^continue$/i)).resolves.toBe("Continue");
+    expect(clicked).toEqual(["ref-Continue"]);
+    expect(await dialogButtons(mcp, "Absent dialog")).toBeUndefined();
+    expect(
+      await clickInsideDialog(mcp, "Absent dialog", /^continue$/i, { required: false }),
+    ).toBeUndefined();
+    expect(clicked).toEqual(["ref-Continue"]);
+  });
+
+  it("continues past an empty hidden modal root to the visible target", async () => {
+    const target = "Game version mismatchOwned version confirmation";
+    const mcp = {
+      call: async (tool: string, args: Record<string, unknown>) => {
+        if (tool === "ui_click") return { role: "button", name: "Continue" };
+        const index = Number(args.index);
+        if (args.selector !== '[role="dialog"]' || index > 1)
+          throw new McpError("No element matches selector", tool);
+        return index === 0
+          ? snapshotOf([])
+          : { ...snapshotOf([node("Continue")]), rootText: target };
+      },
+    } as unknown as VortexMcpClient;
+    expect(await dialogButtons(mcp, target)).toEqual([{ name: "Continue", disabled: false }]);
+    await expect(clickInsideDialog(mcp, target, /^continue$/i)).resolves.toBe("Continue");
+  });
+
   it("finds the conflict editor's Save, which a tree-text prefix never matched", async () => {
     // Regression: the tree read "Multiple Search for a rule... Conflict A 0000", so the
     // dialog's first 20 characters were never adjacent in it and nothing was clicked.

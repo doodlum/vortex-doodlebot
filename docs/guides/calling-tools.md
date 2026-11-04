@@ -13,6 +13,11 @@ await withVortex({}, async (vortex) => {
 
 `call(name, arguments)` parses the tool's JSON response. Some tools return a plain string. If Vortex returns a tool error, the client throws; catch it only when your script has a useful recovery or a clearer failure message.
 
+Stacked dialogs can contain more DOM containers than visible windows. The harness's scoped
+dialog helpers inspect each matching container, including those after hidden empty roots,
+and match the requested dialog text before choosing its button. An unrelated dialog with
+the same button label is left alone. Inspect unexpected prompts before acting on them.
+
 ## Find the input you need
 
 Inside your callback, inspect a tool's live schema with the lower-level client:

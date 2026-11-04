@@ -174,6 +174,9 @@ required members; changed member counts or collection identity fail the run.
 Collection startup validates the exact driver, reads active dialog text, and clicks Install Now
 through scoped dialog snapshots. Count outer dialog containers: stock react-overlays wraps
 Bootstrap's modal in another dialog-role element, which is still one physical dialog.
+Scoped button inspection/clicking enumerates matching modal roots until the selector index
+is absent; there is no four-container cutoff. Empty hidden roots do not end the scan.
+Only a matching dialog's enabled button is clicked; other open dialogs remain untouched.
 Separate sibling containers remain ambiguous even if their text is identical.
 Check physical container and enabled-button uniqueness before
 the click, then re-snapshot the selected container because scanning invalidates earlier refs.
