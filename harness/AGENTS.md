@@ -66,6 +66,11 @@ never falls back. Native-only installs receive no Windows executable override; W
 installs on Linux retain the existing override/repair behavior. Lookup tests establish path
 validation only; inspect discovery and observe the actual native/Proton game process/window.
 Use `--game-path` for other layouts.
+New or changed paths receive `store: steam` only when the known game's manifest resolves
+to the same physical directory in a registered Steam library. Manual copies and standalone
+Wine prefixes receive no store, including unknown game IDs. The stock discovery reducer
+clears a previous store when a new path has no store; filename-only repairs preserve it.
+Do not interpret an omitted store as a missing prerequisite or fabricate Steam metadata.
 
 Windows, a Node version compatible with package.json, the pinned pnpm (`pnpm@9.15.0`), Git and an
 installed Vortex. No game or Nexus account is needed for sandbox tests.

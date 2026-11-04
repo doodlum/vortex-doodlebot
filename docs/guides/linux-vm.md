@@ -136,6 +136,10 @@ For known games, omit `--game-path` to search native/XDG Steam, Snap, Flatpak an
 legacy Steam locations, then their `libraryfolders.vdf` entries. Directory aliases are
 deduplicated. A candidate needs both its app manifest and expected executable; a leftover
 game folder after uninstall does not count. Use an explicit path for other layouts.
+An explicit path is marked as Steam only when it matches that game's actual installed
+manifest. Copies and standalone Wine installations receive no store identity, allowing
+Vortex to resolve their own Wine prefixes instead of requiring a Steam Proton prefix.
+Setup preserves an existing store when it only repairs the executable at the same path.
 
 The path must contain a supported executable file, not a directory with that name.
 On Linux, Stardew accepts its native launcher `StardewValley` or executable

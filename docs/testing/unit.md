@@ -19,6 +19,13 @@ it("keeps a pinned collection revision", () => {
 
 Run `pnpm exec vitest run harness/src/my-parser.test.ts`. The full unit suite is `pnpm run test`.
 
+Run `pnpm exec vitest run harness/src/gameSetup.test.ts` after installing dependencies to
+check game-path and store registration. Real temporary Steam manifests and directories
+cover secondary libraries, native and Windows executables, standalone manual games, and
+copies that must not inherit Steam identity. MCP calls are mocked: these tests need no
+Vortex or account and do not prove INI or LOOT initialization. Inspect the registered store
+and resolved user folders in the running app for that contract.
+
 After installing the repository dependencies, run `pnpm exec vitest run src/mcpServer.test.ts`
 to check the MCP HTTP boundary and resolved-folder diagnostics. Distinct mocked Vortex paths
 verify Home, AppData, Documents and LocalAppData responses; a failed lookup returns null

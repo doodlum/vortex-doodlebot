@@ -13,6 +13,10 @@ Linux Stardew accepts `StardewValley` or `Stardew Valley` for a native install a
 `Stardew Valley.exe` for Proton; Windows accepts the Windows filename. Directories named
 like executables are refused. An invalid explicit `--game-path` never falls back to another
 installation. See the [VM game setup procedure](../guides/linux-vm.md#run-and-verify).
+Manual paths receive Steam identity only when that physical directory matches the known
+game's installed Steam manifest, including secondary libraries. A copied game or standalone
+Wine prefix is registered without a store; its user-folder lookup must not require Proton.
+An existing store remains unchanged when setup only repairs the executable at the same path.
 For a known Windows installation on Linux, setup records its executable override and
 repairs a missing override in a cached profile when that file exists. Explicit executable
 overrides and the existing discovery timestamp are preserved when only repairing the filename.

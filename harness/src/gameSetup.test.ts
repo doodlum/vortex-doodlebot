@@ -39,6 +39,93 @@ function client(relative: string) {
   return root;
 }
 
+it.each(["stardewvalley", "standalone-wine-game"])(
+  "does not label an unregistered manual %s installation as Steam",
+  async (gameId) => {
+    const directory = path.join(home, "WinePrefix", "drive_c", "Game");
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, "Stardew Valley.exe"), "fixture");
+    const call = vi.fn(async (_name: string, _args?: unknown) => null);
+    await ensureGameManaged({ call } as unknown as VortexMcpClient, gameId, {
+      gamePath: directory,
+      activate: false,
+      config: {} as HarnessConfig,
+    });
+    const registration = call.mock.calls.find(([name]) => name === "vortex_dispatch")?.[1] as {
+      args: [{ result: { store?: string } }];
+    };
+    expect(registration.args[0].result.store).toBeUndefined();
+  },
+);
+
+it("keeps Steam identity only for the manifest's actual installation, including secondary libraries", async () => {
+  const root = client(".local/share/Steam");
+  const extra = client("Secondary Library");
+  libraryList(root, "steamapps", [root, extra]);
+  const directory = path.join(extra, "steamapps", "common", "Renamed Stardew");
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, "Stardew Valley.exe"), "fixture");
+  fs.writeFileSync(
+    path.join(extra, "steamapps", "appmanifest_413150.acf"),
+    '"AppState" { "installdir" "Renamed Stardew" }',
+  );
+  const unrelated = path.join(home, "Copied Stardew");
+  fs.mkdirSync(unrelated);
+  fs.writeFileSync(path.join(unrelated, "Stardew Valley.exe"), "fixture");
+  for (const explicit of [undefined, directory, unrelated]) {
+    const call = vi.fn(async (_name: string, _args?: unknown) => null);
+    await ensureGameManaged({ call } as unknown as VortexMcpClient, "stardewvalley", {
+      gamePath: explicit,
+      activate: false,
+      config: {} as HarnessConfig,
+    });
+    const registration = call.mock.calls.find(([name]) => name === "vortex_dispatch")?.[1] as {
+      args: [{ result: { store?: string } }];
+    };
+    expect(registration.args[0].result.store).toBe(explicit === unrelated ? undefined : "steam");
+  }
+});
+
+it("does not transfer an existing Steam store to a newly selected manual path", async () => {
+  const old = path.join(home, "Old Steam Install");
+  const directory = path.join(home, "Standalone Install");
+  for (const dir of [old, directory]) {
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, "Stardew Valley.exe"), "fixture");
+  }
+  const call = vi.fn(async (name: string, _args?: unknown) =>
+    name === "vortex_query" ? { path: old, store: "steam" } : null,
+  );
+  await ensureGameManaged({ call } as unknown as VortexMcpClient, "stardewvalley", {
+    gamePath: directory,
+    activate: false,
+    config: {} as HarnessConfig,
+  });
+  const registration = call.mock.calls.find(([name]) => name === "vortex_dispatch")?.[1] as {
+    args: [{ result: { store?: string; path: string } }];
+  };
+  expect(registration.args[0].result.path).toBe(directory);
+  expect(registration.args[0].result.store).toBeUndefined();
+});
+
+it("preserves an existing non-Steam store while repairing its executable", async () => {
+  const directory = path.join(home, "GOG Stardew");
+  fs.mkdirSync(directory);
+  fs.writeFileSync(path.join(directory, "Stardew Valley.exe"), "fixture");
+  const call = vi.fn(async (name: string, _args?: unknown) =>
+    name === "vortex_query" ? { path: directory, store: "gog" } : null,
+  );
+  await ensureGameManaged({ call } as unknown as VortexMcpClient, "stardewvalley", {
+    gamePath: directory,
+    activate: false,
+    config: {} as HarnessConfig,
+  });
+  expect(call).toHaveBeenCalledWith("vortex_dispatch", {
+    action: "type:ADD_DISCOVERED_GAME",
+    args: [{ id: "stardewvalley", result: { executable: "Stardew Valley.exe" } }],
+  });
+});
+
 it.each([false, true])(
   "records the Windows game executable on Linux (already known: %s)",
   async (alreadyKnown) => {
@@ -120,7 +207,6 @@ it.each(["StardewValley", "Stardew Valley"])(
           result: {
             path: directory,
             pathSetManually: true,
-            store: "steam",
             timestamp: expect.any(Number),
           },
         },
@@ -162,7 +248,7 @@ it.each(["missing", "directory", "windows-native-only"])(
   },
 );
 
-it("keeps Windows discovery registration unchanged", async () => {
+it("registers a manual Windows installation without inventing its store", async () => {
   vi.stubGlobal("process", { ...process, platform: "win32" });
   const directory = path.join(home, "Windows host Stardew");
   fs.mkdirSync(directory);
@@ -182,7 +268,6 @@ it("keeps Windows discovery registration unchanged", async () => {
         result: {
           path: directory,
           pathSetManually: true,
-          store: "steam",
           timestamp: expect.any(Number),
         },
       },

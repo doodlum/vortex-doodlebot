@@ -255,6 +255,25 @@ export function findGamePath(
   return undefined;
 }
 
+/** An explicit path can be a copy or standalone Wine install, even for a known Steam game. */
+function isSteamInstallation(gamePath: string, game?: GameDefinition): boolean {
+  if (game?.steamAppId === undefined) return false;
+  const selected = fs.realpathSync(gamePath);
+  return steamLibraryRoots().some((root) => {
+    const candidate = findGamePath(game, [root]);
+    if (candidate === undefined) return false;
+    try {
+      const installed = fs.realpathSync(candidate);
+      return process.platform === "win32"
+        ? installed.toLowerCase() === selected.toLowerCase()
+        : installed === selected;
+    } catch (error) {
+      if (unavailablePath(error)) return false;
+      throw error;
+    }
+  });
+}
+
 export interface EnsureGameOptions {
   /** Explicit install path, skipping discovery entirely. */
   gamePath?: string;
@@ -345,7 +364,7 @@ export async function ensureGameManaged(
               ? {
                   path: gamePath,
                   pathSetManually: true,
-                  store: "steam",
+                  ...(isSteamInstallation(gamePath, game) ? { store: "steam" } : {}),
                   // "Found at" rather than "last seen" — matches the field's own contract.
                   timestamp: Date.now(),
                 }

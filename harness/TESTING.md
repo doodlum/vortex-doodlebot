@@ -47,7 +47,11 @@ client directory aliases, alternate libraries, unreadable library files and the 
 manifest/executable pair. Native Stardew explicit-path and manifest fixtures cover both
 Linux names, Windows-only rejection, executable directories and strict invalid-path refusal
 even when another installed copy exists. Windows executable override/repair controls remain.
-The Windows registry/fallback case retains escaped-library-path coverage. These fixtures do
+The Windows registry/fallback case retains escaped-library-path coverage. Fixtures also
+check store assignment against the physical manifest directory, secondary-library
+matching, standalone known/unknown manual games, changed-path store clearing and preservation
+during executable-only repair. They use mocked MCP transport; verify the registered store
+and resolved standalone Wine user folders in a real app separately. These tests do
 not prove native or Proton game activation; check the actual guest path and managed state
 with the live tools and observe the intended game process/window separately.
 
