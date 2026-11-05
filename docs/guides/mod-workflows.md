@@ -52,3 +52,14 @@ inspection and clicking scan until there are no more matching containers, skippi
 empty roots and leaving unrelated dialogs alone. For example, a game-version confirmation
 can remain reachable behind nested collection and account windows. An unexpected prompt
 still pauses automation; inspect it before deciding how to continue.
+
+The deployment helper requests Vortex's `failOnError` option so caught backend errors
+reject the operation. Keep the physical assertion: an early refusal or partial file
+failure can still complete without a callback error. See [optional dispatch arguments](calling-tools.md#omit-optional-dispatch-arguments)
+for the raw tool call.
+
+The deployment helper also compares explicit deployment-error notifications before
+and after completion, so a newly reported `Failed to deploy mods` or `Deployment not
+possible` error rejects even when Vortex resolves its callback. Unchanged old notices
+and unrelated extension-event errors are ignored. Keep the physical acceptance checks
+for other refusals and partial outcomes.

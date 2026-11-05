@@ -1154,7 +1154,8 @@ function registerWriteTools(server: McpServer, api: IExtensionApi): void {
         "listenerId immediately rather than waiting for anything — poll what it's captured " +
         "with poll_listener. (5) action='type:SOME_TYPE' (note the literal 'type:' prefix) " +
         "dispatches a raw {type, payload} Redux action directly, args[0] being the WHOLE " +
-        "payload — an escape hatch for actions defined inside a game extension's own " +
+        'payload. A top-level "__UNDEFINED__" argument becomes JavaScript undefined; ' +
+        "null and nested values are preserved. This is an escape hatch for actions defined inside a game extension's own " +
         "module (e.g. gamebryo-plugin-management's per-plugin enable toggle) that aren't " +
         "re-exported through @nexusmods/vortex-api and so don't appear anywhere in path " +
         "(1)'s `actions` list at all — see dispatchHints for 'type:'-prefixed entries " +

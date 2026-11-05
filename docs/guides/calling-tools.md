@@ -102,3 +102,24 @@ The host query starts from `/`, because the app's packaged working directory may
 Only a boolean is returned from that query; process arguments are not returned or logged.
 This check can recognize
 an existing process too; verify a new process separately when you need proof of this launch.
+
+## Omit optional dispatch arguments
+
+Use `"__UNDEFINED__"` for an optional positional argument before a later argument.
+The dispatcher converts that token at the top level of `args` into JavaScript
+`undefined`. Explicit `null` and tokens inside nested objects remain unchanged.
+
+For example, Vortex accepts deployment error options after the profile and progress
+callback positions:
+
+```json
+{
+  "action": "deploy-mods",
+  "args": ["__CALLBACK__", "__UNDEFINED__", "__UNDEFINED__", { "failOnError": true }]
+}
+```
+
+The callback waits for completion. `failOnError` requests propagation of errors caught
+by Vortex's deployment backend. Early refusals and recorded partial file failures can
+still complete without a callback error, so check notifications and the resulting files
+when deciding whether a workflow passed. The `deployMods` helper requests this option.

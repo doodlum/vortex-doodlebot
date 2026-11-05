@@ -1675,6 +1675,47 @@ describe("vortexControl: dispatchAction", () => {
     expect(result).toEqual({ emitted: "activate-game" });
   });
 
+  it("omits optional event positions while retaining backend error options", async () => {
+    const failure = new Error("backend deployment failed");
+    const emit = vi.fn(
+      (
+        _event: string,
+        callback: (err: Error | null) => void,
+        profile: unknown,
+        progress: unknown,
+        options: unknown,
+      ) => {
+        expect(profile).toBeUndefined();
+        expect(progress).toBeUndefined();
+        expect(options).toEqual({ failOnError: true });
+        callback(failure);
+      },
+    );
+    const api = fakeApi({ emit });
+    (api as unknown as { ext: Record<string, unknown> }).ext = {};
+    vi.mocked(
+      (api as unknown as { events: { eventNames: () => string[] } }).events.eventNames,
+    ).mockReturnValue(["deploy-mods"]);
+    await expect(
+      dispatchAction(api, "deploy-mods", [
+        "__CALLBACK__",
+        "__UNDEFINED__",
+        "__UNDEFINED__",
+        { failOnError: true },
+      ]),
+    ).rejects.toBe(failure);
+  });
+
+  it("preserves null and nested literal values when omitting a direct API argument", async () => {
+    const api = fakeApi();
+    (api as unknown as { ext: Record<string, unknown> }).ext = {};
+    const sendNotification = vi.fn(() => "notification");
+    (api as unknown as { sendNotification: unknown }).sendNotification = sendNotification;
+    const nested = { literal: "__UNDEFINED__" };
+    await dispatchAction(api, "sendNotification", [null, "__UNDEFINED__", nested]);
+    expect(sendNotification).toHaveBeenCalledWith(null, undefined, nested);
+  });
+
   it("awaits a callback-based event when __CALLBACK__ is in the args", async () => {
     const emit = vi.fn((event: string, cb: (err: Error | null) => void) => {
       expect(event).toBe("deploy-mods");

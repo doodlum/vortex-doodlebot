@@ -3,6 +3,81 @@ import { deployMods, purgeGame } from "./deployment";
 import type { VortexMcpClient } from "./mcpClient";
 
 describe("deployment operations", () => {
+  it("requests backend deployment errors instead of reporting a swallowed failure as finished", async () => {
+    const call = vi.fn(async (tool: string, args?: Record<string, unknown>) => {
+      if (tool === "vortex_query") return {};
+      if (tool === "list_notifications") return [];
+      if (tool === "ui_active_dialogs") return [];
+      if (tool === "vortex_dispatch") {
+        const positional = args?.args as unknown[];
+        if ((positional?.[3] as { failOnError?: boolean })?.failOnError === true) {
+          throw new Error("backend deployment failed");
+        }
+        return undefined;
+      }
+      throw new Error("Unexpected " + tool);
+    });
+    await expect(deployMods({ call } as unknown as VortexMcpClient, "sandbox")).rejects.toThrow(
+      "backend deployment failed",
+    );
+    expect(call).toHaveBeenCalledWith(
+      "vortex_dispatch",
+      {
+        action: "deploy-mods",
+        args: ["__CALLBACK__", "__UNDEFINED__", "__UNDEFINED__", { failOnError: true }],
+      },
+      expect.any(Number),
+    );
+  });
+
+  it("rejects a new explicit deployment failure when the callback still resolves", async () => {
+    let completed = false;
+    const call = vi.fn(async (tool: string) => {
+      if (tool === "vortex_query") return {};
+      if (tool === "ui_active_dialogs") return [];
+      if (tool === "list_notifications")
+        return completed
+          ? [{ id: "new-error", type: "error", message: "Failed to deploy mods" }]
+          : [];
+      if (tool === "vortex_dispatch") {
+        completed = true;
+        return undefined;
+      }
+      throw new Error("Unexpected " + tool);
+    });
+    await expect(deployMods({ call } as unknown as VortexMcpClient, "sandbox")).rejects.toThrow(
+      "Failed to deploy mods",
+    );
+  });
+
+  it("ignores an unchanged prior failure and a new unrelated event error", async () => {
+    let completed = false;
+    const previous = { id: "old-error", type: "error", message: "Failed to deploy mods" };
+    const call = vi.fn(async (tool: string) => {
+      if (tool === "vortex_query") return {};
+      if (tool === "ui_active_dialogs") return [];
+      if (tool === "list_notifications")
+        return completed
+          ? [
+              previous,
+              {
+                id: "event-error",
+                type: "error",
+                message: 'Unhandled error in event "will-deploy"',
+              },
+            ]
+          : [previous];
+      if (tool === "vortex_dispatch") {
+        completed = true;
+        return undefined;
+      }
+      throw new Error("Unexpected " + tool);
+    });
+    await expect(deployMods({ call } as unknown as VortexMcpClient, "sandbox")).resolves.toEqual(
+      [],
+    );
+  });
+
   it("refuses unfinished installs before dispatching or answering any dialog", async () => {
     const call = vi.fn(async () => ({
       a: { id: "a", name: "Pending FOMOD", state: "installing" },
@@ -28,6 +103,7 @@ describe("deployment operations", () => {
     const progress: string[] = [];
     const call = vi.fn(async (tool: string) => {
       if (tool === "vortex_query") return {};
+      if (tool === "list_notifications") return [];
       if (tool === "ui_active_dialogs") return ["External changes: Links were deleted"];
       if (tool === "vortex_dispatch")
         return new Promise<void>((_resolve, reject) => {
@@ -61,6 +137,7 @@ describe("deployment operations", () => {
       const clicked: string[] = [];
       const call = vi.fn(async (tool: string, args?: Record<string, unknown>) => {
         if (tool === "vortex_query") return {};
+        if (tool === "list_notifications") return [];
         if (tool === "vortex_dispatch")
           return new Promise<void>((_resolve, reject) => {
             finish = () => reject(new Error("foreign deployment cancelled"));

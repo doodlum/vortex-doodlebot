@@ -154,3 +154,10 @@ do not restore old refresh tokens or copy another game's mods into a blank profi
   Vortex's own Electron preload bridge, the exact path behind Vortex's own
   "Restart now" button. Unlike vortex-api this isn't a published contract —
   it can change across Vortex releases without notice.
+
+Top-level dispatch arguments reserve `"__UNDEFINED__"` to represent JavaScript
+`undefined` across JSON. This preserves positional API signatures when later options
+follow omitted arguments; explicit null and nested values stay intact. For example,
+backend deployment error propagation uses `["__CALLBACK__", "__UNDEFINED__",
+"__UNDEFINED__", {failOnError:true}]`. Completion alone does not prove every file was
+deployed: Vortex can resolve early refusals or recorded partial failures.

@@ -2123,7 +2123,7 @@ export async function deployMods(
 ): Promise<AnsweredDialog[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L90).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L125).
 
 Whether Vortex still considers this game to have undeployed changes.
 
@@ -2131,7 +2131,7 @@ Whether Vortex still considers this game to have undeployed changes.
 export async function needsDeployment(mcp: VortexMcpClient, gameId: string): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L161).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L215).
 
 ## downloads
 

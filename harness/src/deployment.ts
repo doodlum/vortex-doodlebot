@@ -86,6 +86,41 @@ export async function purgeGame(
   });
 }
 
+interface DeploymentNotice {
+  id: string;
+  type?: string;
+  title?: string | null;
+  message?: string | null;
+}
+
+/** Known explicit deployment failures; unrelated extension errors are not deployment outcomes. */
+async function deploymentFailureNotices(
+  mcp: VortexMcpClient,
+): Promise<Array<{ signature: string; message: string }>> {
+  const notices = await mcp.call<DeploymentNotice[]>("list_notifications", {});
+  return notices.flatMap((notice) => {
+    if (notice.type !== "error") return [];
+    const message = [notice.title, notice.message].find(
+      (value): value is string =>
+        typeof value === "string" &&
+        (value.startsWith("Failed to deploy mods") || value === "Deployment not possible"),
+    );
+    return message === undefined
+      ? []
+      : [
+          {
+            signature: JSON.stringify([
+              notice.id,
+              notice.type,
+              notice.title ?? null,
+              notice.message ?? null,
+            ]),
+            message,
+          },
+        ];
+  });
+}
+
 /** Link every enabled mod into the game directory. */
 export async function deployMods(
   mcp: VortexMcpClient,
@@ -105,8 +140,27 @@ export async function deployMods(
     }
   }
 
+  const previousFailures = new Set(
+    (await deploymentFailureNotices(mcp)).map((notice) => notice.signature),
+  );
   return runAnswering(mcp, options, "deploy", async (timeoutMs) => {
-    await mcp.call("vortex_dispatch", { action: "deploy-mods", args: ["__CALLBACK__"] }, timeoutMs);
+    await mcp.call(
+      "vortex_dispatch",
+      {
+        action: "deploy-mods",
+        args: ["__CALLBACK__", "__UNDEFINED__", "__UNDEFINED__", { failOnError: true }],
+      },
+      timeoutMs,
+    );
+    const reported = (await deploymentFailureNotices(mcp)).filter(
+      (notice) => !previousFailures.has(notice.signature),
+    );
+    if (reported.length > 0) {
+      throw new Error(
+        "Vortex reported deployment failure: " +
+          reported.map((notice) => notice.message).join("; "),
+      );
+    }
   });
 }
 

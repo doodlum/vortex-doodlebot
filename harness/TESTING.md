@@ -264,3 +264,17 @@ and [the workflow](AGENT-WORKFLOW.md) for commands and report responsibilities.
 ## Human-authored benchmark entry points
 
 The TypeScript benchmark SDK in harness/benchmarks runs released Vortex without a source build. Its process-spawn callback marks B5 startup. The human guides in docs/testing document fixtures, explicit real-game prerequisites, 133 proposed cases, three repeats, and blocked reports. Human documentation is authored from the proposal and implementation, without using machine manuals as prose input. Machine references are generated from source.
+
+Deployment argument/error contract changes: run `pnpm exec vitest run
+src/vortexControl.test.ts harness/src/deployment.test.ts` from the kit root, then
+`pnpm run ci`. The scoped controls require no app/account; they prove top-level
+undefined omission, null/nested preservation and failOnError opt-in. Keep real-app
+acceptance separate: a disposable released-app profile with a controlled backend
+exception must reject, then a healthy physical deployment/purge must pass. Early
+refusals and partial-file outcomes still need notification/state/file assertions.
+
+The deployment helper also compares explicit deployment-error notifications before
+and after completion, so a newly reported `Failed to deploy mods` or `Deployment not
+possible` error rejects even when Vortex resolves its callback. Unchanged old notices
+and unrelated extension-event errors are ignored. Keep the physical acceptance checks
+for other refusals and partial outcomes.

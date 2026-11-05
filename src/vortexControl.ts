@@ -468,6 +468,8 @@ const ACTION_HINTS = new Map<string, string>([
 // completion instead of just firing the event. Omit it entirely for a fire-and-forget
 // event (most of them — no callback convention at all).
 const CALLBACK_SENTINEL = "__CALLBACK__";
+// JSON has no undefined value; reserve this token for top-level dispatch positions.
+const UNDEFINED_SENTINEL = "__UNDEFINED__";
 
 // Real positional argument order (including the exact CALLBACK_SENTINEL position, for
 // the ones that use it) for the events this project has verified — same "documentation,
@@ -477,8 +479,10 @@ const CALLBACK_SENTINEL = "__CALLBACK__";
 const EVENT_HINTS = new Map<string, string>([
   [
     "deploy-mods",
-    '"__CALLBACK__" — no other args. Resolves once deployment actually finishes ' +
-      "(not just once it started).",
+    '"__CALLBACK__", optional profileId, optional progress callback, optional deployment options. ' +
+      'Use ["__CALLBACK__", "__UNDEFINED__", "__UNDEFINED__", {failOnError:true}] ' +
+      "to request backend error propagation. Default callbacks can resolve after a visible " +
+      "deployment error. Early refusals and partial file failures still need state/file checks.",
   ],
   [
     "purge-mods",
@@ -1186,14 +1190,15 @@ export async function dispatchAction(
   expectedContext?: ExpectedContext,
 ): Promise<unknown> {
   assertExpectedContext(api, expectedContext);
+  const positionalArgs = args.map((value) => (value === UNDEFINED_SENTINEL ? undefined : value));
   if (name.startsWith(RAW_ACTION_TYPE_PREFIX)) {
     const rawType = name.slice(RAW_ACTION_TYPE_PREFIX.length);
-    store(api).dispatch({ type: rawType, payload: args[0] });
+    store(api).dispatch({ type: rawType, payload: positionalArgs[0] });
     return { dispatched: rawType, raw: true };
   }
   const fn = (actions as Record<string, unknown>)[name];
   if (typeof fn === "function") {
-    const result = (fn as (...fnArgs: unknown[]) => unknown)(...args);
+    const result = (fn as (...fnArgs: unknown[]) => unknown)(...positionalArgs);
     // Most actions are plain redux-act action creators returning {type, payload}. A few
     // (closeDialog, closeDialogs, showDialog) are thunks — plain functions taking
     // (dispatch, getState) — since Vortex uses redux-thunk middleware, dispatching the
@@ -1216,15 +1221,15 @@ export async function dispatchAction(
 
   const extFn = ((api.ext ?? {}) as unknown as Record<string, unknown>)[name];
   if (typeof extFn === "function") {
-    return (extFn as (...fnArgs: unknown[]) => unknown)(...args);
+    return (extFn as (...fnArgs: unknown[]) => unknown)(...positionalArgs);
   }
 
   if (api.events.eventNames().includes(name)) {
-    return dispatchEvent(api, name, args);
+    return dispatchEvent(api, name, positionalArgs);
   }
 
   if (name in LISTENER_SPECS) {
-    return registerListener(api, name, args);
+    return registerListener(api, name, positionalArgs);
   }
 
   if (name === "withPrePost") {
@@ -1238,7 +1243,7 @@ export async function dispatchAction(
 
   const apiFn = (api as unknown as Record<string, unknown>)[name];
   if (typeof apiFn === "function") {
-    return (apiFn as (...fnArgs: unknown[]) => unknown).apply(api, args);
+    return (apiFn as (...fnArgs: unknown[]) => unknown).apply(api, positionalArgs);
   }
 
   throw new Error(

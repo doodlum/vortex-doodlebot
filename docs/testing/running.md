@@ -76,3 +76,25 @@ the private run folder. macOS is not supported.
 Use [unit tests](unit.md) for pure logic and DOM helpers. Use [real-app tests](integration.md) for Vortex integration and deployed files. Use [benchmarks](benchmarks.md) to compare observable performance.
 
 A passing repository gate does not run Vortex. Report the specific check you ran and any untested real-app behavior.
+
+## Deployment argument and failure contracts
+
+From the repository root, run:
+
+```sh
+pnpm exec vitest run src/vortexControl.test.ts harness/src/deployment.test.ts
+```
+
+These unit controls need the installed Node and pnpm dependencies, with no Vortex or
+Nexus account. They check omitted positional arguments, preservation of explicit null
+and nested values, and the deployment helper's request for backend error propagation.
+They do not establish that game files were deployed. A real-app acceptance test also
+needs a disposable game/profile, a controlled backend failure and a healthy deployment
+whose physical files are checked. See [mod workflows](../guides/mod-workflows.md) for
+that file verification and [tool arguments](../guides/calling-tools.md#omit-optional-dispatch-arguments)
+for the raw dispatch shape.
+
+The same scoped unit command includes callback-resolved deployment-failure notices
+and healthy controls with unchanged prior failures and unrelated event errors. Real-app
+backend controls must fail inside a deployment method; a `will-deploy` listener error
+can be reported independently while deployment continues.

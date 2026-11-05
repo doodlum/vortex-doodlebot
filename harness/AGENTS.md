@@ -863,3 +863,17 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
   `vortex_quit` tool first.
 - **Never treat a port collision as permission to stop an unrelated Vortex.** Never commit
   profiles, screenshots with private data, or credentials.
+
+Deployment callback options: top-level `"__UNDEFINED__"` dispatch arguments omit optional
+positions without converting explicit null or nested values. `deployMods` requests
+`["__CALLBACK__", "__UNDEFINED__", "__UNDEFINED__", {failOnError:true}]` so caught backend
+errors reject. Early refusals/recorded partial failures can still resolve; verify
+notifications and physical deployment before claiming success. Pure contract controls:
+`pnpm exec vitest run src/vortexControl.test.ts harness/src/deployment.test.ts`; these
+need no Vortex and do not replace a real-app backend-failure/healthy-deployment control.
+
+The deployment helper also compares explicit deployment-error notifications before
+and after completion, so a newly reported `Failed to deploy mods` or `Deployment not
+possible` error rejects even when Vortex resolves its callback. Unchanged old notices
+and unrelated extension-event errors are ignored. Keep the physical acceptance checks
+for other refusals and partial outcomes.
