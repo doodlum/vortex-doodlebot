@@ -236,7 +236,14 @@ source incident and applicable source/test evidence rather than copying entire r
 19. **When a stacked branch takes in a simplification, search its docs for what was dropped.**
     Code that the merge removes can still be described in the branch's own design notes. (#13
     after #22: `docs/design-system/panels.md` still described the outlined profile button.)
-20. **Test a layout that shares space at its limits, and again after each fix.** Take it to the
+20. **Test the way you were asked before publishing anything.** Asked to test a user's
+    collection, test that collection, not a fixture that resembles it. Unit tests, an offline
+    collection and reading the uploaded revision are leads, not the test. Without the user's
+    scenario reproduced on the base and passing on the fix, there is no PR, draft included
+    (WORKFLOWS.md, "Before a Vortex pull request is ready"). (Nexus-Mods/Vortex#24782, closed:
+    a binary-patching export fix opened as a draft after unit tests and synthetic installs. The
+    reporter's collection had never been installed, and the export fix had never run in the app.)
+21. **Test a layout that shares space at its limits, and again after each fix.** Take it to the
     narrowest window and the highest zoom, with preview-only UI shown, in each account state
     (premium, free, signed out), and with longer and CJK stand-ins for its labels. A fix for one
     limit can move the problem to another. (#23: the controls covered the centered version at

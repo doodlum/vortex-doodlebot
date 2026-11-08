@@ -81,6 +81,16 @@ the Mods page stays mounted while hidden (KNOWLEDGE.md).
 
 Prepare and review the branch before publication. Opening a draft or ready PR requires the
 user's authorization, applicable evidence, addressed blocking findings and a final description.
+
+**Never publish a fix that hasn't been properly tested, not even as a draft.** A fix is
+untested until it has been tested the way the user asked: their collection, mod, game or
+steps. A substitute (a hand-built fixture, an offline collection, unit tests alone, or reading
+the uploaded data) doesn't count. Neither does running the fix's own path in some other
+scenario. Run the user's scenario on the base and confirm the reported symptom. Then run it on
+the fixed build and confirm the symptom is gone. If a step can't be run (no access, a real
+upload, a missing login), stop and report it with the exact missing step. Don't open a draft
+that lists the gap under Not covered. A draft PR is still publication. Authorization to open
+one doesn't waive the testing.
 A local readiness result means evidence complete for handoff; maintainers still decide whether
 the change belongs upstream and is suitable to merge.
 
