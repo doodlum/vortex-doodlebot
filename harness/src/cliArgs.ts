@@ -1,6 +1,6 @@
 /**
  * The `doodlebot` command line, parsed. Kept apart from cli.ts so the rules that agents keep
- * tripping over (where `--owner` may go, what `--` means) have unit tests.
+ * tripping over (which flags `script` keeps after its file, what `--` means) have unit tests.
  */
 import { ConfigError } from "./config";
 
@@ -10,7 +10,7 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
   /** Every value of each string flag, for flags that may repeat (`--test a --test b`). */
   lists: Record<string, string[]>;
-  /** The command for `lease run`/`evidence run`, or a script's own arguments. */
+  /** The command for `evidence run`, or a script's own arguments. */
   passthrough: string[];
 }
 
@@ -35,7 +35,6 @@ export const BOOLEAN_FLAGS = new Set([
   "build",
   "update",
   "no-build",
-  "no-install",
   "where",
   "purge",
   "keep",
@@ -44,26 +43,15 @@ export const BOOLEAN_FLAGS = new Set([
   "skip-revert",
   "force",
   "with-api-key",
-  "checkout-only",
+  "ready",
 ]);
 
 /**
- * Flags `script` takes for itself wherever they appear, even after the script's path: agents
- * put `--owner` last as often as first, and a script run as the wrong owner is refused the
- * lease. The flags that pick the instance count too: a `--slot auto` after the path used to
- * reach the script instead, which then drove slot 0's Vortex. Everything else after the path is
- * the script's; after a bare `--`, all of it is.
+ * Flags `script` takes for itself wherever they appear, even after the script's path: the flags
+ * that pick the instance, so the script drives the same Vortex this command was given.
+ * Everything else after the path is the script's; after a bare `--`, all of it is.
  */
-export const SCRIPT_KIT_FLAGS = new Set([
-  "owner",
-  "wait",
-  "slot",
-  "worktree",
-  "dev-dir",
-  "cache-dir",
-  "port",
-  "cdp-port",
-]);
+export const SCRIPT_KIT_FLAGS = new Set(["dev-dir", "cache-dir", "port", "cdp-port"]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   // `pnpm run ai -- status` forwards the `--` separator itself, so the first
@@ -71,7 +59,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   // separator makes the documented invocation work instead of printing help.
   const args = argv[0] === "--" ? argv.slice(1) : argv;
   const [command = "help", ...rest] = args;
-  const runsCommand = command === "lease" || command === "evidence";
+  const runsCommand = command === "evidence";
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
   const lists: Record<string, string[]> = {};

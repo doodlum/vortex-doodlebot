@@ -18,6 +18,8 @@ import {
   type RuntimeIdentity,
 } from "./evidence";
 import { summarise, type VortexE2eReport, type TestOutcome } from "./vortexE2e";
+import { designContentSha256 } from "./design";
+import { ConfigError } from "./errors";
 import { runPreflight } from "./prPreflight";
 import { REPO_ROOT } from "./paths";
 
@@ -79,13 +81,11 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
       checkout: options.checkout ?? repo,
       base: options.base ?? base,
       cwd: options.checkout ?? repo,
-      owner: "evidence-test",
       command: tests ? [...args, report!] : args,
       out,
       testReport: report,
       testFormat: report === undefined ? undefined : "vitest",
       runtime: options.runtime,
-      leaseEnv: { dir: path.join(root, "leases") },
     });
     return fileArtifact(out);
   }
@@ -98,7 +98,7 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
     const review = save({ observation: "Links and actual diff inspected" });
     return {
       tool: "doodlebot-readiness",
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: "final",
       task: {
         id: "task",
@@ -159,6 +159,99 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
     git("worktree", "add", "--detach", checkout, ref);
     return checkout;
   }
+  /** An approved design matching the manifest, whose boundary is `boundary`. */
+  function designText(
+    m: ReadinessManifest,
+    boundary: string[],
+    overrides: { target?: string; acceptance?: string; contracts?: string; status?: string } = {},
+  ): string {
+    const draft = `# Change
+
+- **Status:** In Review
+- **Target:** ${overrides.target ?? m.task.target}
+
+## Overview
+
+## The Problem
+
+## Goals
+
+## Non-Goals
+
+## Open Questions
+
+None.
+
+## Acceptance Criteria
+
+${overrides.acceptance ?? m.acceptance.map((a) => `- \`${a.id}\`: ${a.criterion}`).join("\n")}
+
+## Affected Contracts
+
+${overrides.contracts ?? (m.risk.contracts.length ? m.risk.contracts.map((c) => `- \`${c}\`: affected.`).join("\n") : "- None: no contract.")}
+
+## Technical Plan (Architecture)
+
+## Alternatives Considered
+
+## Detailed Implementation Plan
+
+### Target Scope & File Boundary
+
+${boundary.map((f) => `- \`${f}\``).join("\n")}
+
+### Verification Plan
+`;
+    if (overrides.status !== undefined)
+      return draft.replace("- **Status:** In Review", `- **Status:** ${overrides.status}`);
+    return draft.replace(
+      "- **Status:** In Review",
+      `- **Status:** Approved\n- **Approved:** Person; content ${designContentSha256(draft)}; https://example.test/approval`,
+    );
+  }
+  /**
+   * Attach an approved design and a clean confirmation round recorded on a checkout of the
+   * base commit, before the implementation existed.
+   */
+  function attachDesign(
+    m: ReadinessManifest,
+    options: { markdown?: string; file?: string; reportLines?: (lines: string[]) => string[] } = {},
+  ): ReadinessManifest["evidence"][number] {
+    const markdown = options.markdown ?? designText(m, m.subject.changedFiles);
+    const file = options.file ?? path.join(root, `design-${count++}.md`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, markdown);
+    m.design = fileArtifact(file);
+    const reviewSubject = captureCheckoutIdentity(otherCheckout(`review-${count++}`, base), base);
+    const digest = designContentSha256(markdown);
+    const dir = path.join(root, `reviews-${count++}`);
+    fs.mkdirSync(dir);
+    const artifacts = ["implementation_readiness", "vortex-runtime-goldfish"].map((name) => {
+      const report = path.join(dir, `round-1-${name}.md`);
+      const lines = [
+        "Harness: test",
+        "EGM: 0.1.1",
+        `Checkout: ${reviewSubject.headSha} ${reviewSubject.changesSha256}`,
+        `Reviewed content sha256: ${digest}`,
+        "",
+        "No Blocker or Major findings.",
+      ];
+      fs.writeFileSync(report, (options.reportLines?.(lines) ?? lines).join("\n"));
+      return fileArtifact(report);
+    });
+    const entry: ReadinessManifest["evidence"][number] = {
+      role: "design-review",
+      status: "pass",
+      subject: reviewSubject,
+      reason: "Clean confirmation round",
+      inspectedBy: "goldfish:implementation_readiness,vortex-runtime-goldfish",
+      criteria: [],
+      artifacts,
+      reviewedDesignSha256: digest,
+    };
+    m.evidence.push(entry);
+    return entry;
+  }
   it("accepts actual kit CI evidence without unrelated Vortex gates; Vortex verify does not imply E2E authorization", async () => {
     const kit = await manifest();
     expect(evaluateReadiness(kit, root).ready).toBe(true);
@@ -188,9 +281,206 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
         command: scoped,
         ...(role === "control" ? { control: { kind: "wiring" as const, assessment } } : {}),
       });
+    expect(evaluateReadiness(m, root).issues).toEqual([
+      "design: an approved design is required for feature and refactor tasks",
+      "design-review: missing evidence (Goldfish review of the approved design before implementation)",
+    ]);
+    attachDesign(m);
     expect(evaluateReadiness(m, root).issues).toEqual([]);
     entry(m, "control").status = "not-applicable";
     expect(evaluateReadiness(m, root).issues.join(" ")).toContain("N/A cannot waive");
+  });
+
+  describe("an approved design", () => {
+    async function feature(): Promise<ReadinessManifest> {
+      write("harness/src/calculation.ts", `export const answer = ${count++};\n`);
+      commit();
+      const m = await manifest();
+      m.task.kind = "feature";
+      return m;
+    }
+    const issues = (m: ReadinessManifest) => evaluateReadiness(m, root).issues;
+
+    it("must be approved for its current content", async () => {
+      const m = await feature();
+      attachDesign(m, { markdown: designText(m, m.subject.changedFiles, { status: "In Review" }) });
+      expect(issues(m)).toContain("design: not approved");
+      const n = await feature();
+      const approved = designText(n, n.subject.changedFiles);
+      attachDesign(n, { markdown: approved.replace("## Overview\n", "## Overview\n\nEdited.\n") });
+      expect(issues(n).join("\n")).toMatch(/design: approval digest [a-f0-9]{64} does not match/);
+    });
+
+    it("must match the task target, acceptance text and contracts", async () => {
+      const m = await feature();
+      attachDesign(m, {
+        markdown: designText(m, m.subject.changedFiles, {
+          target: "vortex",
+          acceptance: "- `result`: Something weaker.\n- `extra`: Not claimed.",
+          contracts: "- `ui`: pages.",
+        }),
+      });
+      m.acceptance.push({ id: "unplanned", criterion: "Added later" });
+      expect(issues(m)).toEqual(
+        expect.arrayContaining([
+          "design: target vortex differs from task target doodlebot",
+          "design: acceptance result text differs from the approved design",
+          "design: acceptance extra missing from manifest",
+          "design: acceptance unplanned not in the approved design",
+          "design: contract ui missing from risk.contracts",
+        ]),
+      );
+    });
+
+    it("rejects changed files outside the boundary but exempts the design file itself", async () => {
+      const m = await feature();
+      attachDesign(m, { markdown: designText(m, ["README.md"]) });
+      expect(issues(m)).toContain(
+        "design: harness/src/calculation.ts outside the approved boundary",
+      );
+      write("designs/change.md", "placeholder\n");
+      const n = await feature();
+      const inside = path.join(repo, "designs", "change.md");
+      const text = designText(
+        n,
+        n.subject.changedFiles.filter((f) => f !== "designs/change.md"),
+      );
+      fs.writeFileSync(inside, text);
+      n.subject = captureCheckoutIdentity(repo, base);
+      for (const e of n.evidence) e.subject = n.subject;
+      attachDesign(n, { markdown: text, file: inside });
+      expect(issues(n).filter((i) => i.startsWith("design:"))).toEqual([]);
+    });
+
+    it("accepts a correct design and design review for a subject that descends from the review", async () => {
+      const m = await feature();
+      attachDesign(m);
+      expect(issues(m).filter((i) => i.startsWith("design"))).toEqual([]);
+    });
+
+    it("binds the review to the approved digest, two reports and a pre-implementation checkout", async () => {
+      const m = await feature();
+      const review = attachDesign(m, {
+        reportLines: (lines) => lines.filter((l) => !l.startsWith("Reviewed content")),
+      });
+      review.inspectedBy = "author";
+      review.criteria = ["result"];
+      review.reviewedDesignSha256 = "0".repeat(64);
+      review.artifacts = review.artifacts.slice(0, 1);
+      const text = issues(m).join("\n");
+      for (const expected of [
+        "design-review: reviewer must differ from the author",
+        "design-review: criteria must be empty; a design review proves no acceptance criterion",
+        "design-review: reviewed digest differs from the approved design",
+        "design-review: needs round-<n>-implementation_readiness.md and round-<n>-vortex-runtime-goldfish.md from one round",
+        "does not record the reviewed digest",
+      ])
+        expect(text).toContain(expected);
+    });
+
+    it("does not count a design review as acceptance coverage", async () => {
+      const m = await feature();
+      attachDesign(m).criteria = ["result"];
+      entry(m, "review").criteria = [];
+      expect(issues(m)).toContain("acceptance result: no passing evidence");
+    });
+
+    it("rejects a review recorded against another base, which could hide committed work", async () => {
+      const m = await feature();
+      const review = attachDesign(m);
+      review.subject = { ...review.subject, baseSha: m.subject.headSha };
+      expect(issues(m).join("\n")).toContain("design-review: reviewed checkout used another base");
+    });
+
+    it("rejects a review whose checkout names another checkout, had implementation, or is not an ancestor", async () => {
+      const m = await feature();
+      const review = attachDesign(m, {
+        reportLines: (lines) => lines.map((l) => (l.startsWith("Checkout:") ? "Checkout: x y" : l)),
+      });
+      expect(issues(m).join("\n")).toContain("names another checkout");
+      const n = await feature();
+      const late = attachDesign(n);
+      late.subject = n.subject;
+      expect(issues(n).join("\n")).toContain(
+        "design-review: reviewed checkout had implementation changes: README.md, harness/src/calculation.ts",
+      );
+      const o = await feature();
+      const stray = attachDesign(o);
+      const side = otherCheckout(`side-${count++}`, base);
+      execFileSync("git", [
+        "-C",
+        side,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.test",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "side",
+      ]);
+      stray.subject = {
+        ...stray.subject,
+        headSha: execFileSync("git", ["-C", side, "rev-parse", "HEAD"], {
+          encoding: "utf8",
+        }).trim(),
+      };
+      expect(issues(o).join("\n")).toContain(
+        "design-review: reviewed head is not an ancestor of the subject head",
+      );
+      expect(review.role).toBe("design-review");
+    });
+
+    it("rejects a report with a second Checkout line, even when one of them matches", async () => {
+      const m = await feature();
+      attachDesign(m, {
+        reportLines: (lines) =>
+          lines.flatMap((l) => (l.startsWith("Checkout:") ? ["Checkout: stale other", l] : [l])),
+      });
+      expect(issues(m).join("\n")).toContain("names another checkout");
+    });
+
+    it("reports an ancestry check git cannot make", async () => {
+      const m = await feature();
+      const review = attachDesign(m);
+      review.subject = { ...review.subject, headSha: "0".repeat(40) };
+      expect(issues(m).join("\n")).toContain("design-review: cannot check ancestry:");
+    });
+
+    it("keeps reviewedDesignSha256 on design-review only, and requires it there", async () => {
+      const m = await feature();
+      const review = attachDesign(m);
+      entry(m, "review").reviewedDesignSha256 = review.reviewedDesignSha256;
+      delete review.reviewedDesignSha256;
+      expect(issues(m)).toEqual(
+        expect.arrayContaining([
+          "review: reviewedDesignSha256 belongs only to design-review",
+          expect.stringContaining("design-review: reviewedDesignSha256 is required"),
+        ]),
+      );
+    });
+
+    it("holds a bug fix to a supplied design and needs none otherwise", async () => {
+      const m = await feature();
+      m.task.kind = "bug";
+      expect(issues(m).join("\n")).not.toContain("design");
+      attachDesign(m, { markdown: designText(m, ["README.md"]) });
+      expect(issues(m)).toContain(
+        "design: harness/src/calculation.ts outside the approved boundary",
+      );
+      const docs = await manifest();
+      docs.evidence.push({ ...attachDesign(await manifest()) });
+      expect(issues(docs)).toContain("design-review: no design in the manifest");
+    });
+
+    it("rejects an obsolete schema with a clear message", async () => {
+      const m = await manifest();
+      expect(() => evaluateReadiness({ ...m, schemaVersion: 2 }, root)).toThrow(
+        "readiness manifest schemaVersion 2 is not supported; this doodlebot reads schema 3",
+      );
+      expect(() => evaluateReadiness({ ...m, schemaVersion: 2 }, root)).toThrow(ConfigError);
+    });
   });
 
   it("rejects a stable dirty Vortex final receipt but permits identified local-diff exploration", async () => {
@@ -377,6 +667,7 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
       commit();
       const m = await manifest();
       m.task.kind = "feature";
+      attachDesign(m);
       const config = path.join(root, "vitest.config.mjs");
       fs.writeFileSync(
         config,
@@ -388,7 +679,6 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
         checkout: repo,
         base,
         cwd: repo,
-        owner: "skip-test",
         out,
         command: [
           process.execPath,
@@ -404,7 +694,6 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
         ],
         testReport: report,
         testFormat: "vitest",
-        leaseEnv: { dir: path.join(root, "leases") },
       });
       expect(receipt).toMatchObject({ code: 0, tests: { executed: 1, failed: 0, skipped: 1 } });
       const scoped = fileArtifact(out);
@@ -570,13 +859,12 @@ describe("readiness from concrete synthetic evidence", { timeout: 60_000 }, () =
     fs.writeFileSync(renderer, "renderer");
     return {
       tool: "vortex-e2e",
-      schemaVersion: 4,
+      schemaVersion: 5,
       kit: m.kit,
       kitAfter: m.kit,
       identity: source,
       checkout: source.checkout,
       headSha: source.headSha,
-      owner: "qa",
       commandCwd: path.join(source.checkout, "packages", "e2e"),
       runtimeFiles: [fileArtifact(main), fileArtifact(renderer)],
       startedAt: new Date().toISOString(),

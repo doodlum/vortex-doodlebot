@@ -21,14 +21,32 @@ further active-game polling, and await in-flight work before rejecting. Separate
 and watcher errors remain distinct causes. These tests need no Vortex, game or account.
 
 `pnpm run ci` runs types, lint, formatting, paired documentation checks and their negative
-controls, unit and filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials and an
-isolated lease directory. The operator's package-manager override must not affect them.
+controls, unit and filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials;
+instance-record cases mock the default cache to a temporary folder, so they never read or write
+the real `harness/.cache/instance.json`. The operator's package-manager override must not
+affect them.
 
-Keep boundary and failure tests: authentication/redaction, stale profile guards, leases,
-sandbox containment, refused destructive dialogs, incomplete installs, failed shutdown,
-cache rotation/logout, and restoring a checkout after a failed check. Test runtime selection
-through a real child process and concurrent Electron resolution through separate processes.
+Keep boundary and failure tests: authentication/redaction, stale profile guards, the instance
+record and its refusals, sandbox containment, refused destructive dialogs, incomplete installs,
+failed shutdown, cache rotation/logout, and restoring a checkout after a failed check. Test
+runtime selection through a real child process, and Electron installation (installed once,
+then reused; an interrupted install retried by a later process) through separate processes.
 These tests do not download tools or contact Nexus.
+
+Design-first and single-instance unit tests (all need no Vortex, game or account):
+
+| File                                 | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `harness/src/design.test.ts`         | Design parsing: header first match, continuation lines, contracts, open questions, numbered plan headings, `TBD` outside code; the content digest ignores Status, Date, Approved, CRLF and a BOM but changes with the body; every `checkDesign` issue in order; boundary globbing and the design-file exemption; `designs/egm-workflow.md` passes `checkDesign`                                                                |
+| `harness/src/designCommand.test.ts`  | Against a temporary git repository: `design new` writes the template and refuses an existing file or missing flags; `design check` text and JSON output and exit codes, with and without `--ready`; `design scope` names a file outside the boundary (exit 1), reports `IN SCOPE` once it is reverted, warns on an unapproved design; unknown subcommands refuse                                                               |
+| `harness/src/egmResources.test.ts`   | `.claude/settings.json` pins the EGM marketplace to `v0.1.1` and enables `egm@egm`; the `vortex-runtime-goldfish` adapter is read-only with `omitClaudeMd: true` and names its persona; the change standard names every required section; the `vortex-elephant` skill exists and root `AGENTS.md` points at it; `docs/guides/agent-plugins.md` contains `v0.1.1`, both Codex commands, Claude Code `2.1.271` and EGM issue 237 |
+| `harness/src/runningVortex.test.ts`  | The instance record: absent and invalid records, a dead pid or a pid owned by another program cleared as stale, a live Vortex reported with unknown fields tolerated, clearing only the named pid, a failed write throwing, and both refusal messages exactly                                                                                                                                                                  |
+| `harness/src/singleInstance.test.ts` | No tracked or untracked non-ignored file outside a short allow-list mentions the removed multi-instance machinery (the identifier list is in the test)                                                                                                                                                                                                                                                                         |
+| `harness/src/config.test.ts`         | Default cache, artifacts folder and ports (3701/9222); their variables, then `--cache-dir`, `--port` and `--cdp-port`, override them; empty variables count as unset; invalid or shared ports refuse                                                                                                                                                                                                                           |
+
+Readiness tests (`readiness.test.ts`) cover schema 3: each design rule, both no-design
+messages, `reviewedDesignSha256` placement, design-review reports, digest and ancestry, and the
+rejection of a schema-2 manifest.
 
 Collection-start regressions use the real UI helpers with a bounded root snapshot and a
 separately observable dialog footer. DOM coverage verifies the default 1,500-node limit;
@@ -54,21 +72,22 @@ samples. These fixtures mock the recorder and establish no real installation or 
 timing. Directory presence is not full installer-output integrity; deployment-manifest byte
 verification is separate. Failures retain evidence without recovery or another install attempt.
 
-Workflow regression coverage must exercise actual boundaries: independent commands with the
-same owner are excluded; intentional nested work is allowed; partial holds unwind before retry;
-known children keep protection after wrapper interruption; failed child registration waits for
-exit; expired/replaced acquisitions cannot be renewed or released by stale callers. Kit unlock
-requires the original acquisition ID; forced recovery still checks live operations and a clean tree.
+Workflow regression coverage must exercise actual boundaries: every launcher writes the
+instance record at spawn and a failed write stops the child; the record is cleared only after
+confirmed exit; legacy per-cache records are deleted; checkout commands (build, source install,
+`evidence run`, the revert check, `vortex-e2e`) refuse while a recorded Vortex runs from that
+checkout; `resetGameSettings` refuses with an injected `isRunning`; `script` returns the child's
+code, 130 after an abort and `128 + signal` after a signal death, and runs in `INIT_CWD`.
 Fixture shutdown errors preserve the app PID, profile and parent cache, and fail the run;
 directory cleanup follows confirmed exit. Use synthetic
 repositories/processes for these cases, never temporary edits to a user's Vortex source.
 
-Watch tests check source edits/additions/deletions, contention without lost updates, finite
-build/copy/reload guards, immutable inputs through edit/Undo, build failure and cancellation,
+Watch tests check source edits/additions/deletions, debounce, one finite build/copy/reload
+cycle per settled edit, immutable inputs through edit/Undo, build failure and cancellation,
 verified generation freshness, staged publication/copy rollback and foreign profiles at every
 attachment/reload boundary. Fixture tests include rejected shutdowns without an error value.
 Evidence tests
-check real CLI exclusion/cancellation, source/runtime drift, applicable gates, nonempty complete
+check the running-checkout refusal and real CLI cancellation, source/runtime drift, applicable gates, nonempty complete
 selection and changed E2E failures. A happy-path schema test alone cannot prove these contracts.
 Readiness regressions also cover native producer-kit drift, provenance on every production
 performance run, Vortex runtime/subject mismatch across checkouts, and skipped or TODO
@@ -90,7 +109,19 @@ evidence that this run passed, or force shutdown/delete the fixture to hide the 
 `pnpm run ai:test:core` (`ai:test` is the same suite) runs only the four core `.spec.ts`
 files. It uses disposable profiles, games, and credentials, independent of the operator's
 login. Run it after changes to the extension, launch/cache code, UI driver or deployment,
-and before releasing the kit.
+and before releasing the kit. Its fixtures launch their own Vortex (in a temporary cache on
+free ports), so the suite refuses to start while a harness Vortex runs (Playwright global setup
+`singleInstanceGlobalSetup.ts`):
+``A harness Vortex is running (pid <pid>, cache <cacheDir>); run `pnpm run ai -- down` before the core suite.``
+Run `pnpm run ai -- down` first. Each fixture writes the instance record at launch and clears
+it after confirmed exit.
+
+The suite has two Playwright projects so only one Vortex exists at a time: `lifecycle`
+(`bootstrap-lifecycle.spec.ts`, which launches its own instances) runs first, and `contract`
+(the specs sharing the worker fixture's Vortex) depends on it. Running a single contract spec or
+a `--grep` therefore runs the lifecycle test first; add `--no-deps` to skip it for a local
+iteration, never for recorded core evidence. `ai:test:oauth` clears the projects and runs only
+`oauth-restore.spec.ts`.
 
 - Launch and clean shutdown; cold/warm/fresh profile semantics and game activation.
 - No unrecoverable errors in the fixture's main/renderer logs, including rotated logs.
@@ -133,7 +164,6 @@ The named `ai:test:*` scripts outside Playwright are explicit scenarios:
 | ----------------------------------------- | ---------------------------------------------------- |
 | Collection recovery and Bethesda checks   | `collection-download-retry`, `bethesda`              |
 | Plugins, zoom and split panels            | `plugins-page`, `plugins-mod-link`, `zoom`, `panels` |
-| Multi-session isolation                   | `parallel-sessions`                                  |
 | Performance/scale                         | `large-library`, `mods-scroll`, `collection-scale`   |
 | Measurement without a pass/fail threshold | `download-churn`                                     |
 
@@ -146,11 +176,11 @@ doodlebot's core contract. Report each suite, failures and skips separately.
 ## Final workflow integration
 
 After scoped checks, run the actual CI and released-app core commands through `evidence run`,
-using an isolated owner/slot and new reporter paths. Unit and core fixture environments start
-their own operation contexts; the collecting parent retains protection for its known child.
-This checks the composed workflow as well as the individual helpers.
+with new reporter paths, after `pnpm run ai -- down` (the core suite refuses while a harness
+Vortex runs). This checks the composed workflow as well as the individual helpers.
 
-Fresh QA inspects the identified diff and independently exercises a refusal or failed check,
+Fresh QA runs after the author's `down`, in a fresh context, starting with `up --fresh` so it
+does not inherit the author's profile state. It inspects the identified diff and independently exercises a refusal or failed check,
 recovery and a subsequent handoff. Synthetic repositories cover source mutation/restoration;
 an isolated released app covers runtime behavior. Inspect the final manifest and artifacts,
 then run `readiness`. Verify the actual final commit for publication; a previous local-diff

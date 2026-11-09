@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
-import { forgetLaunchedPid, removeInstanceDir } from "../instance";
-import { processAlive, type LeaseEnv, type LeaseIdentity } from "../lease";
+import { removeInstanceDir } from "../instance";
+import { processAlive } from "../processes";
+import { clearInstanceRecord } from "../runningVortex";
 
 /** Parent fixtures must not erase a profile retained by a failed child teardown. */
 export class FixtureCleanup {
@@ -27,21 +28,24 @@ export class FixtureCleanup {
   }
 }
 
+/**
+ * Close the fixture's Vortex and confirm it exited. Only a confirmed exit clears the
+ * instance record; a live or unconfirmed app keeps the record and its profile.
+ */
 export async function closeFixtureApp(
   app: { close(): Promise<void>; process(): ChildProcess },
-  leases: readonly LeaseIdentity[],
   cleanup: FixtureCleanup,
-  env: LeaseEnv = {},
+  isAlive: (pid: number) => boolean = processAlive,
 ): Promise<void> {
   await cleanup.preserveOnFailure(async () => {
     const child = app.process();
     await app.close();
     if (child.pid !== undefined) {
-      if ((env.isAlive ?? processAlive)(child.pid))
+      if (isAlive(child.pid))
         throw new Error(
-          `Vortex ${child.pid} is still running after fixture close; ownership and profile retained.`,
+          `Vortex ${child.pid} is still running after fixture close; profile retained.`,
         );
-      forgetLaunchedPid(leases, child.pid, env);
+      clearInstanceRecord(child.pid);
     } else if (child.exitCode === null && child.signalCode === null) {
       throw new Error("Fixture close did not confirm Vortex exit; profile retained.");
     }

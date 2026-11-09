@@ -43,8 +43,6 @@ import { resetDisposableGameData } from "./sandbox";
 import { importLogin } from "./loginImport";
 import { DEFAULT_CACHE_DIR } from "./paths";
 import { missingBuildOutputs } from "./source";
-import { withLiveOperation } from "./liveOperation";
-import type { OperationOptions } from "./operations";
 
 /**
  * Bumped when a change here makes previously-cached snapshots wrong (a different
@@ -163,7 +161,7 @@ export async function seedLogin(mcp: VortexMcpClient, apiKey: string): Promise<v
   }
 }
 
-export interface BootstrapOptions extends OperationOptions {
+export interface BootstrapOptions {
   /** Observe every spawned cold/live process before readiness checks. */
   onProcessSpawn?: (child: ChildProcess) => void;
   /** Keep an explicitly copied real game intact when resetting its profile.
@@ -203,18 +201,6 @@ export async function bootstrap(
   config: HarnessConfig,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  return withLiveOperation(
-    config,
-    "bootstrap",
-    (context) => bootstrapInside(config, { ...options, context }),
-    options,
-  );
-}
-
-async function bootstrapInside(
-  config: HarnessConfig,
-  options: BootstrapOptions,
-): Promise<BootstrapResult> {
   const started = Date.now();
   const report = options.onProgress ?? ((): void => undefined);
   const configuredKey = config.apiKey?.trim();
@@ -237,22 +223,17 @@ async function bootstrapInside(
     );
 
   fs.mkdirSync(config.cacheDir, { recursive: true });
-  const seeded = seedSlotLogin(config);
-  if (seeded !== undefined)
-    report(`slot ${String(config.slot)}: copied the saved login from ${seeded}`);
+  const seeded = seedLoginFromDefaultCache(config);
+  if (seeded !== undefined) report(`copied the saved login from ${seeded}`);
 
   // An instance left over from an earlier run holds both the MCP port and the
   // working directory; every later step would fail on that rather than on
   // anything to do with what was asked for.
-  if (await stopStaleInstance(config, options)) {
+  if (await stopStaleInstance(config)) {
     report("stopped a Vortex instance left over from an earlier run");
   }
 
-  const builtAt = await ensureExtensionBuilt({
-    ...options,
-    owner: config.owner,
-    rebuild: options.rebuildExtension,
-  });
+  const builtAt = await ensureExtensionBuilt({ rebuild: options.rebuildExtension });
   report(`extension ready (${builtAt})`);
   report(`target: ${config.target.kind} — ${config.target.executable}`);
 
@@ -314,14 +295,14 @@ async function bootstrapInside(
   // rebuilt since the snapshot was taken, and the appData layout must exist
   // before Vortex starts.
   prepareUserDataDir(live, config.target.appName);
-  installMcpExtension(live, undefined, { ...options, owner: config.owner });
+  installMcpExtension(live);
 
   report(`launching Vortex (${tier})`);
   const instance = await launchVortex({
-    ...options,
     userDataDir: live,
     config,
     onProgress: report,
+    onProcessSpawn: options.onProcessSpawn,
   });
   if (liveUsable && legacyMatch && liveMarker) {
     fs.writeFileSync(
@@ -383,19 +364,7 @@ async function bootstrapInside(
  */
 export async function captureLogin(
   config: HarnessConfig,
-  options: OperationOptions & { onProgress?: (message: string) => void } = {},
-): Promise<string> {
-  return withLiveOperation(
-    config,
-    "capture login",
-    (context) => captureLoginInside(config, { ...options, context }),
-    options,
-  );
-}
-
-async function captureLoginInside(
-  config: HarnessConfig,
-  options: OperationOptions & { onProgress?: (message: string) => void },
+  options: { onProgress?: (message: string) => void } = {},
 ): Promise<string> {
   const report = options.onProgress ?? ((): void => undefined);
   const live = liveDir(config);
@@ -419,7 +388,7 @@ async function captureLoginInside(
   await requireOAuth(mcp);
 
   report("stopping Vortex so its state is flushed to disk");
-  await stopStaleInstance(config, options);
+  await stopStaleInstance(config);
 
   report("capturing the verified profile; refreshed OAuth credentials are cached separately");
   const login = loginDir(config);
@@ -473,10 +442,15 @@ async function buildSnapshot(
   const hasLogin = fs.existsSync(authCacheFile(config));
   if (hasLogin) report("cold: reusing the local OAuth cache with a clean profile");
   prepareUserDataDir(snapshot, config.target.appName);
-  installMcpExtension(snapshot, undefined, { ...options, owner: config.owner });
+  installMcpExtension(snapshot);
 
   report("cold: starting a blank Vortex");
-  const launchOptions = { ...options, userDataDir: snapshot, config, onProgress: report };
+  const launchOptions = {
+    userDataDir: snapshot,
+    config,
+    onProgress: report,
+    onProcessSpawn: options.onProcessSpawn,
+  };
   let game = await withSnapshotInstance(launchOptions, async (instance) => {
     const auth = await instance.mcp.call<{ oauthPresent: boolean }>("nexus_auth_status");
     if (auth.oauthPresent) {
@@ -566,7 +540,7 @@ async function withSnapshotInstance<T>(
   let stopFailed = false;
   let stopFailure: unknown;
   try {
-    await instance.stop(options);
+    await instance.stop();
   } catch (error) {
     stopFailed = true;
     stopFailure = error;
@@ -586,19 +560,19 @@ async function withSnapshotInstance<T>(
 }
 
 /**
- * A new slot (slots.ts) starts with the machine's saved login, as `login-import` would copy
- * it: its first `up` needs no interactive login. Only when the slot has none of its own; after
- * that each slot's copy is refreshed by its own Vortex and the two diverge (KNOWLEDGE.md).
+ * A cache other than the default starts with the machine's saved login, as `login-import`
+ * would copy it: its first `up` needs no interactive login. Only when the cache has none of its
+ * own; after that each copy is refreshed by its own Vortex and the two diverge (KNOWLEDGE.md).
  * Returns the cache it was copied from, or undefined when nothing was copied.
  */
-export function seedSlotLogin(config: HarnessConfig): string | undefined {
+export function seedLoginFromDefaultCache(config: HarnessConfig): string | undefined {
   if (path.resolve(config.cacheDir) === path.resolve(DEFAULT_CACHE_DIR)) return undefined;
   const destination = authCacheFile(config);
   if (fs.existsSync(destination)) return undefined;
   try {
     return importLogin(DEFAULT_CACHE_DIR, destination);
   } catch {
-    // No usable login in the default cache: the slot starts logged out, as any cache does.
+    // No usable login in the default cache: this one starts logged out, as any cache does.
     return undefined;
   }
 }

@@ -6,10 +6,8 @@ import path from "node:path";
 import { z } from "zod";
 import { REPO_ROOT } from "./paths";
 import { commandEnv } from "./source";
-import { checkoutResource } from "./lease";
-import { withCheckoutOperation } from "./checkoutOperation";
 import { runEvidenceProcess, abortOnSignals } from "./processRunner";
-import type { OperationOptions } from "./operations";
+import { assertNoVortexRunningFrom } from "./runningVortex";
 export { runEvidenceProcess, abortOnSignals, type ProcessEvidenceOptions } from "./processRunner";
 
 const text = z.string().trim().min(1);
@@ -207,116 +205,94 @@ export function resolveEvidenceCommand(
 }
 
 /** The CLI calls this before loading app configuration; an evidence run never chooses a Vortex. */
-export async function collectCommandEvidence(
-  options: OperationOptions & {
-    checkout: string;
-    base: string;
-    cwd: string;
-    owner: string;
-    command: string[];
-    out: string;
-    runtime?: RuntimeIdentity;
-    testReport?: string;
-    testFormat?: "vitest" | "playwright";
-  },
-): Promise<CommandEvidence> {
+export async function collectCommandEvidence(options: {
+  checkout: string;
+  base: string;
+  cwd: string;
+  command: string[];
+  out: string;
+  runtime?: RuntimeIdentity;
+  testReport?: string;
+  testFormat?: "vitest" | "playwright";
+}): Promise<CommandEvidence> {
   const requested = options.command;
   const actual = resolveEvidenceCommand(options.checkout, requested);
-  return withCheckoutOperation(
-    options.checkout,
-    options.owner,
-    "collect command evidence",
-    {
-      ...options,
-      rewriting: true,
-    },
-    async (context) => {
-      const before = captureCheckoutIdentity(options.checkout, options.base);
-      const kit = captureCheckoutIdentity(REPO_ROOT);
-      const cwd = fs.realpathSync.native(path.resolve(options.cwd));
-      const relative = path.relative(before.checkout, cwd);
-      if (relative.startsWith("..") || path.isAbsolute(relative))
-        throw new Error("command cwd must be inside the subject checkout");
-      const out = path.resolve(options.out);
-      if (fs.existsSync(out) || fs.existsSync(`${out}.log`))
-        throw new Error("Evidence output already exists; retain it and choose a new path.");
-      if (options.testReport !== undefined && fs.existsSync(options.testReport))
-        throw new Error("Test report must be newly produced, not an existing file.");
-      if (options.runtime !== undefined) checkRuntime(options.runtime);
-      const cancellation = abortOnSignals();
-      const startedAt = new Date().toISOString();
-      let result: Awaited<ReturnType<typeof runEvidenceProcess>>;
-      const env = commandEnv(cwd);
-      if (options.runtime !== undefined) {
-        env.VORTEX_AI_PRODUCTION = options.runtime.mode === "production" ? "1" : "0";
-        env.VORTEX_AI_INSTALLED = options.runtime.kind === "installed" ? "1" : "0";
-        if (options.runtime.kind === "installed")
-          env.VORTEX_AI_EXE = options.runtime.files[0]!.path;
-        else {
-          delete env.VORTEX_AI_EXE;
-          env.VORTEX_AI_DEV_DIR = options.runtime.source!.checkout;
-        }
-      }
-      try {
-        result = await runEvidenceProcess({
-          ...actual,
-          cwd,
-          env,
-          context,
-          leaseEnv: options.leaseEnv,
-          persistentResources: [checkoutResource(before.checkout)],
-          signal: cancellation.signal,
-        });
-      } finally {
-        cancellation.dispose();
-      }
-      const after = captureCheckoutIdentity(options.checkout, options.base);
-      let runtimeUnchanged = true;
-      if (options.runtime !== undefined) {
-        try {
-          checkRuntime(options.runtime);
-        } catch {
-          runtimeUnchanged = false;
-        }
-      }
-      fs.mkdirSync(path.dirname(out), { recursive: true });
-      fs.writeFileSync(`${out}.log`, result.output);
-      let tests: CommandEvidence["tests"];
-      if (options.testReport !== undefined) {
-        const json = JSON.parse(fs.readFileSync(options.testReport, "utf8"));
-        const stats =
-          options.testFormat === "vitest"
-            ? {
-                executed: json.numPassedTests + json.numFailedTests,
-                failed: json.numFailedTests,
-                skipped: (json.numPendingTests ?? 0) + (json.numTodoTests ?? 0),
-              }
-            : {
-                executed: json.stats.expected + json.stats.unexpected + json.stats.flaky,
-                failed: json.stats.unexpected + json.stats.flaky,
-                skipped: json.stats.skipped,
-              };
-        tests = { ...stats, report: fileArtifact(options.testReport) };
-      }
-      const report = commandEvidenceSchema.parse({
-        tool: "doodlebot-command-evidence",
-        schemaVersion: 1,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        command: { ...actual, cwd, requested },
-        kit,
-        before,
-        after,
-        runtime: options.runtime,
-        runtimeUnchanged,
-        code: result.code,
-        signal: result.signal,
-        aborted: result.aborted,
-        output: fileArtifact(`${out}.log`),
-        tests,
-      });
-      fs.writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
-      return report;
-    },
-  );
+  assertNoVortexRunningFrom(options.checkout, "recording evidence in it");
+  const before = captureCheckoutIdentity(options.checkout, options.base);
+  const kit = captureCheckoutIdentity(REPO_ROOT);
+  const cwd = fs.realpathSync.native(path.resolve(options.cwd));
+  const relative = path.relative(before.checkout, cwd);
+  if (relative.startsWith("..") || path.isAbsolute(relative))
+    throw new Error("command cwd must be inside the subject checkout");
+  const out = path.resolve(options.out);
+  if (fs.existsSync(out) || fs.existsSync(`${out}.log`))
+    throw new Error("Evidence output already exists; retain it and choose a new path.");
+  if (options.testReport !== undefined && fs.existsSync(options.testReport))
+    throw new Error("Test report must be newly produced, not an existing file.");
+  if (options.runtime !== undefined) checkRuntime(options.runtime);
+  const cancellation = abortOnSignals();
+  const startedAt = new Date().toISOString();
+  let result: Awaited<ReturnType<typeof runEvidenceProcess>>;
+  const env = commandEnv(cwd);
+  if (options.runtime !== undefined) {
+    env.VORTEX_AI_PRODUCTION = options.runtime.mode === "production" ? "1" : "0";
+    env.VORTEX_AI_INSTALLED = options.runtime.kind === "installed" ? "1" : "0";
+    if (options.runtime.kind === "installed") env.VORTEX_AI_EXE = options.runtime.files[0]!.path;
+    else {
+      delete env.VORTEX_AI_EXE;
+      env.VORTEX_AI_DEV_DIR = options.runtime.source!.checkout;
+    }
+  }
+  try {
+    result = await runEvidenceProcess({ ...actual, cwd, env, signal: cancellation.signal });
+  } finally {
+    cancellation.dispose();
+  }
+  const after = captureCheckoutIdentity(options.checkout, options.base);
+  let runtimeUnchanged = true;
+  if (options.runtime !== undefined) {
+    try {
+      checkRuntime(options.runtime);
+    } catch {
+      runtimeUnchanged = false;
+    }
+  }
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(`${out}.log`, result.output);
+  let tests: CommandEvidence["tests"];
+  if (options.testReport !== undefined) {
+    const json = JSON.parse(fs.readFileSync(options.testReport, "utf8"));
+    const stats =
+      options.testFormat === "vitest"
+        ? {
+            executed: json.numPassedTests + json.numFailedTests,
+            failed: json.numFailedTests,
+            skipped: (json.numPendingTests ?? 0) + (json.numTodoTests ?? 0),
+          }
+        : {
+            executed: json.stats.expected + json.stats.unexpected + json.stats.flaky,
+            failed: json.stats.unexpected + json.stats.flaky,
+            skipped: json.stats.skipped,
+          };
+    tests = { ...stats, report: fileArtifact(options.testReport) };
+  }
+  const report = commandEvidenceSchema.parse({
+    tool: "doodlebot-command-evidence",
+    schemaVersion: 1,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    command: { ...actual, cwd, requested },
+    kit,
+    before,
+    after,
+    runtime: options.runtime,
+    runtimeUnchanged,
+    code: result.code,
+    signal: result.signal,
+    aborted: result.aborted,
+    output: fileArtifact(`${out}.log`),
+    tests,
+  });
+  fs.writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
+  return report;
 }

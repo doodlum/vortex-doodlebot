@@ -33,7 +33,6 @@ import { strToU8, zipSync } from "fflate";
 
 import { attachToRenderer, captureScreenshot } from "../cdp";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { purgeGame } from "../deployment";
 import {
   fillFilterScript,
@@ -67,8 +66,6 @@ const MAX_DEPLOY_RATIO = 1.6;
 const MAX_INSTALL_FREEZE_MS = 1_500;
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:large-library", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const gameId = await mcp.call<string | null>("vortex_query", { selector: "activeGameId" });

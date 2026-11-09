@@ -1,49 +1,74 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadConfig, type HarnessConfig } from "./config";
-import { instanceResource } from "./slots";
 import {
-  attachedLeaseResources,
   buildInstanceEnv,
-  claimInstanceLease,
-  forgetLaunchedPid,
-  instanceLeaseResources,
   launchStdio,
-  recordLaunchedPid,
+  launchVortex,
   registerLaunchedProcess,
+  stdioLogFile,
+  stopInstance,
+  stopRunningInstance,
+  stopStaleInstance,
 } from "./instance";
+import { VortexMcpClient } from "./mcpClient";
+import { DEFAULT_CACHE_DIR } from "./paths";
+import { processAlive } from "./processes";
 import {
-  LeaseHeldError,
-  acquireLease,
-  checkoutResource,
-  processAlive,
-  readLease,
-  releaseLease,
-  type LeaseEnv,
-} from "./lease";
-import { claimOperations, operationResource } from "./operations";
+  INSTANCE_RECORD,
+  readInstanceRecord,
+  writeInstanceRecord,
+  type InstanceRecord,
+} from "./runningVortex";
+
+// The one instance record lives in the default cache; keep it in a temporary folder.
+vi.mock("./paths", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./paths")>();
+  const nodeFs = await import("node:fs");
+  const nodeOs = await import("node:os");
+  const nodePath = await import("node:path");
+  return {
+    ...actual,
+    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "doodlebot-record-")),
+  };
+});
+// Node children stand in for Vortex, so they must pass the image check.
+vi.mock("./processes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./processes")>()),
+  processImageName: vi.fn(() => "electron.exe"),
+}));
 
 let dir: string;
 let checkout: string;
-let alive: Set<number>;
-let env: LeaseEnv;
+const children: ChildProcess[] = [];
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-instance-test-"));
   checkout = path.join(dir, "vx-ab");
   fs.mkdirSync(checkout);
-  alive = new Set([process.pid, 1001, 1002, 4242]);
-  env = { dir: path.join(dir, "leases"), isAlive: (pid) => alive.has(pid) };
 });
 
-afterEach(() => {
+afterEach(async () => {
+  for (const child of children.splice(0)) {
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, "exit");
+      child.kill("SIGKILL");
+      await exited;
+    }
+  }
+  fs.rmSync(INSTANCE_RECORD, { recursive: true, force: true });
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+afterAll(() => {
+  fs.rmSync(DEFAULT_CACHE_DIR, { recursive: true, force: true });
 });
 
 function devConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfig {
@@ -56,7 +81,6 @@ function devConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfig {
       sourceDir: checkout,
     },
     cacheDir: path.join(dir, "cache"),
-    owner: "kit-agent2",
     ...overrides,
   });
 }
@@ -68,6 +92,57 @@ function installedConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfig 
     ...overrides,
   });
 }
+
+async function freePort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as net.AddressInfo;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+/** A config whose "Vortex" is a Node process that idles, writing its pid to `pidFile`. */
+async function nodeLaunchConfig(pidFile: string): Promise<HarnessConfig> {
+  const script = `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  return installedConfig({
+    target: {
+      kind: "installed",
+      executable: process.execPath,
+      // "--" keeps the --remote-debugging-port the launcher appends away from Node's options.
+      args: ["-e", script, "--"],
+      appName: "Vortex",
+    },
+    gameId: "fallout4",
+    mcpPort: await freePort(),
+    cdpPort: await freePort(),
+  });
+}
+
+function idleChild(): ChildProcess {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  children.push(child);
+  return child;
+}
+
+function record(
+  pid: number,
+  cacheDir: string,
+  extra: Partial<InstanceRecord> = {},
+): InstanceRecord {
+  return {
+    pid,
+    startedAt: new Date().toISOString(),
+    cacheDir,
+    userDataDir: path.join(cacheDir, "live"),
+    mcpPort: 3701,
+    ...extra,
+  };
+}
+
+const noMcp = { call: vi.fn(async () => undefined) } as unknown as VortexMcpClient;
 
 describe("buildInstanceEnv", () => {
   it("launches a --production source build with NODE_ENV=production, not without one", () => {
@@ -127,188 +202,196 @@ describe("buildInstanceEnv", () => {
   });
 });
 
-describe("the leases a running Vortex needs", () => {
-  // Each cache's instance has a lease of its own (slots.ts); these configs share one cache.
-  const instance = (): string => instanceResource(installedConfig().cacheDir);
-
-  it("are the instance alone for a released build, and the checkout too for a source build", () => {
-    expect(instanceLeaseResources(installedConfig())).toEqual([instance()]);
-    expect(instanceLeaseResources(devConfig())).toEqual([instance(), checkoutResource(checkout)]);
-  });
-
-  it("refuse a launch from a checkout another owner has locked, holding nothing", () => {
-    // The observed hole: one agent rebuilt vx-ab while another ran Vortex from it.
-    acquireLease(checkoutResource(checkout), "rebuilder", { ...env, pid: 1001 });
-    expect(() => claimInstanceLease(devConfig(), "launch Vortex", env)).toThrow(LeaseHeldError);
-    // The instance it took first was given back.
-    expect(readLease(instance(), env)).toBeUndefined();
-  });
-
-  it("lock the checkout while Vortex runs from it, after the launching command exits", () => {
-    const config = devConfig();
-    const hold = claimInstanceLease(config, "launch Vortex", env);
-    recordLaunchedPid(hold.identities, 4242, env);
-    hold.release();
-    // `up` has exited; its Vortex still holds both.
-    for (const resource of [instance(), checkoutResource(checkout)]) {
-      expect(readLease(resource, env)).toMatchObject({
-        live: true,
-        lease: { owner: "kit-agent2" },
-      });
-    }
-    expect(() =>
-      acquireLease(checkoutResource(checkout), "rebuilder", { ...env, pid: 1002 }),
-    ).toThrow(/held by "kit-agent2"/);
-    forgetLaunchedPid(hold.identities, 4242, env);
-    expect(readLease(checkoutResource(checkout), env)).toBeUndefined();
-    expect(readLease(instance(), env)).toBeUndefined();
-  });
-
-  it.each(["kit-agent2", "other"])(
-    "launch bookkeeping retains its acquisition across replacement by %s",
-    (owner) => {
-      const config = devConfig();
-      const original = claimInstanceLease(config, "old launch", env);
-      for (const identity of original.identities)
-        releaseLease(identity.resource, identity.owner, { ...env, force: true });
-      const successor = claimInstanceLease(devConfig({ owner }), "new launch", env);
-      recordLaunchedPid(successor.identities, 4242, env);
-      const before = successor.identities.map(({ resource }) => readLease(resource, env)!.lease);
-      expect(() => recordLaunchedPid(original.identities, 1001, env)).toThrow(
-        /Lost .* acquisition/,
-      );
-      forgetLaunchedPid(original.identities, 4242, env);
-      original.release();
-      expect(successor.identities.map(({ resource }) => readLease(resource, env)!.lease)).toEqual(
-        before,
-      );
-      forgetLaunchedPid(successor.identities, 4242, env);
-      successor.release();
-    },
-  );
-
-  it("awaits an exact child after partial registration fails and preserves the successor", async () => {
-    env = { dir: path.join(dir, "leases"), isAlive: processAlive };
-    const config = devConfig();
-    const original = claimInstanceLease(config, "launch", env);
-    const operation = claimOperations(instanceLeaseResources(config), config.owner!, {
-      leaseEnv: env,
+describe("the instance record at launch", () => {
+  it("is written right after spawn, before readiness, and cleared when a failed launch's child has exited", async () => {
+    const pidFile = path.join(dir, "child.pid");
+    const config = await nodeLaunchConfig(pidFile);
+    const userDataDir = path.join(config.cacheDir, "live");
+    let seen: InstanceRecord | undefined;
+    let spawnedPid: number | undefined;
+    await expect(
+      launchVortex({
+        userDataDir,
+        config,
+        onProcessSpawn: (child) => {
+          spawnedPid = child.pid;
+          seen = readInstanceRecord();
+          throw new Error("observer failed");
+        },
+      }),
+    ).rejects.toThrow("observer failed");
+    expect(seen).toMatchObject({
+      pid: spawnedPid,
+      cacheDir: config.cacheDir,
+      userDataDir,
+      mcpPort: config.mcpPort,
     });
-    const resource = checkoutResource(checkout);
-    releaseLease(resource, config.owner!, { ...env, force: true });
-    const successor = acquireLease(resource, "successor", env).lease;
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    try {
-      await expect(
-        registerLaunchedProcess(child, original.identities, {
-          leaseEnv: env,
-          context: operation.context,
-        }),
-      ).rejects.toThrow(/Lost .* acquisition/);
-      expect(processAlive(child.pid!)).toBe(false);
-      expect(readLease(resource, env)!.lease).toEqual(successor);
-      expect(readLease(instance(), env)!.lease.instancePids).toEqual([]);
-      for (const guarded of operation.context.resources)
-        expect(readLease(operationResource(guarded), env)!.lease.holders).toEqual([process.pid]);
-    } finally {
-      if (child.exitCode === null && child.signalCode === null) {
-        const exited = once(child, "exit");
-        child.kill("SIGKILL");
-        await exited;
-      }
-      operation.release();
-      original.release();
-    }
+    expect(seen).not.toHaveProperty("sourceDir");
+    expect(processAlive(spawnedPid!)).toBe(false);
+    expect(readInstanceRecord()).toBeUndefined();
+  });
+
+  it("fails the launch, stopping the child, when the record cannot be written", async () => {
+    // A folder where the record belongs makes the write throw.
+    fs.mkdirSync(INSTANCE_RECORD, { recursive: true });
+    const pidFile = path.join(dir, "child.pid");
+    const config = await nodeLaunchConfig(pidFile);
+    const observer = vi.fn();
+    await expect(
+      launchVortex({
+        userDataDir: path.join(config.cacheDir, "live"),
+        config,
+        onProcessSpawn: observer,
+      }),
+    ).rejects.toThrow();
+    expect(observer).not.toHaveBeenCalled();
+    // The child has exited by the time the launch rejects, whether or not it got as far as
+    // writing its pid.
+    if (fs.existsSync(pidFile))
+      expect(processAlive(Number(fs.readFileSync(pidFile, "utf8")))).toBe(false);
+  });
+
+  it("refuses a launch while another harness Vortex runs, before spawning anything", async () => {
+    writeInstanceRecord(record(process.pid, path.join(dir, "other-cache")));
+    const config = await nodeLaunchConfig(path.join(dir, "child.pid"));
+    const userDataDir = path.join(config.cacheDir, "live");
+    await expect(launchVortex({ userDataDir, config })).rejects.toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${path.join(dir, "other-cache")}); run \`pnpm run ai -- down\` before starting Vortex.`,
+    );
+    expect(fs.existsSync(stdioLogFile(userDataDir))).toBe(false);
+    expect(readInstanceRecord()?.pid).toBe(process.pid);
   });
 
   it("settles the exact child before rejecting a failed spawn observer", async () => {
-    env = { dir: path.join(dir, "leases"), isAlive: processAlive };
-    const config = devConfig();
-    const hold = claimInstanceLease(config, "observed launch", env);
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    try {
-      await expect(
-        registerLaunchedProcess(child, hold.identities, {
-          leaseEnv: env,
-          onProcessSpawn: () => {
-            throw new Error("shared game lease registration failed");
-          },
-        }),
-      ).rejects.toThrow("shared game lease registration failed");
-      expect(processAlive(child.pid!)).toBe(false);
-      for (const identity of hold.identities)
-        expect(readLease(identity.resource, env)!.lease.instancePids).toEqual([]);
-    } finally {
-      if (child.exitCode === null && child.signalCode === null) {
-        const exited = once(child, "exit");
-        child.kill("SIGKILL");
-        await exited;
-      }
-      hold.release();
-    }
+    const child = idleChild();
+    writeInstanceRecord(record(child.pid!, path.join(dir, "cache")));
+    await expect(
+      registerLaunchedProcess(child, {
+        onProcessSpawn: () => {
+          throw new Error("shared game registration failed");
+        },
+      }),
+    ).rejects.toThrow("shared game registration failed");
+    expect(processAlive(child.pid!)).toBe(false);
+    expect(readInstanceRecord()).toBeUndefined();
+  });
+});
+
+describe("stopping", () => {
+  it("clears the record after a confirmed exit of the launched child", async () => {
+    const child = idleChild();
+    writeInstanceRecord(record(child.pid!, path.join(dir, "cache")));
+    await stopInstance(child, noMcp, { force: true, timeoutMs: 100 });
+    expect(processAlive(child.pid!)).toBe(false);
+    expect(readInstanceRecord()).toBeUndefined();
   });
 
-  it("for a command attaching to a running Vortex, are its checkout, not the configured one", () => {
-    const config = installedConfig();
-    expect(attachedLeaseResources(config)).toEqual([instance()]);
-    // Written by the launch: this process stands in for the running Vortex.
-    fs.mkdirSync(config.cacheDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(config.cacheDir, "instance.json"),
-      JSON.stringify({ pid: process.pid, sourceDir: checkout }),
+  it("keeps the record when the child does not exit, or the record names another launch", async () => {
+    const child = idleChild();
+    writeInstanceRecord(record(child.pid!, path.join(dir, "cache")));
+    await expect(stopInstance(child, noMcp, { timeoutMs: 100 })).rejects.toThrow(
+      /did not exit cleanly/,
     );
-    expect(attachedLeaseResources(config)).toEqual([instance(), checkoutResource(checkout)]);
-    acquireLease(checkoutResource(checkout), "rebuilder", { ...env, pid: 1001 });
-    expect(() =>
-      claimInstanceLease(config, "ai:test:collection-scale", env, { attach: true }),
-    ).toThrow(LeaseHeldError);
-    // A Vortex that has exited no longer ties the command to its checkout.
-    fs.writeFileSync(
-      path.join(config.cacheDir, "instance.json"),
-      JSON.stringify({ pid: 2 ** 30, sourceDir: checkout }),
-    );
-    expect(attachedLeaseResources(config)).toEqual([instance()]);
+    expect(readInstanceRecord()?.pid).toBe(child.pid);
+
+    writeInstanceRecord(record(process.pid, path.join(dir, "cache")));
+    await stopInstance(child, noMcp, { force: true, timeoutMs: 100 });
+    expect(readInstanceRecord()?.pid).toBe(process.pid);
   });
 
-  it("join a checkout lock the same owner already holds, and take the instance with it", () => {
-    acquireLease(checkoutResource(checkout), "kit-agent2", {
-      ...env,
-      mode: "explicit",
-      ttlMinutes: 60,
-    });
-    const hold = claimInstanceLease(devConfig(), "launch Vortex", env);
-    expect(hold.joined).toBe(false);
-    expect(readLease(instance(), env)?.lease.owner).toBe("kit-agent2");
-    // A second owner is now refused the instance as well as the checkout.
-    expect(() => claimInstanceLease(devConfig({ owner: "other" }), "launch Vortex", env)).toThrow(
-      LeaseHeldError,
-    );
-    hold.release();
-    expect(readLease(checkoutResource(checkout), env)?.lease.mode).toBe("explicit");
+  it("down waits for this cache's recorded Vortex without signalling it, then clears the record", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    const child = idleChild();
+    writeInstanceRecord(record(child.pid!, config.cacheDir));
+    const stopping = stopStaleInstance(config);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(processAlive(child.pid!)).toBe(true);
+    expect(readInstanceRecord()?.pid).toBe(child.pid);
+    // Its window is closed by hand.
+    child.kill("SIGKILL");
+    await expect(stopping).resolves.toBe(false);
+    expect(readInstanceRecord()).toBeUndefined();
+  }, 15_000);
+
+  it("up's stop of its own cache leaves another cache's running Vortex and its record alone", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    writeInstanceRecord(record(process.pid, path.join(dir, "other-cache")));
+    await expect(stopStaleInstance(config)).resolves.toBe(false);
+    expect(readInstanceRecord()?.pid).toBe(process.pid);
   });
 
-  it("let two caches, two agents' slots, run a Vortex each without refusing one another", () => {
-    const other = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-ai-slot-"));
-    try {
-      const mine = claimInstanceLease(installedConfig({ owner: "kit-agent2" }), "up", env);
-      const theirs = claimInstanceLease(
-        installedConfig({ owner: "other", cacheDir: other }),
-        "up",
-        env,
+  it("up never quits another live cache's Vortex, even one whose cache lies inside its own", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    const nested = path.join(config.cacheDir, "zoom-signed-out");
+    writeInstanceRecord(record(process.pid, nested));
+    const ping = vi.spyOn(VortexMcpClient.prototype, "ping").mockResolvedValue(true);
+    const call = vi
+      .spyOn(VortexMcpClient.prototype, "call")
+      .mockImplementation(async (name: string) =>
+        name === "automation_status" ? { userDataDir: path.join(nested, "live") } : undefined,
       );
-      expect(readLease(instance(), env)?.lease.owner).toBe("kit-agent2");
-      expect(readLease(instanceResource(other), env)?.lease.owner).toBe("other");
-      theirs.release();
-      mine.release();
+    try {
+      await expect(stopStaleInstance(config)).rejects.toThrow(
+        /belongs to a different Vortex profile/,
+      );
+      expect(call.mock.calls.map(([name]) => name)).toEqual(["automation_status"]);
+      expect(readInstanceRecord()?.pid).toBe(process.pid);
     } finally {
-      fs.rmSync(other, { recursive: true, force: true });
+      ping.mockRestore();
+      call.mockRestore();
     }
+  });
+
+  it("down follows the record to another cache and port, saying so, then clears it", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    const otherCache = path.join(dir, "other-cache");
+    const otherPort = await freePort();
+    const child = idleChild();
+    writeInstanceRecord(record(child.pid!, otherCache, { mcpPort: otherPort }));
+    const messages: string[] = [];
+    const stopping = stopRunningInstance(config, (message) => messages.push(message));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(messages).toEqual([
+      `Stopping the harness Vortex of cache ${otherCache} (MCP port ${String(otherPort)}).`,
+    ]);
+    // It waits on that cache's pid without signalling it.
+    expect(processAlive(child.pid!)).toBe(true);
+    child.kill("SIGKILL");
+    await expect(stopping).resolves.toBe(false);
+    expect(readInstanceRecord()).toBeUndefined();
+  }, 15_000);
+
+  it("down without a live record stops only this cache, silently", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    const messages: string[] = [];
+    await expect(stopRunningInstance(config, (m) => messages.push(m))).resolves.toBe(false);
+    expect(messages).toEqual([]);
+  });
+
+  it("down clears a stale record", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    writeInstanceRecord(record(2 ** 30, config.cacheDir));
+    await expect(stopStaleInstance(config)).resolves.toBe(false);
+    expect(fs.existsSync(INSTANCE_RECORD)).toBe(false);
+  });
+
+  it("deletes the legacy per-cache instance.pid and instance.json", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    fs.mkdirSync(config.cacheDir, { recursive: true });
+    const legacyPid = path.join(config.cacheDir, "instance.pid");
+    const legacyRecord = path.join(config.cacheDir, "instance.json");
+    fs.writeFileSync(legacyPid, String(2 ** 30));
+    fs.writeFileSync(legacyRecord, JSON.stringify({ pid: 2 ** 30, leases: [] }));
+    await stopStaleInstance(config);
+    expect(fs.existsSync(legacyPid)).toBe(false);
+    expect(fs.existsSync(legacyRecord)).toBe(false);
+
+    // In the default cache the old file is where the one record lives; an old-format one goes.
+    fs.writeFileSync(INSTANCE_RECORD, JSON.stringify({ pid: 2 ** 30, leases: [] }));
+    await stopStaleInstance(
+      installedConfig({ cacheDir: DEFAULT_CACHE_DIR, mcpPort: config.mcpPort }),
+    );
+    expect(fs.existsSync(INSTANCE_RECORD)).toBe(false);
   });
 });
 

@@ -25,39 +25,25 @@ import {
   type HarnessConfig,
 } from "./config";
 import { VortexMcpClient } from "./mcpClient";
-import {
-  buildExtension,
-  extensionOutputResource,
-  type ExtensionBuildOptions,
-} from "./extensionBuild";
+import { buildExtension, type ExtensionBuildOptions } from "./extensionBuild";
 import {
   extensionIsFresh,
   replaceExtensionDirectory,
   requireFreshExtension,
   verifyExtensionGeneration,
 } from "./extensionGeneration";
-import {
-  ChildRegistrationError,
-  inheritedOperation,
-  trackOperationChild,
-  withOperationsSync,
-  type OperationOptions,
-} from "./operations";
-import { withLiveOperation } from "./liveOperation";
 import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
-import { instanceResource } from "./slots";
 import { preparePreload, verifyPreload } from "./mainPreload";
+import { normalizedPath } from "./paths";
+import { processAlive } from "./processes";
 import {
-  addInstancePid,
-  checkoutResource,
-  holdLease,
-  removeInstancePid,
-  requireNamedOwner,
-  type HoldResult,
-  type LeaseEnv,
-  type LeaseIdentity,
-} from "./lease";
+  INSTANCE_RECORD,
+  assertNoHarnessVortex,
+  clearInstanceRecord,
+  runningVortex,
+  writeInstanceRecord,
+} from "./runningVortex";
 import {
   ProductionModeError,
   bundleModeOf,
@@ -68,169 +54,47 @@ import {
 } from "./productionMode";
 
 /**
- * Hold the machine-wide instance lease for the rest of this process (see lease.ts).
- *
- * Every path that starts or stops Vortex calls this first, so one agent cannot quit or
- * replace another's instance. Free or stale: taken. Same owner: joined. Another live
- * owner: LeaseHeldError, naming the holder and how to wait or release.
+ * Run the spawn observer on a launched child. When it throws, the exact child is killed and its
+ * exit awaited (5 s) before the error is rethrown, so a failed launch never leaves a Vortex
+ * behind that nothing tracks. Its instance record, if any, is cleared once it has exited.
  */
-export interface InstanceLease extends HoldResult {
-  identities: readonly LeaseIdentity[];
-}
-
-export function claimInstanceLease(
-  config: HarnessConfig,
-  purpose: string,
-  leaseEnv: LeaseEnv = {},
-  options: { attach?: boolean } = {},
-): InstanceLease {
-  const owner = requireNamedOwner(config.owner);
-  const held: HoldResult[] = [];
-  const resources =
-    options.attach === true ? attachedLeaseResources(config) : instanceLeaseResources(config);
-  try {
-    // The instance first: a caller refused it has touched nothing else.
-    for (const resource of resources) {
-      held.push(
-        holdLease(resource, owner, {
-          ...leaseEnv,
-          purpose,
-          onReclaim: (state) =>
-            process.stderr.write(
-              `[lease] reclaimed a stale ${resource} lease from "${state.lease.owner}" (${state.reason})\n`,
-            ),
-        }),
-      );
-    }
-  } catch (err) {
-    for (const hold of held.toReversed()) hold.release();
-    throw err;
-  }
-  const first = held[0]!;
-  return {
-    ...first,
-    identities: held.map(({ lease }) => ({
-      resource: lease.resource,
-      owner: lease.owner,
-      acquisitionId: lease.acquisitionId,
-    })),
-    release: () => held.toReversed().forEach((hold) => hold.release()),
-  };
-}
-
-/**
- * The leases a running Vortex needs: this cache's instance, and for a source build the checkout it
- * runs from, so nobody rebuilds or switches that checkout underneath it (and a holder of
- * the checkout lock who starts Vortex also takes the instance).
- */
-export function instanceLeaseResources(config: HarnessConfig): string[] {
-  const checkout = config.target.kind === "dev" ? config.target.sourceDir : undefined;
-  const instance = instanceResource(config.cacheDir);
-  return checkout === undefined ? [instance] : [instance, checkoutResource(checkout)];
-}
-
-/**
- * The leases a command driving an already-running Vortex needs: the instance, and the
- * checkout that Vortex was launched from (recorded in the cache at launch), not whatever
- * checkout this command's own configuration would pick.
- */
-export function attachedLeaseResources(config: HarnessConfig): string[] {
-  const running = runningInstance(config);
-  const instance = instanceResource(config.cacheDir);
-  return running?.sourceDir === undefined
-    ? [instance]
-    : [instance, checkoutResource(running.sourceDir)];
-}
-
-interface InstanceRecord {
-  pid: number;
-  leases: readonly LeaseIdentity[];
-  /** The Vortex checkout it runs from, for a source build. */
-  sourceDir?: string;
-}
-
-function instanceRecordFile(config: HarnessConfig): string {
-  return path.join(config.cacheDir, "instance.json");
-}
-
-function runningInstanceRecord(config: HarnessConfig): InstanceRecord | undefined {
-  try {
-    return JSON.parse(fs.readFileSync(instanceRecordFile(config), "utf8")) as InstanceRecord;
-  } catch {
-    return undefined;
-  }
-}
-
-/** The harness Vortex this cache last launched, while it still runs. */
-export function runningInstance(config: HarnessConfig): InstanceRecord | undefined {
-  const record = runningInstanceRecord(config);
-  return record !== undefined && Number.isInteger(record.pid) && isAlive(record.pid)
-    ? record
-    : undefined;
-}
-
-/** Record a launched Vortex on every lease it needs, so they outlive the launching command. */
-export function recordLaunchedPid(
-  identities: readonly LeaseIdentity[],
-  pid: number,
-  leaseEnv: LeaseEnv = {},
-): void {
-  for (const identity of identities) addInstancePid(identity, pid, leaseEnv);
-}
-
-/** Forget a Vortex that has exited, on every lease it was recorded on. */
-export function forgetLaunchedPid(
-  identities: readonly LeaseIdentity[],
-  pid: number,
-  leaseEnv: LeaseEnv = {},
-): void {
-  for (const identity of identities) removeInstancePid(identity, pid, leaseEnv);
-}
-
-/** A failed launch registration must settle its exact child before dropping partial protection. */
 export async function registerLaunchedProcess(
   child: ChildProcess,
-  identities: readonly LeaseIdentity[],
-  options: OperationOptions & { onProcessSpawn?: (child: ChildProcess) => void } = {},
+  options: { onProcessSpawn?: (child: ChildProcess) => void } = {},
 ): Promise<void> {
   if (child.pid === undefined) return;
-  let releaseChild: (() => void) | undefined;
   try {
-    if (options.context !== undefined)
-      releaseChild = trackOperationChild(options.context, child.pid, [], options.leaseEnv);
-    recordLaunchedPid(identities, child.pid, options.leaseEnv);
     options.onProcessSpawn?.(child);
   } catch (error) {
-    if (error instanceof ChildRegistrationError) releaseChild = error.release;
-    const failures = [error];
     try {
       child.kill("SIGKILL");
       if (!(await waitForExit(child, 5_000)))
         throw new Error(
-          `Vortex ${child.pid} survived failed registration; preserve its profile and inspect its recorded leases.`,
+          `Vortex ${child.pid} survived a failed launch; close it and run \`pnpm run ai -- down\`.`,
           { cause: error },
         );
     } catch (stopError) {
-      // The known child keeps any successful ownership/operation registrations.
       throw new AggregateError(
-        [...failures, stopError],
-        "Launch registration and child shutdown failed; protection retained.",
+        [error, stopError],
+        "Launch registration and child shutdown failed; its instance record is kept.",
         { cause: stopError },
       );
     }
-    try {
-      forgetLaunchedPid(identities, child.pid, options.leaseEnv);
-      releaseChild?.();
-    } catch (cleanupError) {
-      failures.push(cleanupError);
-    }
-    if (failures.length > 1)
-      throw new AggregateError(failures, "Launch registration and cleanup failed.", {
-        cause: error,
-      });
+    clearInstanceRecord(child.pid);
     throw error;
   }
-  releaseChild?.();
+}
+
+/**
+ * Delete the per-cache `instance.pid` and `<cache>/instance.json` an earlier kit wrote. For the
+ * default cache `instance.json` is the one instance record itself, and is left alone here
+ * (`runningVortex()` clears an unreadable one).
+ */
+function removeLegacyInstanceFiles(config: HarnessConfig): void {
+  fs.rmSync(path.join(config.cacheDir, "instance.pid"), { force: true });
+  const legacyRecord = path.join(config.cacheDir, "instance.json");
+  if (normalizedPath(legacyRecord) !== normalizedPath(INSTANCE_RECORD))
+    fs.rmSync(legacyRecord, { force: true });
 }
 
 export function authCacheFile(config: HarnessConfig): string {
@@ -245,7 +109,7 @@ export interface VortexInstance {
   process: ChildProcess;
   userDataDir: string;
   mcp: VortexMcpClient;
-  stop: (options?: OperationOptions & { force?: boolean }) => Promise<void>;
+  stop: (options?: { force?: boolean }) => Promise<void>;
 }
 
 /**
@@ -275,12 +139,7 @@ export function buildInstanceEnv(
   for (const [key, value] of Object.entries(process.env)) {
     // ELECTRON_RUN_AS_NODE would make the child start as a plain Node process
     // rather than an Electron app — inherited from a tsx parent otherwise.
-    if (
-      key !== "ELECTRON_RUN_AS_NODE" &&
-      key !== "VORTEX_AI_OPERATION_CONTEXT" &&
-      value !== undefined
-    )
-      env[key] = value;
+    if (key !== "ELECTRON_RUN_AS_NODE" && value !== undefined) env[key] = value;
   }
 
   env.ELECTRON_USERDATA = path.join(userDataDir, "userData");
@@ -333,24 +192,7 @@ export function prepareUserDataDir(userDataDir: string, appName: string): void {
  * Vortex loads user extensions from `<userData>/plugins/<id>`, and `<id>` must
  * match info.json's `id` or Vortex treats it as a different extension next run.
  */
-export function installMcpExtension(
-  userDataDir: string,
-  source = extensionRoot(),
-  options: OperationOptions & { owner?: string } = {},
-): void {
-  const owner = requireNamedOwner(options.owner);
-  withOperationsSync(
-    [extensionOutputResource(source)],
-    owner,
-    {
-      ...options,
-      context: options.context ?? inheritedOperation(owner, process.env, options.leaseEnv),
-    },
-    () => installExtensionInside(userDataDir, source),
-  );
-}
-
-function installExtensionInside(userDataDir: string, source: string): void {
+export function installMcpExtension(userDataDir: string, source = extensionRoot()): void {
   const generation = requireFreshExtension(source);
   const plugins = path.join(userDataDir, "userData", "plugins");
   const target = path.join(plugins, MCP_EXTENSION_ID);
@@ -399,20 +241,11 @@ async function assertPortAvailable(port: number): Promise<void> {
 export async function ensureExtensionBuilt(
   options: ExtensionBuildOptions & { rebuild?: boolean } = {},
 ): Promise<string> {
-  const owner = requireNamedOwner(options.owner);
-  const source = options.source ?? extensionRoot();
-  const needsBuild = (): boolean => options.rebuild === true || !extensionIsFresh(source);
-  const context = options.context ?? inheritedOperation(owner, process.env, options.leaseEnv);
-  const needed = withOperationsSync(
-    [extensionOutputResource(source)],
-    owner,
-    { ...options, context },
-    needsBuild,
-  );
-  if (needed) await buildExtension({ ...options, source, owner, context, needed: needsBuild });
-  withOperationsSync([extensionOutputResource(source)], owner, { ...options, context }, () =>
-    requireFreshExtension(source),
-  );
+  const { rebuild, ...buildOptions } = options;
+  const source = buildOptions.source ?? extensionRoot();
+  if (rebuild === true || !extensionIsFresh(source))
+    await buildExtension({ ...buildOptions, source });
+  requireFreshExtension(source);
   return source;
 }
 
@@ -442,43 +275,6 @@ export function removeInstanceDir(dir: string, attempts = 5): void {
   }
 }
 
-/** Where the PID of the most recently launched instance is recorded. */
-function pidFile(config: HarnessConfig): string {
-  return path.join(config.cacheDir, "instance.pid");
-}
-
-function recordPid(
-  config: HarnessConfig,
-  pid: number | undefined,
-  leases: readonly LeaseIdentity[],
-): void {
-  if (pid === undefined) return;
-  try {
-    fs.mkdirSync(config.cacheDir, { recursive: true });
-    fs.writeFileSync(pidFile(config), String(pid));
-    const record: InstanceRecord = {
-      pid,
-      leases,
-      ...(config.target.kind === "dev" && config.target.sourceDir !== undefined
-        ? { sourceDir: config.target.sourceDir }
-        : {}),
-    };
-    fs.writeFileSync(instanceRecordFile(config), `${JSON.stringify(record)}\n`);
-  } catch {
-    // Best-effort bookkeeping; never fail a launch over it.
-  }
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    // Signal 0 performs the permission/existence check without delivering one.
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Shut down an instance left behind by an earlier run.
  *
@@ -486,36 +282,59 @@ function isAlive(pid: number): boolean {
  * path and flushes state. But the case that actually strands a directory is an
  * instance whose extension never loaded — it holds the user-data directory and
  * answers nothing, so there is no polite channel to it at all. That is why the
- * PID is recorded at launch: it is the only handle on a Vortex that is running
- * but unreachable, and without it the next run fails on an EPERM that says
- * nothing about the real cause.
+ * PID is recorded at launch (runningVortex.ts): it is the only handle on a Vortex
+ * that is running but unreachable, and without it the next run fails on an EPERM
+ * that says nothing about the real cause. The PID is only waited on, never signalled.
  */
-export async function stopStaleInstance(
-  config: HarnessConfig,
-  options: OperationOptions = {},
-): Promise<boolean> {
-  return withLiveOperation(
-    config,
-    "stop harness instance",
-    () => stopStaleInside(config, options.leaseEnv),
-    options,
-  );
+export async function stopStaleInstance(config: HarnessConfig): Promise<boolean> {
+  return stopStaleInside(config);
 }
 
-async function stopStaleInside(config: HarnessConfig, leaseEnv: LeaseEnv = {}): Promise<boolean> {
-  // Refuses before touching anything when another owner holds the instance.
-  claimInstanceLease(config, "stop a harness instance", leaseEnv);
+/**
+ * `down`: stop the one running harness Vortex, wherever its cache is. The record names its
+ * cache and MCP port, so a Vortex left in a benchmark or test cache, or started with another
+ * `--port`, is reached without the caller repeating those options. The profile check in
+ * `stopStaleInside` still refuses to quit a Vortex whose profile is outside that cache. Only
+ * `down` follows the record; `up` and `bootstrap` stop only their own cache's leftover.
+ */
+export async function stopRunningInstance(
+  config: HarnessConfig,
+  write: (message: string) => void = (message) => process.stdout.write(`${message}\n`),
+): Promise<boolean> {
+  const record = runningVortex();
+  if (record === undefined) return stopStaleInside(config);
+  if (normalizedPath(record.cacheDir) !== normalizedPath(config.cacheDir))
+    write(
+      `Stopping the harness Vortex of cache ${record.cacheDir} (MCP port ${String(record.mcpPort)}).`,
+    );
+  return stopStaleInside({ ...config, cacheDir: record.cacheDir, mcpPort: record.mcpPort });
+}
+
+async function stopStaleInside(config: HarnessConfig): Promise<boolean> {
+  removeLegacyInstanceFiles(config);
+  // Clears a stale record (dead pid, or a pid now owned by something that is not Vortex).
+  const running = runningVortex();
+  const pid =
+    running !== undefined && normalizedPath(running.cacheDir) === normalizedPath(config.cacheDir)
+      ? running.pid
+      : undefined;
   let stopped = false;
-  const file = pidFile(config);
-  const pid = fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8").trim()) : undefined;
   const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
   if (await mcp.ping()) {
     const status = await mcp.call<{ userDataDir: string | null }>("automation_status");
-    const relative =
-      status.userDataDir === null
-        ? ".."
-        : path.relative(path.resolve(config.cacheDir), path.resolve(status.userDataDir));
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    const inside = (root: string): boolean => {
+      if (status.userDataDir === null) return false;
+      const relative = path.relative(path.resolve(root), path.resolve(status.userDataDir));
+      return !(
+        relative === ".." ||
+        relative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relative)
+      );
+    };
+    // A live record of another cache owns that profile even when its cache lies inside this
+    // one (the signed-out zoom check, the Nexus smoke test): never quit it from here.
+    const otherCache = running !== undefined && pid === undefined && inside(running.cacheDir);
+    if (!inside(config.cacheDir) || otherCache) {
       throw new Error(
         `Port ${config.mcpPort} belongs to a different Vortex profile. Choose another --port and --cdp-port.`,
       );
@@ -524,8 +343,7 @@ async function stopStaleInside(config: HarnessConfig, leaseEnv: LeaseEnv = {}): 
     stopped = true;
   }
   const deadline = Date.now() + 30_000;
-  const recordedProcessAlive = (): boolean =>
-    pid !== undefined && Number.isInteger(pid) && pid > 0 && isAlive(pid);
+  const recordedProcessAlive = (): boolean => pid !== undefined && processAlive(pid);
   while (recordedProcessAlive() || (await mcp.ping())) {
     if (Date.now() >= deadline) {
       throw new Error(
@@ -534,24 +352,19 @@ async function stopStaleInside(config: HarnessConfig, leaseEnv: LeaseEnv = {}): 
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
-  const record = runningInstanceRecord(config);
-  fs.rmSync(file, { force: true });
-  fs.rmSync(instanceRecordFile(config), { force: true });
-  if (pid !== undefined && Number.isInteger(pid)) {
-    // Captured at launch, including its source checkout; never edit a successor's lease.
-    if (record !== undefined) forgetLaunchedPid(record.leases, pid, leaseEnv);
-  }
+  // Confirmed exit: forget it, unless the record has meanwhile named another launch.
+  if (pid !== undefined) clearInstanceRecord(pid);
   return stopped;
 }
 
-export interface LaunchOptions extends OperationOptions {
+export interface LaunchOptions {
   userDataDir: string;
   config: HarnessConfig;
   /** Progress and warnings, such as a development bundle under --production. */
   onProgress?: (message: string) => void;
   /** Monotonic timestamp immediately before process creation, for startup measurements. */
   onSpawn?: (at: number) => void;
-  /** Exact child immediately after spawn/PID recording, before any readiness await. */
+  /** Exact child immediately after spawn and the instance record, before any readiness await. */
   onProcessSpawn?: (child: ChildProcess) => void;
 }
 
@@ -600,20 +413,14 @@ export function launchStdio(logFd: number | undefined): {
  * screen, and every subsequent tool call would fail confusingly.
  */
 export async function launchVortex(options: LaunchOptions): Promise<VortexInstance> {
-  return withLiveOperation(
-    options.config,
-    "launch Vortex",
-    (context) => launchInside({ ...options, context }),
-    options,
-  );
-}
-
-async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
   const { userDataDir, config } = options;
   const { target } = config;
+  // One harness Vortex at a time. `up` and `bootstrap` stop this cache's own leftover first
+  // (stopStaleInstance), which clears its record; any other running one is refused here.
+  assertNoHarnessVortex("starting Vortex");
+  removeLegacyInstanceFiles(config);
   if (target.kind === "dev" && target.args[0] !== undefined && !fs.existsSync(target.executable))
     target.executable = resolveDevElectron(target.args[0]);
-  const lease = claimInstanceLease(config, "launch Vortex", options.leaseEnv);
   installSandboxExtension(userDataDir, config);
   await assertPortAvailable(config.mcpPort);
   await assertPortAvailable(config.cdpPort);
@@ -648,9 +455,23 @@ async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
     if (logFd !== undefined) fs.closeSync(logFd);
   }
   child.unref();
-  recordPid(config, child.pid, lease.identities);
-  // A detached instance keeps the lease after this process exits, until `down`.
-  await registerLaunchedProcess(child, lease.identities, options);
+  // Recorded before any readiness await, so an interrupted `up` still leaves the one handle
+  // `down` needs. A record that cannot be written stops the child and fails the launch.
+  await registerLaunchedProcess(child, {
+    onProcessSpawn: (spawned) => {
+      writeInstanceRecord({
+        pid: spawned.pid!,
+        startedAt: new Date().toISOString(),
+        cacheDir: config.cacheDir,
+        userDataDir,
+        mcpPort: config.mcpPort,
+        ...(target.kind === "dev" && target.sourceDir !== undefined
+          ? { sourceDir: target.sourceDir }
+          : {}),
+      });
+      options.onProcessSpawn?.(spawned);
+    },
+  });
 
   if (redirect !== undefined && preload !== undefined) {
     try {
@@ -707,20 +528,9 @@ async function launchInside(options: LaunchOptions): Promise<VortexInstance> {
     process: child,
     userDataDir,
     mcp,
-    stop: (stopOptions = {}) =>
-      withLiveOperation(
-        config,
-        "stop launched Vortex",
-        () =>
-          stopInstance(child, mcp, {
-            ...stopOptions,
-            leases: lease.identities,
-            leaseEnv: options.leaseEnv,
-          }),
-        stopOptions,
-      ),
+    stop: (stopOptions = {}) => stopInstance(child, mcp, stopOptions),
   };
-  await checkProductionMode(instance, config, options.onProgress, options);
+  await checkProductionMode(instance, config, options.onProgress);
   return instance;
 }
 
@@ -732,7 +542,6 @@ async function checkProductionMode(
   instance: VortexInstance,
   config: HarnessConfig,
   report: ((message: string) => void) | undefined,
-  options: OperationOptions,
 ): Promise<void> {
   if (config.target.kind !== "dev" || !config.production) return;
   const sourceDir = config.target.sourceDir;
@@ -744,9 +553,7 @@ async function checkProductionMode(
   const status = await instance.mcp.call<ProductionStatus>("automation_status");
   const problem = productionProblem(status);
   if (problem === undefined) return;
-  await instance
-    .stop(options)
-    .catch(() => instance.stop({ ...options, force: true }).catch(() => undefined));
+  await instance.stop().catch(() => instance.stop({ force: true }).catch(() => undefined));
   throw new ProductionModeError(productionErrorMessage(problem));
 }
 
@@ -760,12 +567,7 @@ async function checkProductionMode(
 export async function stopInstance(
   child: ChildProcess,
   mcp: VortexMcpClient,
-  options: {
-    force?: boolean;
-    timeoutMs?: number;
-    leases?: readonly LeaseIdentity[];
-    leaseEnv?: LeaseEnv;
-  } = {},
+  options: { force?: boolean; timeoutMs?: number } = {},
 ): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 20_000;
 
@@ -786,8 +588,8 @@ export async function stopInstance(
     if (!(await waitForExit(child, 5_000)))
       throw new Error("Vortex did not exit after forced shutdown.");
   }
-  if (child.pid !== undefined && options.leases !== undefined)
-    forgetLaunchedPid(options.leases, child.pid, options.leaseEnv);
+  // Confirmed exit: forget it, unless the record names another launch.
+  if (child.pid !== undefined) clearInstanceRecord(child.pid);
 }
 
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {

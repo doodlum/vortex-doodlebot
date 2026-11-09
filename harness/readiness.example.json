@@ -1,6 +1,6 @@
 {
   "tool": "doodlebot-readiness",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "mode": "final",
   "task": {
     "id": "replace-task-id",

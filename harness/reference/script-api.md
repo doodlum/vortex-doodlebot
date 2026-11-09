@@ -8,6 +8,22 @@ Generated interface reference for specialists. Current human usage and runnable 
 
 [Source](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts).
 
+Port the extension's MCP server listens on, unless `--port` or VORTEX_MCP_PORT says otherwise.
+
+```typescript
+export const DEFAULT_MCP_PORT;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L18).
+
+CDP port opened on Vortex, unless `--cdp-port` or VORTEX_AI_CDP_PORT says otherwise.
+
+```typescript
+export const DEFAULT_CDP_PORT;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L20).
+
 How the harness starts Vortex.
 
 `installed` is the default and the one that matters: it drives a stock,
@@ -22,7 +38,7 @@ behaves identically.
 export type VortexTargetKind = "installed" | "dev";
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L37).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L40).
 
 ```typescript
 export interface VortexTarget {
@@ -46,7 +62,7 @@ export interface VortexTarget {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L39).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L42).
 
 ```typescript
 export interface HarnessConfig {
@@ -87,16 +103,6 @@ export interface HarnessConfig {
    */
   profileRedirect?: { localAppData: string; documents: string };
   /**
-   * Who is using the kit, for the machine-wide instance lease (lease.ts). From `--owner`
-   * or VORTEX_AI_OWNER; unset means "anonymous".
-   */
-  owner?: string;
-  /**
-   * The instance slot (slots.ts) this configuration's defaults came from: 0 unless `--slot`
-   * or VORTEX_AI_SLOT asked for another. An explicit cache or port overrides its part.
-   */
-  slot: number;
-  /**
    * True when an API key is configured but deliberately not used: sandbox runs are
    * local-only, and a seeded key makes every local install wait on Nexus lookups.
    */
@@ -104,13 +110,13 @@ export interface HarnessConfig {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L59).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L62).
 
 ```typescript
 export function findInstalledVortex(): string | undefined;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L160).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L153).
 
 Resolve how to start Vortex.
 
@@ -124,7 +130,7 @@ export function resolveTarget(
 ): VortexTarget;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L173).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L166).
 
 Config loading must not throw just because Vortex is missing — `doctor` exists
 precisely to report that, and it can report nothing if building the config
@@ -136,19 +142,21 @@ export function resolveTargetSafely(
 ): VortexTarget;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L219).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L212).
 
 ```typescript
-export type ConfigOverrides = Partial<Omit<HarnessConfig, "slot">> & { slot?: SlotRequest };
+export type ConfigOverrides = Partial<HarnessConfig>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L229).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L222).
+
+Flags (as overrides) first, then the environment, then the defaults.
 
 ```typescript
 export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L231).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L225).
 
 This repo — holds the built extension that gets copied into an instance.
 
@@ -156,13 +164,13 @@ This repo — holds the built extension that gets copied into an instance.
 export function extensionRoot(): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L265).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L252).
 
 ```typescript
 export const MCP_EXTENSION_ID;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L269).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L256).
 
 Earlier ids of this extension; removed from a profile before installing, so two servers never load.
 
@@ -170,7 +178,7 @@ Earlier ids of this extension; removed from a profile before installing, so two 
 export const LEGACY_EXTENSION_IDS;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L271).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L258).
 
 Optional helper for integrations that specifically need the legacy API key.
 Collections use requireOAuth instead. Credentials belong in local setup,
@@ -180,7 +188,7 @@ never in chat or committed files.
 export function requireApiKey(config: HarnessConfig): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L278).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L265).
 
 ## mcpClient
 
@@ -360,113 +368,37 @@ export async function realWheel(
 
 ## instance
 
-[Source](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts). Only `claimInstanceLease` from this module is re-exported by the scratch-script kit; other symbols here require a direct repository import.
+[Source](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts). Nothing from this module is re-exported by the scratch-script kit; its symbols require a direct repository import.
 
-Hold the machine-wide instance lease for the rest of this process (see lease.ts).
-
-Every path that starts or stops Vortex calls this first, so one agent cannot quit or
-replace another's instance. Free or stale: taken. Same owner: joined. Another live
-owner: LeaseHeldError, naming the holder and how to wait or release.
-
-```typescript
-export interface InstanceLease extends HoldResult {
-  identities: readonly LeaseIdentity[];
-}
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L77).
-
-```typescript
-export function claimInstanceLease(
-  config: HarnessConfig,
-  purpose: string,
-  leaseEnv: LeaseEnv = {},
-  options: { attach?: boolean } = {},
-): InstanceLease;
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L81).
-
-The leases a running Vortex needs: this cache's instance, and for a source build the checkout it
-runs from, so nobody rebuilds or switches that checkout underneath it (and a holder of
-the checkout lock who starts Vortex also takes the instance).
-
-```typescript
-export function instanceLeaseResources(config: HarnessConfig): string[];
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L126).
-
-The leases a command driving an already-running Vortex needs: the instance, and the
-checkout that Vortex was launched from (recorded in the cache at launch), not whatever
-checkout this command's own configuration would pick.
-
-```typescript
-export function attachedLeaseResources(config: HarnessConfig): string[];
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L137).
-
-The harness Vortex this cache last launched, while it still runs.
-
-```typescript
-export function runningInstance(config: HarnessConfig): InstanceRecord | undefined;
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L165).
-
-Record a launched Vortex on every lease it needs, so they outlive the launching command.
-
-```typescript
-export function recordLaunchedPid(
-  identities: readonly LeaseIdentity[],
-  pid: number,
-  leaseEnv: LeaseEnv = {},
-): void;
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L173).
-
-Forget a Vortex that has exited, on every lease it was recorded on.
-
-```typescript
-export function forgetLaunchedPid(
-  identities: readonly LeaseIdentity[],
-  pid: number,
-  leaseEnv: LeaseEnv = {},
-): void;
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L182).
-
-A failed launch registration must settle its exact child before dropping partial protection.
+Run the spawn observer on a launched child. When it throws, the exact child is killed and its
+exit awaited (5 s) before the error is rethrown, so a failed launch never leaves a Vortex
+behind that nothing tracks. Its instance record, if any, is cleared once it has exited.
 
 ```typescript
 export async function registerLaunchedProcess(
   child: ChildProcess,
-  identities: readonly LeaseIdentity[],
-  options: OperationOptions & { onProcessSpawn?: (child: ChildProcess) => void } = {},
+  options: { onProcessSpawn?: (child: ChildProcess) => void } = {},
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L191).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L61).
 
 ```typescript
 export function authCacheFile(config: HarnessConfig): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L236).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L100).
 
 ```typescript
 export interface VortexInstance {
   process: ChildProcess;
   userDataDir: string;
   mcp: VortexMcpClient;
-  stop: (options?: OperationOptions & { force?: boolean }) => Promise<void>;
+  stop: (options?: { force?: boolean }) => Promise<void>;
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L244).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L108).
 
 Build the environment for an isolated Vortex instance.
 
@@ -489,7 +421,7 @@ Where the harness reads a Nexus API key from; stripped from Vortex's env unless 
 export const API_KEY_VARIABLES;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L268).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L132).
 
 ```typescript
 export function buildInstanceEnv(
@@ -498,7 +430,7 @@ export function buildInstanceEnv(
 ): Record<string, string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L270).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L134).
 
 Create the directory layout Vortex expects before first launch.
 
@@ -512,7 +444,7 @@ like a naming problem.
 export function prepareUserDataDir(userDataDir: string, appName: string): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L325).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L184).
 
 Copy the built extension into an instance's plugins directory.
 
@@ -520,14 +452,10 @@ Vortex loads user extensions from `<userData>/plugins/<id>`, and `<id>` must
 match info.json's `id` or Vortex treats it as a different extension next run.
 
 ```typescript
-export function installMcpExtension(
-  userDataDir: string,
-  source = extensionRoot(),
-  options: OperationOptions & { owner?: string } = {},
-): void;
+export function installMcpExtension(userDataDir: string, source = extensionRoot()): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L336).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L195).
 
 Ensure the extension is built, building it when needed. Returns this repo's root.
 
@@ -537,7 +465,7 @@ export async function ensureExtensionBuilt(
 ): Promise<string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L399).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L241).
 
 Remove an instance directory, retrying past transient Windows locks.
 
@@ -549,7 +477,7 @@ turns that into a short wait rather than a failed run.
 export function removeInstanceDir(dir: string, attempts = 5): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L426).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L259).
 
 Shut down an instance left behind by an earlier run.
 
@@ -557,33 +485,45 @@ Two mechanisms, because they cover different failures. MCP is the graceful
 path and flushes state. But the case that actually strands a directory is an
 instance whose extension never loaded — it holds the user-data directory and
 answers nothing, so there is no polite channel to it at all. That is why the
-PID is recorded at launch: it is the only handle on a Vortex that is running
-but unreachable, and without it the next run fails on an EPERM that says
-nothing about the real cause.
+PID is recorded at launch (runningVortex.ts): it is the only handle on a Vortex
+that is running but unreachable, and without it the next run fails on an EPERM
+that says nothing about the real cause. The PID is only waited on, never signalled.
 
 ```typescript
-export async function stopStaleInstance(
+export async function stopStaleInstance(config: HarnessConfig): Promise<boolean>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L289).
+
+`down`: stop the one running harness Vortex, wherever its cache is. The record names its
+cache and MCP port, so a Vortex left in a benchmark or test cache, or started with another
+`--port`, is reached without the caller repeating those options. The profile check in
+`stopStaleInside` still refuses to quit a Vortex whose profile is outside that cache. Only
+`down` follows the record; `up` and `bootstrap` stop only their own cache's leftover.
+
+```typescript
+export async function stopRunningInstance(
   config: HarnessConfig,
-  options: OperationOptions = {},
+  write: (message: string) => void = (message) => process.stdout.write(`${message}\n`),
 ): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L493).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L300).
 
 ```typescript
-export interface LaunchOptions extends OperationOptions {
+export interface LaunchOptions {
   userDataDir: string;
   config: HarnessConfig;
   /** Progress and warnings, such as a development bundle under --production. */
   onProgress?: (message: string) => void;
   /** Monotonic timestamp immediately before process creation, for startup measurements. */
   onSpawn?: (at: number) => void;
-  /** Exact child immediately after spawn/PID recording, before any readiness await. */
+  /** Exact child immediately after spawn and the instance record, before any readiness await. */
   onProcessSpawn?: (child: ChildProcess) => void;
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L547).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L360).
 
 Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio.log`.
 
@@ -591,7 +531,7 @@ Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio
 export function stdioLogFile(userDataDir: string): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L559).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L372).
 
 How Vortex is spawned. Detached, so it outlives the `doodlebot` process that started it, and
 with none of that process's stdio: stdin is ignored and stdout/stderr go to a log file (or
@@ -607,7 +547,7 @@ export function launchStdio(logFd: number | undefined): {
 };
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L579).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L392).
 
 Start Vortex and wait until its MCP server answers.
 
@@ -626,7 +566,7 @@ screen, and every subsequent tool call would fail confusingly.
 export async function launchVortex(options: LaunchOptions): Promise<VortexInstance>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L602).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L415).
 
 Stop an instance, preferring Vortex's own graceful shutdown.
 
@@ -638,16 +578,11 @@ the _next_ warm start fail in a way that looks unrelated.
 export async function stopInstance(
   child: ChildProcess,
   mcp: VortexMcpClient,
-  options: {
-    force?: boolean;
-    timeoutMs?: number;
-    leases?: readonly LeaseIdentity[];
-    leaseEnv?: LeaseEnv;
-  } = {},
+  options: { force?: boolean; timeoutMs?: number } = {},
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L760).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L567).
 
 ## jsonFile
 
@@ -960,7 +895,7 @@ export interface SessionOptions {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L51).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L52).
 
 ```typescript
 export class BenchmarkSession {
@@ -976,7 +911,6 @@ constructor(
     readonly manifest: RunManifest | undefined,
     readonly dataset: DatasetKind,
     private readonly oauthCache?: OAuthCacheLease,
-    private readonly gameSettingsLease?: HoldResult,
     private readonly spawnedProcesses: Set<ChildProcess> = new Set(),
   );
 get page(): Page;
@@ -1013,31 +947,31 @@ async close(preserve = false): Promise<void>;
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L59).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L60).
 
 ```typescript
 export function assertInside(root: string, target: string): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1015).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L998).
 
 ```typescript
 export function resolveArchivePath(downloads: string, localPath: string, cacheDir: string): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1031).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1014).
 
 ```typescript
 export function assertCleanGameFixture(source: string): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1040).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1023).
 
 ```typescript
 export async function createSession(options: SessionOptions): Promise<BenchmarkSession>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1109).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1092).
 
 ```typescript
 export async function withVortex<T>(
@@ -1046,7 +980,7 @@ export async function withVortex<T>(
 ): Promise<T>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1325).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1294).
 
 ```typescript
 export interface RestartCollectionOptions extends Omit<SessionOptions, "dataset" | "cleanStart"> {
@@ -1055,7 +989,7 @@ export interface RestartCollectionOptions extends Omit<SessionOptions, "dataset"
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1333).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1302).
 
 Stop the previous owned session if supplied, then start a cold benchmark from a verified snapshot.
 
@@ -1066,7 +1000,7 @@ export async function restartCollectionBenchmark<T>(
 ): Promise<T>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1338).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/session.ts#L1307).
 
 ## benchmarks.gameFixtures
 
@@ -1141,21 +1075,22 @@ export interface GameUserDirectories {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L10).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L8).
 
 ```typescript
-export interface GameSettingsResetOptions extends OperationOptions {
+export interface GameSettingsResetOptions {
   gameId: string;
-  owner: string;
   dedicatedWindowsAccount: true;
   /** Backups stay here, outside the disposable benchmark workspace. */
   backupDir: string;
   /** Omit on Windows to resolve the account's actual redirected Documents directory. */
   userDirectories?: GameUserDirectories;
+  /** Whether a Vortex that may write these settings is running; defaults to the harness Vortex record. */
+  isRunning?: () => boolean;
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L14).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L12).
 
 ```typescript
 export interface GameSettingsBackup {
@@ -1165,19 +1100,13 @@ export interface GameSettingsBackup {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L23).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L22).
 
 ```typescript
 export function gameUserDirectories(): GameUserDirectories;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L28).
-
-```typescript
-export function gameSettingsResource(gameId: string): string;
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L41).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L27).
 
 Back up bounded settings files, verify all backups, then reset. Saves and purchased content are preserved.
 
@@ -1187,7 +1116,7 @@ export async function resetGameSettings(
 ): Promise<GameSettingsBackup>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L66).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/benchmarks/gameSettings.ts#L62).
 
 ## benchmarks.collectionCompletion
 
@@ -1603,33 +1532,40 @@ export async function runSuite(options: SuiteOptions): Promise<boolean>;
 export type BenchmarkSetup = z.infer<typeof setupSchema>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L48).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L47).
 
 ```typescript
 export const benchmarkSetupFile;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L49).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L48).
 
 Read local preparation choices. No account check, app launch or file copying.
+Setup's sign-in launches Vortex, and only one doodlebot Vortex runs at a time.
 
 ```typescript
-export function readBenchmarkSetup(file = benchmarkSetupFile): BenchmarkSetup;
+export function assertBenchmarkSetupCanLaunch(): void;
 ```
 
 [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L52).
 
 ```typescript
+export function readBenchmarkSetup(file = benchmarkSetupFile): BenchmarkSetup;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L56).
+
+```typescript
 export function writeBenchmarkSetup(setup: BenchmarkSetup, file = benchmarkSetupFile): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L57).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L61).
 
 ```typescript
 export function discoverBenchmarkGames(libraries?: string[]);
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L69).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L73).
 
 Presence is a local observation; it does not prove refresh or server access.
 
@@ -1639,7 +1575,7 @@ export function cachedAccountStatus(
 ): "missing" | "signed-out" | "cached" | "unreadable";
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L76).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L80).
 
 Reuse a single saved kit login when no cache exists for the released target.
 
@@ -1647,7 +1583,7 @@ Reuse a single saved kit login when no cache exists for the released target.
 export function findBenchmarkAccountCache(preferred: string): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L99).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L103).
 
 Verify a tracked copy in full, including the selected Skyrim content.
 
@@ -1657,7 +1593,7 @@ export async function verifyPreparedSnapshot(
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L119).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L123).
 
 ```typescript
 export interface PrepareCollectionOptions {
@@ -1667,7 +1603,6 @@ export interface PrepareCollectionOptions {
   /** The operator confirms the source is clean and the game/launcher are closed. */
   cleanSource: true;
   authCache: string;
-  owner: string;
   /** Copy this source into a new snapshot, even when an older snapshot is saved. */
   source?: string;
   /** Register an existing verified copy rather than copying the installed game. */
@@ -1678,7 +1613,7 @@ export interface PrepareCollectionOptions {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L128).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L132).
 
 Find the installed game and create/reuse a verified copy; never deploy into the source.
 
@@ -1686,7 +1621,7 @@ Find the installed game and create/reuse a verified copy; never deploy into the 
 export async function prepareCollection(options: PrepareCollectionOptions): Promise<RealCollection>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L145).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L148).
 
 Use a setup choice from TypeScript without copying local paths into source.
 
@@ -1694,7 +1629,7 @@ Use a setup choice from TypeScript without copying local paths into source.
 export function preparedCollection(code: CollectionCode, file = benchmarkSetupFile): RealCollection;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L230).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L220).
 
 ```typescript
 export function preparedCollections(
@@ -1702,7 +1637,7 @@ export function preparedCollections(
 ): Partial<Record<CollectionCode, RealCollection>>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L260).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/benchmarks/setup.ts#L250).
 
 ## bethesda
 

@@ -10,13 +10,6 @@ import { requireOAuth } from "./auth";
 import { authCacheFile, launchVortex, stopStaleInstance } from "./instance";
 import { ensureGameManaged, waitForGameStartup } from "./gameSetup";
 
-vi.mock("./liveOperation", () => ({
-  withLiveOperation: (
-    _config: unknown,
-    _name: string,
-    run: (context: unknown) => Promise<unknown>,
-  ) => run(undefined),
-}));
 vi.mock("./gameSetup", () => ({
   ensureGameManaged: vi.fn(
     async (_mcp: unknown, gameId: string, { gamePath }: { gamePath: string }) => ({

@@ -26,6 +26,8 @@ await withVortex({}, async (vortex) => {
 
 Callback and cleanup errors fail the call. Failed workspaces are retained, with their path in the error. Successful sessions remove their temporary workspace; save screenshots and other files outside it. See [the first test](../getting-started/first-session.md).
 
+Only one Doodlebot Vortex runs at a time. If one started with `pnpm run ai -- up` or `setup` is still running, the session refuses to start and tells you to run `pnpm run ai -- down` first.
+
 The first start registers the private game path and closes Vortex to save it. A second start lets Vortex create its default profile and staging folder through its own game-startup handler. The session waits for that game to become active and checks that its path still matches the private copy before saving the reusable profile. This setup happens before benchmark timing. A failed setup or shutdown leaves no usable snapshot; if both fail, the error retains both causes.
 
 ## SessionOptions
@@ -53,7 +55,7 @@ export interface SessionOptions {
 | `outputDir`  | Where to save artifacts.                                                             |
 | `cleanStart` | Verify a real snapshot and back up/reset supported per-user game settings.           |
 
-Real sessions copy the selected game fixture, but game support can also write Documents/AppData. Use a QA-only account or test machine. [Setup](../getting-started/setup.md) explains the acknowledgement.
+Real sessions copy the selected game fixture, but game support can also write Documents/AppData. Use a QA-only account or test machine. [Setup](../getting-started/setup.md) explains the acknowledgement. Resetting game settings refuses while Vortex is running.
 
 ## page and gameId
 
@@ -145,10 +147,9 @@ Calls an [app tool](mcp-tools.md). Arguments default to an empty object; timeout
 
 Use this only when you want to keep Vortex open between scripts. Ordinary tests use `withVortex()` and need no connection setup.
 
-Choose one owner and use the same instance settings throughout:
+Use the same target settings for every command:
 
 ```powershell
-$env:VORTEX_AI_OWNER = 'interactive-test'
 pnpm run ai -- setup --installed --sandbox
 pnpm run ai -- script attached-app.mts --installed --sandbox
 pnpm run ai -- down --installed --sandbox
@@ -163,4 +164,6 @@ const client = clientFor(loadConfig());
 console.log(await client.call("vortex_query", { selector: "activeGameId" }));
 ```
 
-The script runner supplies the connection settings. The final `down` command closes Vortex. A new setup restores its prepared profile and discards the previous session's changes. Advanced target/slot settings are in [configuration](configuration.md) and [CLI commands](cli.md).
+The script runner supplies the connection settings and runs the script in the directory you started it from; a relative script path is read from that directory too. It returns the script's exit code. Scripts written for older Doodlebot versions that claimed the instance before connecting must remove that call: Doodlebot now runs one Vortex at a time and the claim no longer exists. The final `down` command closes Vortex and waits until it has exited cleanly. A new setup restores its prepared profile and discards the previous session's changes.
+
+While this app is open, `withVortex()`, benchmark sessions and `pnpm run ai:test` refuse to start a second Vortex. Run `down` before you use them. Advanced target, cache and port settings are in [configuration](configuration.md) and [CLI commands](cli.md).

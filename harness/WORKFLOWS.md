@@ -31,6 +31,52 @@ Consult the checkout's index if paths move. Report missing design inputs or
 contradictions explicitly; use the task's stated behavior as the acceptance
 criteria. Do not silently replace a supplied design with a generic layout.
 
+## Designing a change before coding (EGM)
+
+Features and refactors, for Vortex or for this kit, start with a design written and reviewed
+with Google's Elephant-Goldfish Model (EGM) plugin. Follow the `vortex-elephant` skill
+(`.claude/skills/vortex-elephant/SKILL.md`; Codex agents read it at that path). The approved
+design `designs/egm-workflow.md` defines the procedure; `harness/egm/vortex-change-standard.md`
+defines what a design must contain.
+
+When a design is required:
+
+- The task kind is `feature` or `refactor`, or the user supplies or asks for a design.
+  Readiness (schema 3) then requires an approved `design` and a `design-review` entry.
+- Bug fixes, documentation and test-only changes need no design. A one-step bug fix keeps the
+  usual bug evidence. Do not label a feature as a bug to skip the design; the independent
+  review judges whether the kind fits the diff.
+
+Rules:
+
+- Write no implementation code until a person has approved the design's exact text. Approval
+  is the header line `- **Approved:** <person>; content <sha256>; <reference>`, whose digest
+  equals the `contentSha256` that `design check` prints. Never write an Approved line the
+  person did not give. Any later body edit voids it.
+- Design paths: `designs/<topic>.md` for doodlebot, listed in `designs/SITEMAP.md`;
+  `harness/.artifacts/designs/<topic>.md` for Vortex, kept out of Vortex PRs. EGM's briefs
+  and drafts go to `harness/.artifacts/egm`; confirmation-round reports to
+  `harness/.artifacts/designs/<topic>.reviews/`.
+- After EGM's review, run the confirmation round on a checkout with no implementation
+  changes: two fresh reviewers, EGM's `implementation_readiness` and doodlebot's
+  `vortex-runtime-goldfish`, each starting its report with `Reviewed content sha256: <D>`.
+  The round is clean when no Blocker or Major finding remains uncontested.
+- Implement only inside the design's `### Target Scope & File Boundary`. To change the
+  boundary, amend the design, run a new confirmation round on a clean checkout of the review
+  head, and get a new approval.
+
+```powershell
+pnpm run ai -- design new <file> --title "<title>" --target vortex   # or doodlebot; refuses an existing file
+pnpm exec oxfmt <file>                                              # before every check whose digest you record
+pnpm run ai -- design check <file> --ready --json                   # structure, open questions, TBD; prints contentSha256
+pnpm run ai -- design scope <file> --checkout <dir> --base <sha>    # exit 1 names changed files outside the boundary
+```
+
+After implementation: `design scope` reports `IN SCOPE`, `pnpm run ai -- down`, independent
+QA in a fresh context starting with `up --fresh`, then the readiness manifest. A supplied
+visual design is an input to the EGM design, not a replacement for it; see
+"Implementing a supplied visual design" below.
+
 ## Reproduce, change, verify
 
 1. Identify the target: stock Vortex for an automation-tool issue; the source
@@ -62,16 +108,17 @@ fixtures and cover that capability with tests. Do not leave a successful manual
 experiment as the only way to reproduce a result. Preserve compatibility with
 released Vortex; process control and CDP belong in the harness.
 
-For exploring before that, `doodlebot script <file.mts>` runs a scratch script against the kit
-under the instance lease, and `doodlebot eval --expr "<js>"` inspects a harness renderer (see
-"Scratch scripts and renderer diagnostics" in AGENTS.md). Their results are leads; the check
-that settles a question is the one added to the kit.
+For exploring before that, `doodlebot script <file.mts>` runs a scratch script against the
+running instance, in the caller's directory, and `doodlebot eval --expr "<js>"` inspects a
+harness renderer (see "Scratch scripts and renderer diagnostics" in AGENTS.md). Their results
+are leads; the check that settles a question is the one added to the kit.
 
 For an authorized A/B, use the same fixture and comparable build settings at base and head.
-Stop the app before checkout switches or build output changes, then use guarded builds and
-restart. Separate owned checkouts avoid switching a live user's demo. Do not temporarily
-patch, revert or rebuild a checkout that the user has made read-only. Set zoom and focus
-consistently when comparing rendered evidence.
+Run `pnpm run ai -- down` before switching the checkout or changing its build output, then
+build and `up` again; `build` refuses while a Vortex runs from that checkout. Do not switch a
+checkout the user is trying out; agree with them when their demo can go down. Do not
+temporarily patch, revert or rebuild a checkout that the user has made read-only. Set zoom
+and focus consistently when comparing rendered evidence.
 
 Timing a change that affects rendering: compare against an in-build control that the change
 does not touch. For the Mods table that is the classic layout. Another page is no control, since
@@ -101,16 +148,16 @@ every line and be able to explain and support the final diff.
 
 Select gates explicitly:
 
-| Change or claim                                    | Evidence                                                                                                              |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Every Vortex submission                            | Full `pnpm run verify` on the exact final commit, clean tree afterward, and independent diff/acceptance review        |
-| Bug fix                                            | Intended regression assertion fails without the fix and passes with it; reproduce affected app behavior               |
-| Feature                                            | Acceptance/consumer tests and absent-behavior or wiring evidence; app checks for affected runtime behavior            |
-| Equivalence refactor                               | Invariants and affected consumers, including failure/cancellation paths; app checks where runtime behavior can change |
-| Documentation                                      | Factual, link and command checks; no unrelated app or performance scenario                                            |
-| UI or interaction                                  | Relevant states, width/height and input modes, plus inspected before/after evidence; clips when motion matters        |
-| Performance claim or affected performance contract | Comparable production base/head, idle machine, at least three runs per side, spread and a meaningful workload         |
-| Upstream E2E explicitly requested                  | Comparable baseline/head reports with complete selection and classified outcomes                                      |
+| Change or claim                                    | Evidence                                                                                                                                                              |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every Vortex submission                            | Full `pnpm run verify` on the exact final commit, clean tree afterward, and independent diff/acceptance review                                                        |
+| Bug fix                                            | Intended regression assertion fails without the fix and passes with it; reproduce affected app behavior                                                               |
+| Feature                                            | Approved EGM design and its confirmation round; acceptance/consumer tests and absent-behavior or wiring evidence; app checks for affected runtime behavior            |
+| Equivalence refactor                               | Approved EGM design and its confirmation round; invariants and affected consumers, including failure/cancellation paths; app checks where runtime behavior can change |
+| Documentation                                      | Factual, link and command checks; no unrelated app or performance scenario                                                                                            |
+| UI or interaction                                  | Relevant states, width/height and input modes, plus inspected before/after evidence; clips when motion matters                                                        |
+| Performance claim or affected performance contract | Comparable production base/head, idle machine, at least three runs per side, spread and a meaningful workload                                                         |
+| Upstream E2E explicitly requested                  | Comparable baseline/head reports with complete selection and classified outcomes                                                                                      |
 
 Mark inapplicable checks with a reason grounded in the actual diff. A required gate blocked by
 authorization, credentials, services or tooling remains blocked; do not disguise it as N/A.
@@ -124,7 +171,7 @@ the checkout before verify or any check that rewrites its output. Use the checko
 non-writing checks while it is live.
 
 Vortex's own instructions say E2E runs only when asked. When requested, use
-`pnpm run ai:vortex-e2e -- --owner <you> --checkout <dir>` for the baseline, then the
+`pnpm run ai:vortex-e2e -- --checkout <dir>` for the baseline, then the
 head with `--compare <baseline-report.json>`. This runner temporarily patches fixtures and
 therefore needs source-mutation authorization. Preserve each first outcome and report
 regressions, existing failures, skipped/missing tests, changed failure causes and execution
@@ -136,113 +183,103 @@ links to the corresponding evidence and revision. The prepared description ends 
 doodlebot footer; `pr-preflight --pr <number>` checks an existing PR's metadata. New lessons
 follow the verification and promotion policy in AGENT-WORKFLOW.md.
 
-## Several agents at once: each looks after itself
+## One Vortex at a time
 
 Follow [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md) for task routing, worker briefs, authorization,
-independent QA and handoff. Each issue has an accountable owner; unrelated issues remain
-independent. A parent can coordinate scoped workers within its issue. There is no global
-scheduler. Named owner leases and full-duration operation guards protect supported commands:
+independent QA and handoff. doodlebot runs one harness Vortex at a time, and one agent drives
+it. Nothing schedules or queues commands; the convention is yours to keep, backed by a few
+refusals where a second process would damage data:
 
-| Shared thing                                   | Guard                                              |
-| ---------------------------------------------- | -------------------------------------------------- |
-| A Vortex instance (cache, ports)               | its slot's instance lease (`--slot auto`)          |
-| A Vortex checkout                              | `checkout:<dir>`, held while a Vortex runs from it |
-| This repo: KNOWLEDGE.md, skills, harness, docs | **the kit lock** (`kit lock` … `kit push`, below)  |
-| Vortex's own E2E suite                         | the `vortex-e2e` lease                             |
+| What is protected                      | What refuses                                                                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| The running instance                   | Every kit launcher (`up`, `setup`, `bootstrap`, the core suite, benchmark sessions and setup, `ai:test:zoom -- --signed-out`) |
+| The checkout a source Vortex runs from | `build`, `source` builds and installs, `evidence run`, `pr-preflight`'s revert check, `vortex-e2e`                            |
+| Benchmark game settings                | `resetGameSettings` while Vortex runs                                                                                         |
 
-First establish whether reported symptoms share a cause. Independent logical issues get
-separate owners and contexts. Within one issue, delegate distinct questions or contracts using
-the canonical brief and PULL-REQUESTS.md supplements. Only workers that edit or drive need
-isolated checkout/app resources; read-only specialists use the identified source and saved evidence.
+Every kit launcher writes the instance record `harness/.cache/instance.json` (this path,
+whatever `--cache-dir` says) when it starts Vortex, and refuses first if a recorded Vortex is
+alive:
 
-### Changing the kit: take the kit lock
-
-Verified reusable improvements follow AGENT-WORKFLOW.md. The kit is one working tree and
-one `main`, so only one session changes it at a time:
-
-```powershell
-pnpm run ai -- kit lock --owner <you> --wait 30   # waits while another session holds it
-pnpm run ai -- kit sync --owner <you>             # switch to main, fast-forward to origin/main
-# edit KNOWLEDGE.md, a skill, the harness or the docs; pnpm run ci; git commit
-pnpm run ai -- kit push --owner <you>             # refuses publication if rebase changes checked HEAD
-pnpm run ai -- kit unlock --owner <you> --acquisition <original-id>
+```text
+A harness Vortex is running (pid N, cache C); run `pnpm run ai -- down` before <action>.
+A harness Vortex is running from <checkout> (pid N); run `pnpm run ai -- down` before <action>.
 ```
 
-- Take the lock **before the first edit**, not just to push: an edit in the shared working tree is
-  visible to every other session at once. Keep the window short: note lessons as you work, then
-  apply them together under one lock.
-- `kit push` refuses without the lock, with uncommitted changes, or off `main`. The lock lapses after
-  30 minutes unless conditionally renewed. `kit status --json` shows the acquisition identity;
-  `kit renew --owner <you> --acquisition <id> --ttl 30` renews that exact live acquisition.
-  Expiry/replacement stops further mutations; inspect edits and surviving subprocesses before
-  recovery. Git operations heartbeat and recheck ownership before each subsequent command.
-  If rebase changes the proposed head, push stops before publication; recheck the resulting
-  revision and retry. It does not silently publish a different revision than the one checked.
-- Do not unlock a dirty kit or edit it from a subagent without the writer baton under the lock.
-  If commit/publication is outside the brief, preserve the identified diff and explicitly hand
-  off the changes, acquisition/expiry and cleanup responsibility to the accountable owner;
-  do not commit merely to satisfy the lock procedure. Candidate lessons go to that owner for
-  verification and authorized integration.
+Run `pnpm run ai -- down` and retry. `down` waits for a clean exit and clears the record; a
+record whose pid is dead or now belongs to another program is stale and is cleared on the next
+check. A Vortex started outside the kit's launchers (a raw Playwright or Electron start, or the
+user's own Vortex) writes no record and is invisible to these refusals.
 
-### Running writers and app drivers in parallel
+- **Issues one at a time.** First establish whether reported symptoms share a cause. Work
+  through independent issues one after another, each in its own context. Within one issue,
+  delegate distinct read-only questions or contracts using the canonical brief and
+  PULL-REQUESTS.md supplements; read-only specialists use the identified source and saved
+  evidence and start no Vortex. Only one worker edits a checkout or drives the app at a time.
+- **Vortex source** is a branch of `.vortex-src` (prepared by `pnpm run ai:source`) or a
+  checkout given with `--dev-dir`. Use the same target flags on every command.
+- **Kit changes.** Verified kit lessons may be committed and pushed to `main` after
+  `pnpm run ci` passes (root AGENTS.md). If commit or publication is outside the brief,
+  preserve the identified diff and hand it to the agent accountable for the task; candidate
+  lessons go to that agent for verification and authorized integration.
+- `pnpm run verify` and `vortex-e2e` need any Vortex running from that checkout stopped first.
+  The core suite (`ai:test`) starts its own Vortex, so it refuses while any harness Vortex runs.
+- **Timing needs a quiet machine.** Builds, a second Vortex (the user's own included) or other
+  heavy work compete for CPU, so a measurement taken alongside them is noise. Before timing,
+  check that nothing else is building or running Vortex; say in the PR what else was running,
+  if anything.
+- **Keep your window off the user's screen when you can.** Keep the instance down when idle,
+  and capture with as few setting or layout switches as possible (each can flash the window).
 
-Several agents can drive Vortex at once, each on its own project, as long as none shares a checkout,
-a cache or a port with another (harness/AGENTS.md, "Parallel sessions"):
-
-```powershell
-pnpm run ai -- worktree add fix-24290 --owner fix-24290 --base upstream/master
-pnpm run ai -- up --owner fix-24290 --worktree fix-24290 --slot auto --bethesda-sandbox
-pnpm run ai -- screenshot --owner fix-24290 --slot auto --label repro
-pnpm run ai -- down --owner fix-24290 --slot auto
-```
-
-- **A worktree per concurrent Vortex writer/app driver** (`.vortex-worktrees/<name>`): its own
-  branch, `node_modules` and build. Read-only specialists use the identified checkout.
-  A Vortex running from it locks it (`checkout:<dir>`), so nobody rebuilds it underneath. Nobody
-  works in `.vortex-src` itself; it is the managed base the worktrees come from.
-- **A slot per app-driving worker** (`--slot auto` with its owner name, or `VORTEX_AI_SLOT=auto` and
-  `VORTEX_AI_OWNER` in its environment): its own cache, artifacts, MCP and CDP ports and instance
-  lease. The owner keeps the same slot, with its warm profile, across commands. `doodlebot slots`
-  shows who has which.
-- `pnpm run verify`, `vortex-e2e` and `ai:test` run in the agent's own worktree and slot. Two
-  `vortex-e2e` runs never overlap: they share an operation guard. A refused root invocation
-  can be retried after the other run ends; nested operations never wait while holding resources.
-- **Timing needs a quiet machine.** Other instances compete for CPU, so a measurement taken while
-  other sessions build or drive Vortex is noise. Before timing, check `doodlebot slots` and wait
-  until no other instance is running; say in the PR what else was running, if anything.
-- **Keep your windows off the user's screen when you can.** Keep your instance down when idle, and
-  capture with as few setting or layout switches as possible (each can flash the window).
-- Each worktree installs its own dependencies (a few minutes and a few GB), and Windows path
-  limits still apply, so keep worktree names short. Remove a finished one with
-  `worktree remove <name> --owner <owner>`; its branch stays.
-
-A refusal before a guarded operation starts prevents its mutation. A failure after work starts
-may require inspection and cleanup. Retry only after releasing partial holds; never release
-another owner's lease or pass an operation UUID as the owner. Use `--wait` only on commands
-that document it.
+A refusal happens before the refused command changes anything. A failure after work starts
+may need inspection and cleanup; if `down` reports an instance that does not exit, close that
+window and retry. Deleting `harness/.cache/instance.json` is the recovery only after you have
+confirmed that its pid is not a harness Vortex.
 
 ### Review starts when the design is settled
 
 While the user is still shaping a change (choosing between variants, asking for new ones), the work
 isn't ready for QA. Don't start or keep a reviewer on it: every new direction makes its findings
-stale, and its Vortex is one more window on the user's screen. Iterate, let the user try a demo, and
-start QA only when the user says the design is settled (or the change has no design questions).
-Pause a running reviewer as soon as the direction changes.
+stale, and with one instance its Vortex would replace the author's on the user's screen. Iterate,
+let the user try a demo, and start QA only when the user says the design is settled (or the change
+has no design questions). For a feature or refactor, settled means the EGM design is approved.
+Stop a running reviewer as soon as the direction changes.
+
+Independent QA starts after the author has run `pnpm run ai -- down`, in a fresh context, and
+begins with `up --fresh` so it does not inherit the author's profile state.
 
 ### A reviewer runs only the head it reviews
 
-A reviewer that keeps a Vortex up on an older head, while the author works on a newer one, puts a
-window with an outdated design on the user's screen, and it looks like the author's work went wrong.
-Review the head you were given. When a new one is pushed, `down`, move your worktree to it
-(`worktree add <name> --ref origin/<branch>` makes a detached one), and only then `up` again.
+A reviewer that keeps a Vortex up on an older head puts a window with an outdated design on the
+user's screen, and it looks like the author's work went wrong. Review the head you were given.
+When a new one is pushed, move the checkout to it before starting Vortex again:
 
-### A build for the user to try gets its own worktree
+```powershell
+pnpm run ai -- down
+git -C .vortex-src fetch origin
+git -C .vortex-src checkout --detach <sha>
+pnpm run ai -- build --checkout .vortex-src
+pnpm run ai -- up --dev-dir .vortex-src --fresh --sandbox   # the task's fixture flags
+```
 
-When the user wants to try a branch, don't run their Vortex from the author's worktree. It locks the
-checkout, so the author can't rebuild it, and `pr-preflight`'s revert check is refused. Make one for
-them: `worktree add demo-<topic> --owner user-demo --ref origin/<branch>`, `up --owner user-demo --worktree
-demo-<topic> --slot auto`. Leave it running until they're done. To show them a new head, `down`,
-`git -C <demo worktree> checkout --detach <sha>`, rebuild, and `up` again.
+Use the `--dev-dir` checkout instead of `.vortex-src` when the task names one. `git checkout`
+refuses over uncommitted changes: the author commits first; never stash or discard another
+agent's work. Return the checkout to the author's branch when the review ends.
+
+### A build for the user to try
+
+When the user wants to try a branch, the one instance becomes their demo. The author does not
+rebuild or switch that checkout while it runs: `build`, `evidence run` and `pr-preflight`'s
+revert check refuse while a Vortex runs from it. Prepare it the same way:
+
+```powershell
+pnpm run ai -- down
+git -C .vortex-src checkout --detach <sha>
+pnpm run ai -- build --checkout .vortex-src
+pnpm run ai -- up --dev-dir .vortex-src --fresh --sandbox
+```
+
+Leave it running until they're done. To show them a new head, repeat the four commands with the
+new sha. Author work that needs the app or a rebuild waits until the user is finished.
 
 ### Revisiting closed PRs: the doodlebot queue
 
@@ -255,7 +292,7 @@ write down why no draft is needed. Both outcomes close the queue entry.
 `gh pr view <n> --json title,body,comments,reviews,state,closedAt` is more reliable than
 `--comments`.
 
-## Implementing a feature from a design
+## Implementing a supplied visual design
 
 Translate the supplied design into explicit acceptance criteria before changing
 code: information hierarchy, spacing, typography, control behavior, empty/error
@@ -310,7 +347,7 @@ launches a real app with an isolated profile and disposable sandbox game. Neithe
 proves an authenticated Nexus collection downloads or a purchased game launches;
 those require the additional setup and explicit collection/game scenario.
 
-When working in a Vortex worktree, follow its own verification instructions. In
+When working in a Vortex checkout, follow its own verification instructions. In
 particular, do not overwrite a live development renderer with a production
 verification build; use its documented checks and stop/restart the development
 session when appropriate. Do not commit, push, or open a PR unless asked.

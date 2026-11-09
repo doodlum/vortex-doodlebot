@@ -13,7 +13,7 @@
  *   - leaves out the specs that need a Nexus test account whose credentials are absent,
  *     through `--grep-invert`, and reports them separately rather than as failures.
  *
- * It holds the instance lease and the checkout's lease for the whole run (lease.ts).
+ * It refuses while the harness Vortex runs from the checkout (runningVortex.ts).
  * Summary, comparison against a baseline and patch handling are exported for unit tests.
  */
 import fs from "node:fs";
@@ -24,17 +24,7 @@ import { parseEnv } from "node:util";
 import { z } from "zod";
 
 import { REPO_ROOT } from "./config";
-import {
-  checkoutResource,
-  withLeases,
-  isInstanceResource,
-  listLeases,
-  processAlive,
-  requireNamedOwner,
-  type LeaseEnv,
-} from "./lease";
-import { withCheckoutOperation } from "./checkoutOperation";
-import { inheritedOperation, withOperations, type OperationOptions } from "./operations";
+import { assertNoVortexRunningFrom, runningVortex } from "./runningVortex";
 import {
   abortOnSignals,
   assertCurrentIdentity,
@@ -48,9 +38,6 @@ import {
   type CheckoutIdentity,
   type Artifact,
 } from "./evidence";
-
-/** Held for a whole vortex-e2e run, so two runs never overlap. */
-export const VORTEX_E2E_RESOURCE = "vortex-e2e";
 import { readJsonFile } from "./jsonFile";
 import { git, gitOk, parseUnifiedDiff, sha256 } from "./prPreflight";
 import { childEnv } from "./source";
@@ -726,7 +713,7 @@ export interface E2eSelection {
 
 export interface VortexE2eReport {
   tool: "vortex-e2e";
-  schemaVersion: 4;
+  schemaVersion: 5;
   kit: CheckoutIdentity;
   kitAfter: CheckoutIdentity;
   identity: CheckoutIdentity;
@@ -734,7 +721,6 @@ export interface VortexE2eReport {
   runtimeFiles: Artifact[];
   checkout: string;
   headSha: string;
-  owner: string;
   startedAt: string;
   durationMs: number;
   playwrightDurationMs?: number;
@@ -775,7 +761,7 @@ const outcomeSchema = z.strictObject({
 export const e2eReportSchema = z
   .strictObject({
     tool: z.literal("vortex-e2e"),
-    schemaVersion: z.literal(4),
+    schemaVersion: z.literal(5),
     kit: checkoutIdentitySchema,
     kitAfter: checkoutIdentitySchema,
     identity: checkoutIdentitySchema,
@@ -783,7 +769,6 @@ export const e2eReportSchema = z
     runtimeFiles: z.array(artifactSchema),
     checkout: z.string().min(1),
     headSha: z.string().regex(/^[a-f0-9]{40}$/),
-    owner: z.string(),
     startedAt: z.iso.datetime(),
     durationMs: z.number().nonnegative(),
     playwrightDurationMs: z.number().nonnegative().optional(),
@@ -1011,9 +996,7 @@ function formatDuration(ms: number): string {
 
 export function formatE2eReport(report: VortexE2eReport): string {
   const { counts } = report;
-  const lines = [
-    `vortex-e2e ${report.checkout} (HEAD ${report.headSha.slice(0, 9)}), owner "${report.owner}"`,
-  ];
+  const lines = [`vortex-e2e ${report.checkout} (HEAD ${report.headSha.slice(0, 9)})`];
   for (const patch of report.patches) {
     lines.push(
       `fixture patch ${patch.id}: ${
@@ -1114,7 +1097,7 @@ export function e2eExitCode(report: VortexE2eReport): number {
 // Running Playwright
 // ---------------------------------------------------------------------------
 
-export interface PlaywrightInvocation extends OperationOptions {
+export interface PlaywrightInvocation {
   checkout: string;
   cwd: string;
   args: string[];
@@ -1146,7 +1129,6 @@ export function playwrightRunner(stream: NodeJS.WritableStream): PlaywrightRunne
       ...invocation,
       executable: process.execPath,
       args: [cli, ...invocation.args],
-      persistentResources: [checkoutResource(invocation.checkout), VORTEX_E2E_RESOURCE],
       onOutput: (chunk) => {
         if (!invocation.list) stream.write(chunk);
       },
@@ -1156,19 +1138,17 @@ export function playwrightRunner(stream: NodeJS.WritableStream): PlaywrightRunne
   };
 }
 
-export interface VortexE2eOptions extends OperationOptions {
+export interface VortexE2eOptions {
   signal?: AbortSignal;
   checkout: string;
   artifactDir: string;
   specs?: string[];
   grep?: string;
   grepInvert?: string;
-  owner?: string;
   /** A previous report to compare with. */
   compare?: string;
   patches?: FixturePatch[];
   runner?: PlaywrightRunner;
-  leaseEnv?: LeaseEnv;
   onProgress?: (message: string) => void;
   /** Cancel known children and await exit before restoration. Default true. */
   handleSignals?: boolean;
@@ -1191,26 +1171,7 @@ function baseEnv(): NodeJS.ProcessEnv {
 }
 
 export async function runVortexE2e(options: VortexE2eOptions): Promise<VortexE2eReport> {
-  const owner = requireNamedOwner(options.owner);
-  const context = options.context ?? inheritedOperation(owner, process.env, options.leaseEnv);
-  return withLeases([VORTEX_E2E_RESOURCE], owner, options.leaseEnv ?? {}, () =>
-    withOperations([VORTEX_E2E_RESOURCE], owner, { ...options, context }, (nested) =>
-      withCheckoutOperation(
-        path.resolve(options.checkout),
-        owner,
-        "vortex-e2e fixture patch",
-        {
-          ...options,
-          context: nested,
-          rewriting: true,
-        },
-        (checkoutContext) => runVortexE2eInside({ ...options, owner, context: checkoutContext }),
-      ),
-    ),
-  );
-}
-
-async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eReport> {
+  assertNoVortexRunningFrom(path.resolve(options.checkout), "patching it");
   const kit = captureCheckoutIdentity(REPO_ROOT);
   const started = Date.now();
   const report = options.onProgress ?? ((): void => undefined);
@@ -1225,7 +1186,6 @@ async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eR
     throw new VortexE2eError(`${checkout} is not a git checkout.`);
   }
   const headSha = (await git(checkout, ["rev-parse", "HEAD"])).trim();
-  const owner = requireNamedOwner(options.owner);
   const identity = captureCheckoutIdentity(checkout);
   if (identity.dirty)
     throw new VortexE2eError(
@@ -1250,13 +1210,10 @@ async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eR
 
   try {
     cancellation.signal.throwIfAborted();
-    const running = listLeases(options.leaseEnv)
-      .filter((state) => isInstanceResource(state.lease.resource))
-      .flatMap((state) => state.lease.instancePids)
-      .filter(options.leaseEnv?.isAlive ?? processAlive);
-    if (running.length > 0) {
+    const running = runningVortex();
+    if (running !== undefined) {
       notes.push(
-        `a harness Vortex (pid ${running.join(", ")}) was running during the run; timings may be affected`,
+        `a harness Vortex (pid ${String(running.pid)}) was running during the run; timings may be affected`,
       );
     }
 
@@ -1275,8 +1232,6 @@ async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eR
       fs.rmSync(jsonFile, { force: true });
       const result = await runner({
         checkout,
-        context: options.context,
-        leaseEnv: options.leaseEnv,
         cwd: e2eDir,
         args: [
           "test",
@@ -1353,8 +1308,6 @@ async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eR
       report(`[vortex-e2e] running ${String(kept.length)} tests in ${e2eDir}`);
       const result = await runner({
         checkout,
-        context: options.context,
-        leaseEnv: options.leaseEnv,
         cwd: e2eDir,
         args: command.slice(1),
         env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: jsonFile },
@@ -1396,7 +1349,7 @@ async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eR
       globalErrors.push("Producing kit code changed during E2E; rerun with unchanged kit code.");
     const final: VortexE2eReport = {
       tool: "vortex-e2e",
-      schemaVersion: 4,
+      schemaVersion: 5,
       kit,
       kitAfter,
       identity,
@@ -1404,7 +1357,6 @@ async function runVortexE2eInside(options: VortexE2eOptions): Promise<VortexE2eR
       runtimeFiles,
       checkout,
       headSha,
-      owner,
       startedAt: new Date(started).toISOString(),
       durationMs: Date.now() - started,
       playwrightDurationMs,

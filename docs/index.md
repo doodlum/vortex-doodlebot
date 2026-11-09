@@ -12,5 +12,6 @@ Start with [Get started](getting-started/first-session.md). It takes you from in
 | Check a UI action                          | [Drive the UI](guides/ui-automation.md)             |
 | Check a mod's deployed files               | [Install and deploy a mod](guides/mod-workflows.md) |
 | Understand a failed run or compare timings | [Read results](testing/results.md)                  |
+| Review a change before it is coded         | [Approve a design](guides/design-review.md)         |
 
 The [reference](reference/index.md) explains methods and options. The [performance plan](testing/proposal.md) defines required coverage and the difference between generated data, genuine downloads and cached real files.

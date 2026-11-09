@@ -55,19 +55,19 @@ console.log(resolveDevElectron(${JSON.stringify(root)}));
   };
 }
 
-it("two processes resolve a missing Electron with one installation", async () => {
+it("installs a missing Electron once and then reuses it", async () => {
   const { root, run } = fixture();
-  const resolved = await Promise.all([run(), run()]);
-  expect(resolved[0]).toBe(resolved[1]);
-  expect(fs.readFileSync(resolved[0]!, "utf8")).toBe("fixture executable");
+  const first = await run();
+  expect(fs.readFileSync(first, "utf8")).toBe("fixture executable");
+  expect(await run()).toBe(first);
   expect(fs.readFileSync(path.join(root, "node_modules/electron/installs"), "utf8")).toBe(
     "install\n",
   );
+  expect(fs.existsSync(path.join(root, "node_modules/electron/.doodlebot-install"))).toBe(false);
 });
 
-it("an interrupted installation releases its lease so a later process can retry", async () => {
-  const { root, run } = fixture(true);
+it("a later process retries an interrupted installation", async () => {
+  const { run } = fixture(true);
   await expect(run()).rejects.toThrow("download interrupted");
-  expect(fs.readdirSync(path.join(root, "node_modules/electron/.doodlebot-install"))).toEqual([]);
   expect(fs.existsSync(await run())).toBe(true);
 });

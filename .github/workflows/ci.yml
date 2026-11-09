@@ -10,7 +10,6 @@ jobs:
   ci:
     runs-on: windows-latest
     env:
-      VORTEX_AI_OWNER: ci-fast
       DOODLEBOT_DOCS_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +52,6 @@ jobs:
     timeout-minutes: 20
     env:
       VORTEX_AI_INSTALLED: "1"
-      VORTEX_AI_OWNER: ci-core
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

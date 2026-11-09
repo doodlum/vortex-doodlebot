@@ -10,11 +10,14 @@ import path from "node:path";
 
 import { ConfigError } from "./errors";
 import { peekDevElectron } from "./electronRuntime";
-import { resolveOwner } from "./lease";
-import { HARNESS_ROOT, REPO_ROOT } from "./paths";
-import { assignSlot, parseSlot, type SlotRequest, slotPaths } from "./slots";
+import { DEFAULT_ARTIFACT_DIR, DEFAULT_CACHE_DIR, HARNESS_ROOT, REPO_ROOT } from "./paths";
 
 export { ConfigError, REPO_ROOT };
+
+/** Port the extension's MCP server listens on, unless `--port` or VORTEX_MCP_PORT says otherwise. */
+export const DEFAULT_MCP_PORT = 3701;
+/** CDP port opened on Vortex, unless `--cdp-port` or VORTEX_AI_CDP_PORT says otherwise. */
+export const DEFAULT_CDP_PORT = 9222;
 
 // Loaded from harness/.env when present, so an operator can keep the API key out
 // of their shell profile. Gitignored.
@@ -93,16 +96,6 @@ export interface HarnessConfig {
    * Vortex must start with both redirected or not at all.
    */
   profileRedirect?: { localAppData: string; documents: string };
-  /**
-   * Who is using the kit, for the machine-wide instance lease (lease.ts). From `--owner`
-   * or VORTEX_AI_OWNER; unset means "anonymous".
-   */
-  owner?: string;
-  /**
-   * The instance slot (slots.ts) this configuration's defaults came from: 0 unless `--slot`
-   * or VORTEX_AI_SLOT asked for another. An explicit cache or port overrides its part.
-   */
-  slot: number;
   /**
    * True when an API key is configured but deliberately not used: sandbox runs are
    * local-only, and a seeded key makes every local install wait on Nexus lookups.
@@ -226,29 +219,23 @@ export function resolveTargetSafely(
   }
 }
 
-export type ConfigOverrides = Partial<Omit<HarnessConfig, "slot">> & { slot?: SlotRequest };
+export type ConfigOverrides = Partial<HarnessConfig>;
 
+/** Flags (as overrides) first, then the environment, then the defaults. */
 export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig {
-  const { slot: slotOverride, ...rest } = overrides;
-  const owner = rest.owner ?? process.env.VORTEX_AI_OWNER;
-  const request = slotOverride ?? parseSlot(process.env.VORTEX_AI_SLOT);
-  const slot = request === "auto" ? assignSlot(resolveOwner(owner)) : (request ?? 0);
-  const defaults = slotPaths(slot);
   const config: HarnessConfig = {
     apiKey: process.env.VORTEX_AI_NEXUS_API_KEY ?? process.env.NEXUS_API_KEY,
     mcpToken: process.env.VORTEX_MCP_TOKEN ?? defaultToken(),
-    mcpPort: Number(envValue("VORTEX_MCP_PORT") ?? defaults.mcpPort),
-    cdpPort: Number(envValue("VORTEX_AI_CDP_PORT") ?? defaults.cdpPort),
+    mcpPort: Number(envValue("VORTEX_MCP_PORT") ?? DEFAULT_MCP_PORT),
+    cdpPort: Number(envValue("VORTEX_AI_CDP_PORT") ?? DEFAULT_CDP_PORT),
     gameId: process.env.VORTEX_AI_GAME_ID ?? "fallout4",
     gamePath: process.env.VORTEX_AI_GAME_PATH,
-    cacheDir: envValue("VORTEX_AI_CACHE_DIR") ?? defaults.cacheDir,
-    artifactDir: envValue("VORTEX_AI_ARTIFACT_DIR") ?? defaults.artifactDir,
+    cacheDir: envValue("VORTEX_AI_CACHE_DIR") ?? DEFAULT_CACHE_DIR,
+    artifactDir: envValue("VORTEX_AI_ARTIFACT_DIR") ?? DEFAULT_ARTIFACT_DIR,
     target: resolveTargetSafely(),
     headless: envFlag("VORTEX_AI_HEADLESS"),
     production: envFlag("VORTEX_AI_PRODUCTION"),
-    owner,
-    ...rest,
-    slot,
+    ...overrides,
   };
   for (const port of [config.mcpPort, config.cdpPort]) {
     if (!Number.isInteger(port) || port < 1 || port > 65535)

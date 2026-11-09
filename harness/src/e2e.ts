@@ -16,7 +16,6 @@ import type { HarnessConfig } from "./config";
 import { deployMods, modsStillInstalling, purgeGame } from "./deployment";
 import { VortexMcpClient } from "./mcpClient";
 import { KNOWN_GAMES } from "./gameSetup";
-import type { OperationOptions } from "./operations";
 
 export class E2eError extends Error {}
 
@@ -33,7 +32,7 @@ export interface E2eResult {
   elapsedMs: number;
 }
 
-export interface E2eOptions extends OperationOptions {
+export interface E2eOptions {
   collection: string;
   /** Start from a wiped working directory. On by default — that is the point. */
   fresh?: boolean;
@@ -79,7 +78,6 @@ export async function runE2e(config: HarnessConfig, options: E2eOptions): Promis
   try {
     await step("start Vortex", async () => {
       const result = await bootstrap(config, {
-        ...options,
         fresh: options.fresh !== false,
         onProgress: (m: string) => report(`    ${m}`),
       });

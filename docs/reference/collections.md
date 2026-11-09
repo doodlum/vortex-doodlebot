@@ -38,7 +38,6 @@ export interface PrepareCollectionOptions {
   /** The operator confirms the source is clean and the game/launcher are closed. */
   cleanSource: true;
   authCache: string;
-  owner: string;
   /** Copy this source into a new snapshot, even when an older snapshot is saved. */
   source?: string;
   /** Register an existing verified copy rather than copying the installed game. */
@@ -51,7 +50,7 @@ export interface PrepareCollectionOptions {
 
 <!-- /contract -->
 
-Finds the Steam game when `source` is omitted, creates or reuses a verified snapshot, saves local choices and returns configuration. Use `snapshot` to register a verified copy. `cleanSource` and `dedicatedWindowsAccount` are operator acknowledgements. The CLI manages the private `authCache` and exclusive `owner` for you.
+Finds the Steam game when `source` is omitted, creates or reuses a verified snapshot, saves local choices and returns configuration. Use `snapshot` to register a verified copy. `cleanSource` and `dedicatedWindowsAccount` are operator acknowledgements. The CLI manages the private `authCache` for you.
 
 An explicit `source` always creates a new snapshot. Omit both `source` and `snapshot` to reuse a saved copy for that game/content, or discover and copy the installed game if none is saved. Choose either `source` or `snapshot`; passing both fails.
 
@@ -207,7 +206,7 @@ export async function pauseUntilResume(
 
 An automated control can poll `downloadProgress()` until `active > 0` before testing Pause. `receivedBytes` counts the bytes reported by Vortex, including partial transfers; it is not an estimate of the final collection size.
 
-Pause controls the exclusively owned benchmark profile's whole download queue. Resume starts the collection's own driver with the account's maximum download threads. It does not mean the collection has finished: keep awaiting the original `addCollection()` operation. A paused install still has its original timeout. Keep pause/resume outside timed baseline runs; this control does not silently subtract the pause from a measurement.
+Pause controls the whole download queue of the benchmark's private profile. Resume starts the collection's own driver with the account's maximum download threads. It does not mean the collection has finished: keep awaiting the original `addCollection()` operation. A paused install still has its original timeout. Keep pause/resume outside timed baseline runs; this control does not silently subtract the pause from a measurement.
 
 The restart promise also includes teardown checks. Treat the operation as successful only when that promise resolves. For failures before the callback, catch the returned promise and save its error message; the error includes the retained workspace location. Inside the callback, a `finally` block can save partial measurements and evidence if installation fails.
 
@@ -217,4 +216,4 @@ The supplied pins use `preparedCollection()`. For another collection/store, a di
 
 Set `warningsAsErrors` explicitly when writing a manifest: the SDK defaults to strict warnings when omitted, while prepared collection choices use the policy saved by setup. Required and selected optional members must finish under either policy. A lower-level install using allowed warnings also needs its final completion-verification callback; member counts alone do not prove success.
 
-For a login-only integration rather than a benchmark, the app CLI supports `pnpm run ai -- setup --installed --oauth` with a named `VORTEX_AI_OWNER`. Finish the browser login in its isolated Vortex and keep the same cache/instance settings for later commands. Normal collection work uses the single [collection guide](../getting-started/setup.md).
+For a login-only integration rather than a benchmark, the app CLI supports `pnpm run ai -- setup --installed --oauth`. Finish the browser login in its isolated Vortex and keep the same target and cache settings for later commands. Normal collection work uses the single [collection guide](../getting-started/setup.md).

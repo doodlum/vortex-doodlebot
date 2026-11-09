@@ -18,7 +18,6 @@ import path from "node:path";
 import { attachToRenderer } from "../cdp";
 import { bethesdaSandboxPaths, pluginBytes, setDeterministicLoadOrder } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { deployMods } from "../deployment";
 import { fillFilterScript, measureBlocked, seedLibrary, tableRows } from "../largeLibrary";
 import { VortexMcpClient } from "../mcpClient";
@@ -34,8 +33,6 @@ const MAX_ROWS_RENDERED = 200;
 const MAX_ACTION_BLOCKED_MS = 1_500;
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:plugins-page", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const status = await mcp.call<{ paths?: { documents: string | null } }>("automation_status");

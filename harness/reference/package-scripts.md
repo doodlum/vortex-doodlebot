@@ -33,7 +33,6 @@ Source-generated script inventory. Use TESTING.md to determine applicability and
 | `ai:down`                           | `tsx harness/src/cli.ts down`                                                                                                                                              |
 | `ai:watch`                          | `tsx harness/src/cli.ts watch`                                                                                                                                             |
 | `ai:preflight`                      | `tsx harness/src/cli.ts pr-preflight`                                                                                                                                      |
-| `ai:lease`                          | `tsx harness/src/cli.ts lease`                                                                                                                                             |
 | `ai:vortex-e2e`                     | `tsx harness/src/cli.ts vortex-e2e`                                                                                                                                        |
 | `ai:test`                           | `playwright test --config harness/playwright.config.ts`                                                                                                                    |
 | `ai:test:core`                      | `playwright test --config harness/playwright.config.ts`                                                                                                                    |
@@ -45,7 +44,6 @@ Source-generated script inventory. Use TESTING.md to determine applicability and
 | `ai:test:bethesda`                  | `tsx harness/src/tests/bethesda.e2e.ts`                                                                                                                                    |
 | `ai:test:collection-download-retry` | `tsx harness/src/tests/collection-download-retry.e2e.ts`                                                                                                                   |
 | `ai:test:collection-scale`          | `tsx harness/src/tests/collection-scale.e2e.ts`                                                                                                                            |
-| `ai:test:parallel-sessions`         | `tsx harness/src/tests/parallel-sessions.e2e.ts`                                                                                                                           |
 | `ai:test:plugins-mod-link`          | `tsx harness/src/tests/plugins-mod-link.e2e.ts`                                                                                                                            |
 | `ai:test:plugins-page`              | `tsx harness/src/tests/plugins-page.e2e.ts`                                                                                                                                |
 | `ai:test:download-churn`            | `tsx harness/src/tests/download-churn.e2e.ts`                                                                                                                              |

@@ -22,7 +22,6 @@ export { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 export { loadConfig, type HarnessConfig } from "./config";
 export { VortexMcpClient };
 export { attachToRenderer, captureScreenshot, realHover, realWheel } from "./cdp";
-export { claimInstanceLease } from "./instance";
 export { readJsonFile, parseJson } from "./jsonFile";
 
 export * as bethesda from "./bethesdaSandbox";

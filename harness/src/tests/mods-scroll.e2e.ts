@@ -33,7 +33,6 @@ import path from "node:path";
 
 import { attachToRenderer, captureScreenshot } from "../cdp";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { fillFilterScript, measureBlocked, seedLibrary } from "../largeLibrary";
 import { VortexMcpClient } from "../mcpClient";
 import {
@@ -72,7 +71,6 @@ const MAX_CLIPPED_PX = 2;
 const TABLE = "mods";
 
 const config = loadConfig();
-claimInstanceLease(config, "ai:test:mods-scroll", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const gameId = await mcp.call<string | null>("vortex_query", { selector: "activeGameId" });

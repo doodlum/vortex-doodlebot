@@ -15,7 +15,6 @@ import { zipSync } from "fflate";
 import { pluginBytes } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
 import { startArchiveServer } from "../downloadServer";
-import { claimInstanceLease } from "../instance";
 import { VortexMcpClient } from "../mcpClient";
 import {
   closeCollectionReviews,
@@ -25,7 +24,6 @@ import {
 } from "../offlineCollection";
 
 const config = loadConfig();
-claimInstanceLease(config, "ai:test:collection-download-retry", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 if ((await mcp.call<string | null>("vortex_query", { selector: "activeGameId" })) !== "fallout4")

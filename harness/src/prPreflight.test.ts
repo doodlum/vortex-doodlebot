@@ -148,8 +148,6 @@ describe("native control with the installed Vitest runner", { timeout: 60_000 },
         base: "master",
         tests: ["value.test.ts"],
         revert: ["value.ts"],
-        owner: "native-control-test",
-        leaseEnv: { dir: path.join(root, "leases") },
       });
       const check = report.checks.find((item) => item.id === "revert")!;
       expect(report.passed).toBe(false);

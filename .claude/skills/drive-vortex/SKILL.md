@@ -12,26 +12,31 @@ You control Vortex through doodlebot's MCP tools. Start with the task's scope an
 ## Get an instance up
 
 ```powershell
-$env:VORTEX_AI_OWNER = '<issue-worker>'
 pnpm run ai -- doctor --installed --sandbox
 pnpm run ai -- setup --installed --sandbox  # no game or account needed
 pnpm run ai -- tools --json                # all live input schemas
+pnpm run ai -- down                        # when you are done
 ```
+
+One harness Vortex runs at a time. Every kit launcher records it in
+`harness/.cache/instance.json` and refuses while that Vortex is alive: "A harness Vortex is
+running (pid N, cache C); run `pnpm run ai -- down` before <action>." Run `down`, which waits
+for a clean exit, then retry. Do not start a second Vortex by hand beside it.
 
 Use `setup --installed --oauth` for initial Nexus login; it waits and caches
 automatically. `up` reuses a matching working profile; `up --fresh` resets it.
 Without `--installed`, the managed `.vortex-src` clone takes precedence.
-Read [harness/AGENTS.md](../../../harness/AGENTS.md) and
-[AGENT-WORKFLOW.md](../../../harness/AGENT-WORKFLOW.md) for owner/slot isolation and explicit nested contexts, and
+Read [harness/AGENTS.md](../../../harness/AGENTS.md),
+[AGENT-WORKFLOW.md](../../../harness/AGENT-WORKFLOW.md) and
 [WORKFLOWS.md](../../../harness/WORKFLOWS.md) before starting. If a requested
 workflow needs an authorized missing capability, implement and test the reusable improvement
-under the kit lock, update its canonical instructions, and resume the original request.
+in this repository, update its canonical instructions, and resume the original request.
 Follow the workflow's verification and promotion rules for new lessons.
 
 ## The loop
 
-Use supported harness commands for guarded ownership and operation exclusion. A raw MCP
-client holds bearer authority, not a harness lease; appoint one driver per renderer.
+One agent drives the instance. A raw MCP client holds the bearer token and can act on the
+same renderer, so appoint one driver per renderer and do not mix drivers mid-sequence.
 
 1. `ui_snapshot` — what is on screen, with a `ref` per element
 2. `ui_click` / `ui_fill` / `ui_press_key` on a `ref`

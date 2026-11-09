@@ -120,7 +120,8 @@ Each HTTP request has its own MCP server/transport; state listeners and UI refs
 remain shared within the renderer. Refs include a renderer-lifetime identifier
 and are invalidated by the next snapshot. Harness snapshot/action transactions
 are serialized with dialog watchers so they cannot invalidate each other's refs.
-Separate agent processes still need to coordinate access to the same instance.
+That serialization is per client: two processes driving the instance at once can still
+invalidate each other's refs, so drive it from one session at a time.
 
 The harness uses isolated userData/appData and a dedicated sandbox game for
 account-free tests. In harness mode only, `authCache.ts` restores the current
@@ -129,6 +130,40 @@ refreshes them. Logout leaves a tombstone that overrides stale snapshots. It
 uses Vortex's own actions and refresh logic; no OAuth secret is returned by MCP.
 Credentials are separate from profile snapshots so game changes and `--fresh`
 do not restore old refresh tokens or copy another game's mods into a blank profile.
+
+## One instance at a time
+
+doodlebot runs a single harness Vortex at a time, by convention, with a few cheap refusals
+where a second one, or a rebuild under the running one, would damage data. There is no
+ownership, locking or queueing: nothing serializes two harness commands, and the refusals
+read one file rather than coordinate processes.
+
+- **The instance record** is `harness/.cache/instance.json`, one fixed path whatever
+  `--cache-dir` a command uses, so every command finds the one instance. It holds
+  `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir?}`; `sourceDir` is the checkout
+  of a source build. `harness/src/runningVortex.ts` reads and writes it.
+- **Every kit launcher writes it** right after spawn and before readiness: `launchVortex` in
+  `instance.ts` (`up`, `setup`, `bootstrap`), the core suite's fixture, benchmark sessions,
+  benchmark setup and the signed-out zoom check. A record that cannot be written stops the
+  child and fails the launch. A Vortex started outside these launchers, such as a raw
+  Playwright or Electron launch, writes no record and is invisible to the refusals.
+- **It is cleared after a confirmed exit**: `stopInstance` and `down` clear it once Vortex has
+  quit; `down` waits up to 30 seconds, never signals the recorded pid, and reports a Vortex
+  that does not exit. `runningVortex()` treats a record as stale, and clears it, when its pid
+  is dead or the process is no longer `Vortex.exe`/`electron.exe` (pid reuse after a crash).
+  A reused pid that belongs to another Electron app still looks alive; deleting the file is
+  the recovery.
+- **Refusals.** `assertNoHarnessVortex(action)` stops a second launch, the core suite (a
+  Playwright `globalSetup`), a benchmark session, benchmark setup and the signed-out zoom
+  check while a harness Vortex runs. `assertNoVortexRunningFrom(checkout, action)` stops
+  `build`, source setup's builds and installs, `evidence run`, `pr-preflight`'s revert check
+  and `vortex-e2e`'s patch on the checkout the running Vortex was launched from. Benchmark
+  `resetGameSettings` refuses while Vortex runs. Each message names the pid and tells the
+  caller to run `pnpm run ai -- down` first.
+- `processes.ts` holds the platform checks the record relies on: `processAlive` (EPERM counts
+  as alive) and `processImageName`.
+- Vortex source work happens on a branch of `.vortex-src` or in a checkout given with
+  `--dev-dir`. Independent QA runs after the author's `down` and starts with `up --fresh`.
 
 ## File map
 
@@ -143,8 +178,8 @@ do not restore old refresh tokens or copy another game's mods into a blank profi
   HTTP server, bound to `127.0.0.1` only. Each HTTP request creates its own
   `McpServer` and transport with `sessionIdGenerator: undefined`; listener buffers
   and UI references remain renderer-wide. See `src/mcpServer.ts` and its transport
-  tests. Harness operation guards coordinate supported clients, while raw MCP clients
-  still share the renderer's state and bearer authority.
+  tests. Every client, harness or raw, shares the renderer's state and bearer authority;
+  nothing on the server side coordinates them.
 - `src/index.ts` — the Vortex extension entry point (`context.once`). This
   has to run in the renderer process: the event listeners and Redux store
   this extension talks to are all renderer-side, so `onceMain` would produce

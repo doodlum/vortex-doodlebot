@@ -30,22 +30,16 @@ import { sandboxConfig, installSandboxExtension } from "../sandbox";
 import { ensureGameManaged } from "../gameSetup";
 import {
   buildInstanceEnv,
-  claimInstanceLease,
   ensureExtensionBuilt,
   installMcpExtension,
   prepareUserDataDir,
-  registerLaunchedProcess,
   authCacheFile,
 } from "../instance";
 import { VortexMcpClient } from "../mcpClient";
-import { withLiveOperation } from "../liveOperation";
 import { resolveDevElectron } from "../electronRuntime";
-import { CONTEXT_ENV } from "../operations";
+import { assertNoHarnessVortex, writeInstanceRecord } from "../runningVortex";
 import { FixtureCleanup, closeFixtureApp } from "./fixtureCleanup";
 import { assertNoUnrecoverableErrors } from "./appHealth";
-
-// Also cover direct spec invocation without the core global setup. Fixtures own new instances.
-delete process.env[CONTEXT_ENV];
 
 export interface AiFixtures {
   config: HarnessConfig;
@@ -105,10 +99,9 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
             mcpPort,
             cdpPort,
             apiKey: undefined,
-            owner: `core-worker-${process.pid}`,
           }),
         );
-        // New profiles stay anonymous even when slot 0 has an operator's cached OAuth.
+        // New profiles stay anonymous even when the default cache has an operator's cached OAuth.
         fs.writeFileSync(authCacheFile(config), "null");
         await use(config);
       } finally {
@@ -126,8 +119,8 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       // instance the operator has up.
       const dir = path.join(config.cacheDir, "instance");
       prepareUserDataDir(dir, config.target.appName);
-      await ensureExtensionBuilt({ owner: config.owner });
-      installMcpExtension(dir, undefined, { owner: config.owner });
+      await ensureExtensionBuilt();
+      installMcpExtension(dir);
       installSandboxExtension(dir, config);
       try {
         await use(dir);
@@ -143,34 +136,43 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
     async ({ config, userDataDir, fixtureCleanup }, use) => {
       // Whatever the config resolved — a released Vortex.exe by default, or an
       // Electron pointed at a source checkout. CDP is opened so the screenshot
-      // helpers can attach alongside Playwright's own connection.
-      // The global setup already holds the instance lease for the run; this joins it, so
-      // a spec run some other way is still serialized against other agents.
-      const lease = claimInstanceLease(config, "ai:test");
-      try {
-        const app = await fixtureCleanup.preserveOnFailure(() =>
-          withLiveOperation(config, "core fixture launch", async (context) => {
-            if (config.target.kind === "dev" && !fs.existsSync(config.target.executable))
-              config.target.executable = resolveDevElectron(config.target.args[0]!);
-            const launched = await electron.launch({
-              executablePath: config.target.executable,
-              args: [...config.target.args, `--remote-debugging-port=${String(config.cdpPort)}`],
-              env: buildInstanceEnv(userDataDir, config),
-              cwd: path.dirname(config.target.executable),
-              timeout: 180_000,
-            });
-            // Preserve the parent cache if registration cannot confirm child shutdown.
-            await registerLaunchedProcess(launched.process(), lease.identities, { context });
-            return launched;
-          }),
-        );
+      // helpers can attach alongside Playwright's own connection. Like every launcher, it
+      // refuses while another harness Vortex runs (the global setup checks once up front too).
+      assertNoHarnessVortex("the core suite");
+      const app = await fixtureCleanup.preserveOnFailure(async () => {
+        if (config.target.kind === "dev" && !fs.existsSync(config.target.executable))
+          config.target.executable = resolveDevElectron(config.target.args[0]!);
+        const launched = await electron.launch({
+          executablePath: config.target.executable,
+          args: [...config.target.args, `--remote-debugging-port=${String(config.cdpPort)}`],
+          env: buildInstanceEnv(userDataDir, config),
+          cwd: path.dirname(config.target.executable),
+          timeout: 180_000,
+        });
+        // Record the one harness Vortex so other commands see it; an unrecorded app is stopped.
+        // A failed stop leaves the launch failed, which preserves the profile and parent cache.
         try {
-          await use(app);
-        } finally {
-          await closeFixtureApp(app, lease.identities, fixtureCleanup);
+          const pid = launched.process().pid;
+          if (pid === undefined) throw new Error("Vortex launched without a process id.");
+          writeInstanceRecord({
+            pid,
+            startedAt: new Date().toISOString(),
+            cacheDir: config.cacheDir,
+            userDataDir,
+            mcpPort: config.mcpPort,
+            // So checkout refusals see a suite running from a source build.
+            ...(config.target.kind === "dev" ? { sourceDir: config.target.sourceDir } : {}),
+          });
+        } catch (error) {
+          await launched.close();
+          throw error;
         }
+        return launched;
+      });
+      try {
+        await use(app);
       } finally {
-        lease.release();
+        await closeFixtureApp(app, fixtureCleanup);
       }
     },
     { scope: "worker", timeout: 240_000 },

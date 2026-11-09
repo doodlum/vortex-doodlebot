@@ -24,9 +24,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 
-import { checkoutResource } from "./lease";
-import { withCheckoutOperation } from "./checkoutOperation";
-import type { OperationOptions } from "./operations";
+import { assertNoVortexRunningFrom } from "./runningVortex";
 import {
   abortOnSignals,
   captureCheckoutIdentity,
@@ -1859,10 +1857,7 @@ export function completeNativeTestRun(run: Pick<TestRunResult, "code" | "reporte
 export type TestRunner = (
   cwd: string,
   tests: string[],
-  options: OperationOptions & {
-    signal: AbortSignal;
-    checkout: string;
-  },
+  options: { signal: AbortSignal },
 ) => Promise<TestRunResult>;
 
 /** Vitest's default output retains the assertion oracle; JSON establishes completeness. */
@@ -1873,7 +1868,7 @@ export const vitestRunner: TestRunner = async (cwd, tests, options) => {
   const reportFile = path.join(directory, "report.json");
   try {
     const result = await runEvidenceProcess({
-      ...options,
+      signal: options.signal,
       executable: process.execPath,
       args: [
         cli,
@@ -1886,7 +1881,6 @@ export const vitestRunner: TestRunner = async (cwd, tests, options) => {
       ],
       cwd,
       env: childEnv(),
-      persistentResources: [checkoutResource(options.checkout)],
     });
     options.signal.throwIfAborted();
     const json = fs.existsSync(reportFile) ? fs.readFileSync(reportFile, "utf8") : undefined;
@@ -1973,7 +1967,7 @@ export function negativeFailureKind(
   return "unclassified";
 }
 
-export interface RevertOptions extends OperationOptions {
+export interface RevertOptions {
   signal: AbortSignal;
   tests: string[];
   projectDir?: string;
@@ -2103,7 +2097,7 @@ async function revertCheck(
         `[pr-preflight] ${label}: vitest run ${group.join(" ")} (in ${where}; paths relative to it)`,
       );
       options.signal.throwIfAborted();
-      const run = await options.runner(cwd, group, { ...options, checkout: dir });
+      const run = await options.runner(cwd, group, { signal: options.signal });
       options.signal.throwIfAborted();
       runs.push({ cwd: where, tests: group, code: run.code, reporter: run.reporter });
       output += run.output;
@@ -2282,7 +2276,7 @@ async function revertCheck(
 // Orchestration
 // ---------------------------------------------------------------------------
 
-export interface PreflightOptions extends OperationOptions {
+export interface PreflightOptions {
   signal?: AbortSignal;
   handleSignals?: boolean;
   checkout: string;
@@ -2301,10 +2295,6 @@ export interface PreflightOptions extends OperationOptions {
   runner?: TestRunner;
   fetchPullRequest?: (pr: string, repo: string) => Promise<PullRequestText>;
   onProgress?: (message: string) => void;
-  /** Named owner required for checkout mutation. */
-  owner?: string;
-  /** Lease directory override, for tests. */
-  leaseDir?: string;
 }
 
 export async function fetchPullRequestText(pr: string, repo: string): Promise<PullRequestText> {
@@ -2318,24 +2308,13 @@ export async function fetchPullRequestText(pr: string, repo: string): Promise<Pu
 
 export async function runPreflight(options: PreflightOptions): Promise<PreflightReport> {
   if (options.skipRevert || options.head !== undefined) return runPreflightInside(options);
-  return withCheckoutOperation(
-    path.resolve(options.checkout),
-    options.owner,
-    "pr-preflight",
-    {
-      context: options.context,
-      leaseEnv: options.leaseEnv ?? { dir: options.leaseDir },
-      rewriting: true,
-    },
-    async (context) => {
-      const cancellation = abortOnSignals(options.signal, options.handleSignals !== false);
-      try {
-        return await runPreflightInside({ ...options, context, signal: cancellation.signal });
-      } finally {
-        cancellation.dispose();
-      }
-    },
-  );
+  assertNoVortexRunningFrom(path.resolve(options.checkout), "reverting it");
+  const cancellation = abortOnSignals(options.signal, options.handleSignals !== false);
+  try {
+    return await runPreflightInside({ ...options, signal: cancellation.signal });
+  } finally {
+    cancellation.dispose();
+  }
 }
 
 async function runPreflightInside(options: PreflightOptions): Promise<PreflightReport> {
@@ -2399,8 +2378,6 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
   } else {
     checks.push(
       await revertCheck(dir, files, mergeBase, {
-        context: options.context,
-        leaseEnv: options.leaseEnv ?? { dir: options.leaseDir },
         signal: options.signal!,
         tests: options.tests ?? [],
         projectDir: options.projectDir,

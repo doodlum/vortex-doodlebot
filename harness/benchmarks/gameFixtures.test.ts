@@ -4,8 +4,9 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { createGameSnapshot, verifyGameSnapshot, gameSnapshotManifest } from "./gameFixtures";
 import { resetGameSettings } from "./gameSettings";
-import { gameSettingsResource } from "./gameSettings";
-import { holdLease, addInstancePid, removeInstancePid } from "../src/lease";
+
+const running = vi.hoisted(() => ({ record: undefined as { pid: number } | undefined }));
+vi.mock("../src/runningVortex", () => ({ runningVortex: () => running.record }));
 
 const roots: string[] = [];
 function fixture() {
@@ -17,6 +18,7 @@ function fixture() {
   return { root, source, destination: path.join(root, "snapshot") };
 }
 afterEach(() => {
+  running.record = undefined;
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
@@ -94,10 +96,10 @@ function settingsFixture() {
   }
   const options = {
     gameId: "skyrimse",
-    owner: `reset-${path.basename(f.root)}`,
     dedicatedWindowsAccount: true as const,
     backupDir: path.join(f.root, "backups"),
     userDirectories: dirs,
+    isRunning: () => false,
   };
   return { ...f, options, ini, save, plugins, catalog };
 }
@@ -149,27 +151,27 @@ it("requires test account consent and a supported game", async () => {
   );
   expect(fs.existsSync(f.ini)).toBe(true);
 });
-it("refuses to reset settings used by a running owned Vortex", async () => {
+it("refuses to reset settings while Vortex is running", async () => {
   const f = settingsFixture();
-  const hold = holdLease(gameSettingsResource("skyrimse"), f.options.owner);
-  addInstancePid(hold.lease, process.pid);
-  try {
-    await expect(resetGameSettings(f.options)).rejects.toThrow("while Vortex is running");
-    expect(fs.readFileSync(f.ini, "utf8")).toBe("modded ini");
-  } finally {
-    removeInstancePid(hold.lease, process.pid);
-    hold.release();
-  }
+  const isRunning = vi.fn(() => true);
+  await expect(resetGameSettings({ ...f.options, isRunning })).rejects.toThrow(
+    "Cannot reset game settings while Vortex is running",
+  );
+  expect(isRunning).toHaveBeenCalled();
+  expect(fs.readFileSync(f.ini, "utf8")).toBe("modded ini");
+  expect(fs.readFileSync(f.plugins, "utf8")).toBe("*old-mod.esp");
+  expect(fs.existsSync(f.options.backupDir)).toBe(false);
 });
-it("excludes concurrent resets even when callers copy the same owner", async () => {
+it("refuses by default while the harness Vortex record names a running instance", async () => {
   const f = settingsFixture();
-  const first = resetGameSettings(f.options);
-  const second = resetGameSettings(f.options);
-  try {
-    await expect(second).rejects.toThrow(/independent operation/);
-  } finally {
-    await first;
-  }
+  const options = { ...f.options, isRunning: undefined };
+  running.record = { pid: process.pid };
+  await expect(resetGameSettings(options)).rejects.toThrow(
+    "Cannot reset game settings while Vortex is running",
+  );
+  expect(fs.readFileSync(f.ini, "utf8")).toBe("modded ini");
+  running.record = undefined;
+  await expect(resetGameSettings(options)).resolves.toMatchObject({ gameId: "skyrimse" });
 });
 it("rejects a linked ancestor of a snapshot without touching the real source", async () => {
   const f = fixture();

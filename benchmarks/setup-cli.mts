@@ -8,9 +8,7 @@ import { DEFAULT_CACHE_DIR } from "../harness/src/paths";
 import { authCacheFile, stopStaleInstance } from "../harness/src/instance";
 import { bootstrap, captureLogin } from "../harness/src/bootstrap";
 import { requireOAuth, waitForOAuth } from "../harness/src/auth";
-import { withLiveOperation } from "../harness/src/liveOperation";
 import { beginOAuthCache } from "../harness/benchmarks/credentials";
-import { holdLease } from "../harness/src/lease";
 import { exploratoryManifest } from "./config";
 import { pinnedCollections } from "./collections";
 import {
@@ -19,6 +17,7 @@ import {
   writeBenchmarkSetup,
   discoverBenchmarkGames,
   cachedAccountStatus,
+  assertBenchmarkSetupCanLaunch,
   findBenchmarkAccountCache,
   prepareCollection,
   verifyPreparedSnapshot,
@@ -32,7 +31,6 @@ const target = resolveTargetSafely({ preferInstalled: true });
 const accountCache = findBenchmarkAccountCache(
   authCacheFile(loadConfig({ target, cacheDir: DEFAULT_CACHE_DIR })),
 );
-const owner = `human-setup-${process.pid}`;
 function showStatus() {
   const setup = readBenchmarkSetup();
   console.log("\nDoodlebot setup\n");
@@ -75,55 +73,51 @@ async function freePort() {
   return port;
 }
 async function signIn() {
+  assertBenchmarkSetupCanLaunch();
   const config = loadConfig({
     target,
-    owner,
     apiKey: undefined,
     cacheDir: path.join(DEFAULT_CACHE_DIR, "setup-login"),
     mcpPort: await freePort(),
     cdpPort: await freePort(),
   });
-  return withLiveOperation(config, "guided Nexus login", async (context) => {
-    fs.mkdirSync(DEFAULT_CACHE_DIR, { recursive: true });
-    if (!fs.existsSync(accountCache))
-      fs.writeFileSync(accountCache, "null", { flag: "wx", mode: 0o600 });
-    fs.mkdirSync(config.cacheDir, { recursive: true });
-    const credentialLease = beginOAuthCache(accountCache, authCacheFile(config));
-    try {
-      const result = await bootstrap(config, {
-        context,
-        skipGame: true,
-        fresh: true,
-        onProgress: console.log,
-      });
-      const auth = await result.instance.mcp.call<{
-        oauthPresent: boolean;
-        oauthRefreshable: boolean;
-      }>("nexus_auth_status");
-      if (!auth.oauthPresent || !auth.oauthRefreshable) {
-        console.log(
-          "In the new Vortex window, click Log in and finish the browser login. Waiting up to ten minutes.",
-        );
-        await waitForOAuth(result.instance.mcp);
-      }
-      await captureLogin(config, { context, onProgress: console.log });
-      const restored = await bootstrap(config, {
-        context,
-        skipGame: true,
-        fresh: true,
-        onProgress: console.log,
-      });
-      await requireOAuth(restored.instance.mcp);
-      const premium = await restored.instance.mcp.call<boolean>("vortex_query", {
-        path: ["persistent", "nexus", "userInfo", "isPremium"],
-      });
-      return { checkedAt: new Date().toISOString(), premium: premium === true };
-    } finally {
-      // If shutdown fails, preserve the profile and cache reservation; do not rotate a live token.
-      await stopStaleInstance(config, { context });
-      credentialLease.finish();
+  fs.mkdirSync(DEFAULT_CACHE_DIR, { recursive: true });
+  if (!fs.existsSync(accountCache))
+    fs.writeFileSync(accountCache, "null", { flag: "wx", mode: 0o600 });
+  fs.mkdirSync(config.cacheDir, { recursive: true });
+  const credentials = beginOAuthCache(accountCache, authCacheFile(config));
+  try {
+    const result = await bootstrap(config, {
+      skipGame: true,
+      fresh: true,
+      onProgress: console.log,
+    });
+    const auth = await result.instance.mcp.call<{
+      oauthPresent: boolean;
+      oauthRefreshable: boolean;
+    }>("nexus_auth_status");
+    if (!auth.oauthPresent || !auth.oauthRefreshable) {
+      console.log(
+        "In the new Vortex window, click Log in and finish the browser login. Waiting up to ten minutes.",
+      );
+      await waitForOAuth(result.instance.mcp);
     }
-  });
+    await captureLogin(config, { onProgress: console.log });
+    const restored = await bootstrap(config, {
+      skipGame: true,
+      fresh: true,
+      onProgress: console.log,
+    });
+    await requireOAuth(restored.instance.mcp);
+    const premium = await restored.instance.mcp.call<boolean>("vortex_query", {
+      path: ["persistent", "nexus", "userInfo", "isPremium"],
+    });
+    return { checkedAt: new Date().toISOString(), premium: premium === true };
+  } finally {
+    // If shutdown fails, preserve the profile and cached login; do not rotate a live token.
+    await stopStaleInstance(config);
+    credentials.finish();
+  }
 }
 if (args.includes("--help")) {
   console.log(
@@ -131,22 +125,13 @@ if (args.includes("--help")) {
   );
 } else if (args.includes("--status")) {
   if (args.includes("--verify")) {
-    const lock = holdLease(
-      `benchmark-setup:${path.resolve(benchmarkSetupFile).toLowerCase()}`,
-      owner,
-      { purpose: "verify saved game snapshots" },
-    );
-    try {
-      const setup = readBenchmarkSetup();
-      for (const snapshot of setup.snapshots) {
-        await verifyPreparedSnapshot(snapshot);
-        snapshot.verifiedAt = new Date().toISOString();
-        console.log(`Verified: ${snapshot.id}`);
-      }
-      writeBenchmarkSetup(setup);
-    } finally {
-      lock.release();
+    const setup = readBenchmarkSetup();
+    for (const snapshot of setup.snapshots) {
+      await verifyPreparedSnapshot(snapshot);
+      snapshot.verifiedAt = new Date().toISOString();
+      console.log(`Verified: ${snapshot.id}`);
     }
+    writeBenchmarkSetup(setup);
   }
   showStatus();
 } else {
@@ -266,21 +251,11 @@ if (args.includes("--help")) {
         dedicatedWindowsAccount: true,
         cleanSource: true,
         authCache: accountCache,
-        owner,
         warningsAsErrors: strict,
       });
-      const lock = holdLease(
-        `benchmark-setup:${path.resolve(benchmarkSetupFile).toLowerCase()}`,
-        owner,
-        { purpose: "record account observation" },
-      );
-      try {
-        const updated = readBenchmarkSetup();
-        updated.account = account;
-        writeBenchmarkSetup(updated);
-      } finally {
-        lock.release();
-      }
+      const updated = readBenchmarkSetup();
+      updated.account = account;
+      writeBenchmarkSetup(updated);
       console.log(
         `\nPrepared ${code}. Collection downloads have not started.\nRun one exploratory cold install: pnpm run benchmark -- --exploratory --repeats=1 --timeout-minutes=360 --select=B1-${code}\nCheck saved choices: pnpm run setup -- --status`,
       );

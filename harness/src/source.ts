@@ -18,9 +18,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { REPO_ROOT } from "./paths";
-import { withCheckoutOperation } from "./checkoutOperation";
-import { type OperationContext } from "./operations";
 import { abortOnSignals, runEvidenceProcess } from "./processRunner";
+import { assertNoVortexRunningFrom } from "./runningVortex";
 
 const execFileAsync = promisify(execFile);
 
@@ -107,9 +106,10 @@ export function childEnv(): NodeJS.ProcessEnv {
 }
 
 /**
- * The environment for a command someone runs through the kit (`lease run`), by where it runs.
- * Inside this repo, outside its Vortex checkouts, it's the kit's own command: unchanged. Anywhere
- * else, such as `pnpm run verify` in a worktree, it's a Vortex command, and gets what `childEnv`
+ * The environment for a command someone runs through the kit (`evidence run`, `script`), by where
+ * it runs. Inside this repo, outside its Vortex checkout, it's the kit's own command: unchanged.
+ * Anywhere else, such as `pnpm run verify` in a Vortex checkout, it's a Vortex command, and gets
+ * what `childEnv`
  * gives a nested run: no npm_/PNPM_ variables from the kit's pnpm 9, and a PATH whose first pnpm
  * is the checkout's. `CI` is left as the caller had it.
  */
@@ -123,9 +123,7 @@ export function commandEnv(
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
   };
   const dir = path.resolve(cwd);
-  const vortex =
-    inside(dir, path.join(repoRoot, ".vortex-src")) ||
-    inside(dir, path.join(repoRoot, ".vortex-worktrees"));
+  const vortex = inside(dir, path.join(repoRoot, ".vortex-src"));
   if (inside(dir, repoRoot) && !vortex) return { ...base };
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(base)) {
@@ -180,7 +178,7 @@ export function needsShell(cmd: string): boolean {
 export async function runStreaming(
   cmd: string,
   args: string[],
-  options: { cwd?: string; label: string; context?: OperationContext },
+  options: { cwd?: string; label: string },
 ): Promise<void> {
   const cancellation = abortOnSignals();
   try {
@@ -195,7 +193,6 @@ export async function runStreaming(
       shell,
       stdin: "inherit",
       env: childEnv(),
-      context: options.context,
       signal: cancellation.signal,
       onOutput: (chunk) => process.stdout.write(chunk),
     });
@@ -368,11 +365,9 @@ export async function resolveVortexRepo(): Promise<ForkInfo> {
 }
 
 export interface EnsureSourceOptions {
-  owner?: string;
-  context?: OperationContext;
   /** Re-fetch and fast-forward an existing clone. */
   update?: boolean;
-  /** buildVortexSource: the checkout to build, when not .vortex-src (a worktree). */
+  /** buildVortexSource: the checkout to build, when not .vortex-src. */
   dir?: string;
   /** buildVortexSource: install dependencies only. */
   installOnly?: boolean;
@@ -395,16 +390,6 @@ export interface VortexSource {
  * is where they are rebased from.
  */
 export async function ensureVortexSource(options: EnsureSourceOptions = {}): Promise<VortexSource> {
-  return withCheckoutOperation(
-    vortexSourceDir(),
-    options.owner,
-    "prepare source",
-    { context: options.context, rewriting: true },
-    (context) => ensureSourceInside({ ...options, context }),
-  );
-}
-
-async function ensureSourceInside(options: EnsureSourceOptions): Promise<VortexSource> {
   const report = options.onProgress ?? ((): void => undefined);
   const dir = vortexSourceDir();
 
@@ -416,7 +401,6 @@ async function ensureSourceInside(options: EnsureSourceOptions): Promise<VortexS
       report("fetching origin and upstream");
       await runStreaming("git", ["-C", dir, "fetch", "--all", "--prune"], {
         label: "Fetching Vortex source",
-        context: options.context,
       });
     }
     return { dir, repo: remote, defaultBranch: branch, cloned: false };
@@ -430,12 +414,10 @@ async function ensureSourceInside(options: EnsureSourceOptions): Promise<VortexS
   // timeout here would abort a working clone and leave a half-written dir.
   await runStreaming("git", ["clone", "--progress", fork.cloneUrl, dir], {
     label: `Cloning ${fork.fullName}`,
-    context: options.context,
   });
 
   await runStreaming("git", ["-C", dir, "remote", "add", "upstream", UPSTREAM_URL], {
     label: "Configuring Vortex upstream",
-    context: options.context,
   });
   report(`cloned; origin=${fork.fullName}, upstream=${UPSTREAM}`);
 
@@ -449,18 +431,11 @@ async function ensureSourceInside(options: EnsureSourceOptions): Promise<VortexS
  * most likely to need re-running on its own after a pull.
  */
 export async function buildVortexSource(options: EnsureSourceOptions = {}): Promise<void> {
-  return withCheckoutOperation(
-    options.dir ?? vortexSourceDir(),
-    options.owner,
-    "install/build source",
-    { context: options.context, rewriting: true },
-    (context) => buildSourceInside({ ...options, context }),
-  );
-}
-
-async function buildSourceInside(options: EnsureSourceOptions): Promise<void> {
   const report = options.onProgress ?? ((): void => undefined);
   const dir = options.dir ?? vortexSourceDir();
+  // A running Vortex holds the checkout's native modules open; reinstalling or rebuilding them
+  // underneath it fails or corrupts the build.
+  assertNoVortexRunningFrom(dir, options.installOnly === true ? "installing it" : "building it");
   if (!hasVortexSource(dir)) {
     throw new ForkError(`No Vortex clone at ${dir}. Run \`doodlebot source\` first.`);
   }
@@ -477,19 +452,18 @@ async function buildSourceInside(options: EnsureSourceOptions): Promise<void> {
   await runStreaming(pnpm.cmd, [...pnpm.args, "install"], {
     cwd: dir,
     label: "Installing Vortex's dependencies",
-    context: options.context,
   });
   if (options.installOnly === true) {
     report("dependencies installed");
     return;
   }
 
+  assertNoVortexRunningFrom(dir, "building it");
   report("building renderer and main");
   try {
     await runStreaming(pnpm.cmd, [...pnpm.args, "nx", "run", "@vortex/main:build"], {
       cwd: dir,
       label: "Building Vortex",
-      context: options.context,
     });
   } catch (err) {
     if (!(err instanceof CommandExitError)) throw err;
@@ -502,7 +476,6 @@ async function buildSourceInside(options: EnsureSourceOptions): Promise<void> {
     await runStreaming("node", ["./build.mjs"], {
       cwd: path.join(dir, "src", "main"),
       label: "Building main",
-      context: options.context,
     });
     if (!buildArtifactsPresent(dir)) throw err;
     report("main built — the earlier failure was in a bundled extension");
@@ -517,7 +490,6 @@ async function buildSourceInside(options: EnsureSourceOptions): Promise<void> {
     await runStreaming("node", ["./build.mjs"], {
       cwd: path.join(dir, "src", "main"),
       label: "Building main",
-      context: options.context,
     });
     const still = missingBuildOutputs(dir);
     if (still.length > 0)

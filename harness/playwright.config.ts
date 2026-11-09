@@ -17,8 +17,8 @@ export default defineConfig({
   // Only the account-free integration contract belongs in the default gate.
   testMatch: "**/*.spec.ts",
   testIgnore: "**/oauth-restore.spec.ts",
-  // Holds the machine-wide instance lease for the whole run.
-  globalSetup: "./src/tests/leaseGlobalSetup.ts",
+  // Refuses while a harness Vortex is running: only one instance runs at a time.
+  globalSetup: "./src/tests/singleInstanceGlobalSetup.ts",
   // One at a time: the tools under test resize the real window and the MCP
   // server binds a fixed port, neither of which survives parallel workers.
   workers: 1,
@@ -39,4 +39,14 @@ export default defineConfig({
     screenshot: "off",
     video: "off",
   },
+  // One Vortex at a time: the lifecycle spec launches its own Vortex, so it runs as its own
+  // project before the worker-scoped fixture Vortex of the other specs exists.
+  projects: [
+    { name: "lifecycle", testMatch: "**/bootstrap-lifecycle.spec.ts" },
+    {
+      name: "contract",
+      testIgnore: ["**/oauth-restore.spec.ts", "**/bootstrap-lifecycle.spec.ts"],
+      dependencies: ["lifecycle"],
+    },
+  ],
 });

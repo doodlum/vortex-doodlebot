@@ -34,19 +34,18 @@
     },
     {
       "name": "CLI and configuration",
-      "sources": ["^harness/src/(cli|cliArgs|config|doctor|paths|slots)\\.ts$"],
+      "sources": ["^harness/src/(cli|cliArgs|config|doctor|paths)\\.ts$"],
       "human": [
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
-        "docs/getting-started/first-session.md",
-        "docs/guides/parallel-sessions.md"
+        "docs/getting-started/first-session.md"
       ],
       "ai": ["harness/reference/cli.md", "harness/AGENTS.md"]
     },
     {
       "name": "Lifecycle and authentication",
       "sources": [
-        "^harness/src/(instance|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
+        "^harness/src/(instance|runningVortex|processes|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
       ],
       "human": [
         "docs/reference/sessions.md",
@@ -70,12 +69,11 @@
       "ai": ["harness/reference/script-api.md", "harness/AGENTS.md", "harness/TESTING.md"]
     },
     {
-      "name": "Coordination, builds and evidence",
+      "name": "Builds and evidence",
       "sources": [
-        "^harness/src/(lease|leaseCommand|operations|checkoutOperation|liveOperation|processRunner|kitLock|source|worktree|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|readiness|prChecks|prPreflight|vortexE2e)\\.ts$"
+        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|readiness|prChecks|prPreflight|vortexE2e)\\.ts$"
       ],
       "human": [
-        "docs/guides/parallel-sessions.md",
         "docs/guides/source-development.md",
         "docs/guides/evidence.md",
         "docs/contributing.md"
@@ -113,7 +111,7 @@
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
         "docs/reference/sessions.md",
-        "docs/guides/parallel-sessions.md",
+        "docs/guides/source-development.md",
         "docs/testing/running.md"
       ],
       "ai": [
@@ -122,6 +120,17 @@
         "harness/AGENTS.md",
         "harness/TESTING.md"
       ]
+    },
+    {
+      "name": "Design-first workflow",
+      "sources": [
+        "^harness/src/design(Command)?\\.ts$",
+        "^harness/egm/",
+        "^\\.claude/(settings\\.json|agents/|skills/vortex-elephant/)",
+        "^designs/SITEMAP\\.md$"
+      ],
+      "human": ["docs/guides/design-review.md", "docs/guides/agent-plugins.md"],
+      "ai": ["harness/AGENT-WORKFLOW.md", "harness/AGENTS.md"]
     },
     {
       "name": "Documentation maintenance",

@@ -1,7 +1,17 @@
 /** Evidence-complete handoff, never authorization to publish, merge, or release. */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import {
+  checkDesign,
+  contractNames,
+  outsideBoundary,
+  parseDesign,
+  relativeInside,
+  type DesignDocument,
+} from "./design";
+import { ConfigError } from "./errors";
 import { readJsonFile } from "./jsonFile";
 import { compareRuns, validateE2eReport } from "./vortexE2e";
 import { completeNativeTestRun, nativeTestReporterSchema } from "./prPreflight";
@@ -34,12 +44,14 @@ const role = z.enum([
   "vortex-verify",
   "performance",
   "vortex-e2e",
+  "design-review",
 ]);
 export type EvidenceRole = z.infer<typeof role>;
-const contracts = z.enum(["runtime", "ui", "persistent-data", "public-api", "performance"]);
+const contracts = z.enum(contractNames);
+export const READINESS_SCHEMA_VERSION = 3;
 export const readinessManifestSchema = z.strictObject({
   tool: z.literal("doodlebot-readiness"),
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(READINESS_SCHEMA_VERSION),
   mode: z.enum(["exploration", "final"]),
   task: z.strictObject({
     id: text,
@@ -52,6 +64,8 @@ export const readinessManifestSchema = z.strictObject({
   kit: checkoutIdentitySchema,
   source: checkoutIdentitySchema.optional(),
   runtime: runtimeIdentitySchema.optional(),
+  /** The approved design document this change implements. */
+  design: artifactSchema.optional(),
   risk: z.strictObject({ contracts: z.array(contracts), reason: text, inspectedBy: text }),
   authorization: z.strictObject({
     vortexE2eRequested: z.boolean(),
@@ -71,6 +85,8 @@ export const readinessManifestSchema = z.strictObject({
       artifacts: z.array(artifactSchema),
       command: artifactSchema.optional(),
       preflight: artifactSchema.optional(),
+      /** design-review only: the content digest the Goldfish reviewers were given. */
+      reviewedDesignSha256: digestSchema.optional(),
       dispositions: z
         .array(z.strictObject({ key: text, reason: text, evidence: artifactSchema }))
         .optional(),
@@ -161,7 +177,7 @@ export function inferredContracts(manifest: ReadinessManifest): string[] {
     if (manifest.task.target === "doodlebot") {
       if (
         file.startsWith("src/") ||
-        /^harness\/src\/(?:instance|bootstrap|config|slots|lease|operations|liveOperation|checkoutOperation|source|worktree|electronRuntime|hotReload|extensionBuild|auth|login|uiDriver|cdp|sandbox|mainPreload|e2e)[^/]*\./.test(
+        /^harness\/src\/(?:instance|bootstrap|config|runningVortex|processes|processRunner|source|electronRuntime|hotReload|extensionBuild|auth|login|uiDriver|cdp|sandbox|mainPreload|e2e)[^/]*\./.test(
           file,
         )
       )
@@ -207,12 +223,22 @@ export function requiredEvidence(manifest: ReadinessManifest): Map<EvidenceRole,
     required.set("performance", "performance claim or affected performance contract");
   if (manifest.authorization.vortexE2eRequested)
     required.set("vortex-e2e", "explicitly requested upstream E2E");
+  if (designRequired(manifest) || manifest.design !== undefined)
+    required.set("design-review", "Goldfish review of the approved design before implementation");
   return required;
 }
 
+function designRequired(manifest: ReadinessManifest): boolean {
+  return manifest.task.kind === "feature" || manifest.task.kind === "refactor";
+}
+
+const REVIEW_REPORT = /^round-(\d+)-(.+)\.md$/;
+const CONFIRMATION_REVIEWERS = ["implementation_readiness", "vortex-runtime-goldfish"];
+const collapse = (text: string): string => text.replace(/\s+/g, " ").trim();
+
 export interface ReadinessReport {
   tool: "doodlebot-readiness";
-  schemaVersion: 2;
+  schemaVersion: 3;
   taskId: string;
   subject: CheckoutIdentity;
   mode: "exploration" | "final";
@@ -223,6 +249,11 @@ export interface ReadinessReport {
 }
 
 export function evaluateReadiness(value: unknown, directory: string): ReadinessReport {
+  const version = (value as { schemaVersion?: unknown } | null)?.schemaVersion;
+  if (version !== READINESS_SCHEMA_VERSION)
+    throw new ConfigError(
+      `readiness manifest schemaVersion ${JSON.stringify(version)} is not supported; this doodlebot reads schema ${READINESS_SCHEMA_VERSION}`,
+    );
   const manifest = readinessManifestSchema.parse(value);
   const issues: string[] = [];
   const required = requiredEvidence(manifest);
@@ -296,6 +327,78 @@ export function evaluateReadiness(value: unknown, directory: string): ReadinessR
         throw new Error("runtime source identity differs from the Vortex subject");
     }
   };
+  const checkDesignReview = (evidence: ReadinessManifest["evidence"][number]): void => {
+    const problems: string[] = [];
+    if (evidence.inspectedBy === manifest.task.author)
+      problems.push("reviewer must differ from the author");
+    if (evidence.criteria.length > 0)
+      problems.push("criteria must be empty; a design review proves no acceptance criterion");
+    if (evidence.reviewedDesignSha256 === undefined)
+      problems.push("reviewedDesignSha256 is required");
+    else if (design !== undefined && evidence.reviewedDesignSha256 !== design.contentSha256)
+      problems.push("reviewed digest differs from the approved design");
+    const reports = evidence.artifacts.flatMap((ref) => {
+      const file = checkArtifact(ref, directory);
+      const match = REVIEW_REPORT.exec(path.basename(file));
+      return match === null ? [] : [{ file, round: match[1]!, reviewer: match[2]! }];
+    });
+    evidence.artifacts.forEach(inspect);
+    const rounds = new Set(reports.map((r) => r.round));
+    const complete = [...rounds].some((round) =>
+      CONFIRMATION_REVIEWERS.every((reviewer) =>
+        reports.some((r) => r.round === round && r.reviewer === reviewer),
+      ),
+    );
+    if (!complete)
+      problems.push(
+        "needs round-<n>-implementation_readiness.md and round-<n>-vortex-runtime-goldfish.md from one round",
+      );
+    const checkoutLine = `Checkout: ${evidence.subject.headSha} ${evidence.subject.changesSha256}`;
+    for (const report of reports) {
+      const lines = fs
+        .readFileSync(report.file, "utf8")
+        .split(/\r?\n/)
+        .map((l) => l.trim());
+      if (!lines.includes(`Reviewed content sha256: ${evidence.reviewedDesignSha256 ?? ""}`))
+        problems.push(`report ${report.file} does not record the reviewed digest`);
+      // The report's own Checkout line: exactly one, naming the reviewed checkout.
+      const checkouts = lines.filter((line) => line.startsWith("Checkout:"));
+      if (checkouts.length !== 1 || checkouts[0] !== checkoutLine)
+        problems.push(`report ${report.file} names another checkout`);
+    }
+    // Same base as the subject, so committed implementation files appear as changes too.
+    if (evidence.subject.baseSha !== manifest.subject.baseSha)
+      problems.push("reviewed checkout used another base");
+    const allowed = new Set([
+      "designs/SITEMAP.md",
+      ...(designFile === undefined ? [] : [designFile]),
+    ]);
+    const implementation = evidence.subject.changedFiles.filter((file) => !allowed.has(file));
+    if (implementation.length > 0)
+      problems.push(`reviewed checkout had implementation changes: ${implementation.join(", ")}`);
+    try {
+      execFileSync(
+        "git",
+        [
+          "-C",
+          manifest.subject.checkout,
+          "merge-base",
+          "--is-ancestor",
+          evidence.subject.headSha,
+          manifest.subject.headSha,
+        ],
+        { stdio: "ignore", windowsHide: true },
+      );
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      problems.push(
+        status === 1
+          ? "reviewed head is not an ancestor of the subject head"
+          : `cannot check ancestry: ${(error as Error).message}`,
+      );
+    }
+    if (problems.length > 0) throw new Error(problems.join("; design-review: "));
+  };
   const loadPreflight = (ref: Artifact) => {
     const report = preflightSchema.parse(read(ref));
     producerKit(report);
@@ -337,12 +440,70 @@ export function evaluateReadiness(value: unknown, directory: string): ReadinessR
     issues.push("blocked: required live-app checks are not authorized");
   const criteria = new Set(manifest.acceptance.map((c) => c.id));
   if (criteria.size !== manifest.acceptance.length) issues.push("duplicate acceptance criterion");
+
+  // The approved design: its structure and approval, target, acceptance text, contracts and
+  // file boundary must all match what this manifest claims was done.
+  let design: DesignDocument | undefined;
+  let designFile: string | undefined;
+  if (manifest.design === undefined) {
+    if (designRequired(manifest))
+      issues.push("design: an approved design is required for feature and refactor tasks");
+  } else
+    add("design", () => {
+      const file = fs.realpathSync.native(checkArtifact(manifest.design!, directory));
+      const doc = parseDesign(fs.readFileSync(file, "utf8"));
+      design = doc;
+      designFile = relativeInside(manifest.subject.checkout, file);
+      for (const issue of checkDesign(doc)) issues.push(`design: ${issue}`);
+      if (doc.status !== "Approved") issues.push("design: not approved");
+      if (doc.target !== manifest.task.target)
+        issues.push(
+          `design: target ${doc.target} differs from task target ${manifest.task.target}`,
+        );
+      for (const item of doc.acceptance) {
+        const claimed = manifest.acceptance.find((c) => c.id === item.id);
+        if (claimed === undefined)
+          issues.push(`design: acceptance ${item.id} missing from manifest`);
+        else if (collapse(claimed.criterion) !== collapse(item.criterion))
+          issues.push(`design: acceptance ${item.id} text differs from the approved design`);
+      }
+      for (const claimed of manifest.acceptance)
+        if (!doc.acceptance.some((item) => item.id === claimed.id))
+          issues.push(`design: acceptance ${claimed.id} not in the approved design`);
+      for (const contract of doc.contracts)
+        if (!(manifest.risk.contracts as string[]).includes(contract))
+          issues.push(`design: contract ${contract} missing from risk.contracts`);
+      const boundary = doc.boundary.map((b) => b.entry);
+      for (const file of outsideBoundary(manifest.subject.changedFiles, boundary, designFile))
+        issues.push(`design: ${file} outside the approved boundary`);
+    });
+
   const covered = new Set<string>();
   const seen = new Set<EvidenceRole>();
   for (const evidence of manifest.evidence) {
     const prefix = evidence.role;
     if (seen.has(prefix)) issues.push(`${prefix}: duplicate evidence`);
     seen.add(prefix);
+    if (prefix !== "design-review" && evidence.reviewedDesignSha256 !== undefined)
+      issues.push(`${prefix}: reviewedDesignSha256 belongs only to design-review`);
+    if (prefix === "design-review") {
+      // A design review predates the implementation, so it is bound to the reviewed design
+      // and a pre-implementation checkout instead of the current diff.
+      if (manifest.design === undefined) {
+        issues.push("design-review: no design in the manifest");
+        continue;
+      }
+      if (["fail", "inconclusive", "blocked"].includes(evidence.status)) {
+        issues.push(`${prefix}: ${evidence.status}: ${evidence.reason}`);
+        continue;
+      }
+      if (evidence.status === "not-applicable") {
+        issues.push(`${prefix}: required by an approved design; N/A cannot waive it`);
+        continue;
+      }
+      add(prefix, () => checkDesignReview(evidence));
+      continue;
+    }
     if (!sameIdentity(evidence.subject, manifest.subject)) {
       issues.push(`${prefix}: stale evidence identity`);
       continue;
@@ -610,7 +771,7 @@ export function evaluateReadiness(value: unknown, directory: string): ReadinessR
     if (!covered.has(id)) issues.push(`acceptance ${id}: no passing evidence`);
   return {
     tool: "doodlebot-readiness",
-    schemaVersion: 2,
+    schemaVersion: 3,
     taskId: manifest.task.id,
     subject: manifest.subject,
     mode: manifest.mode,

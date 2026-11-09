@@ -11,7 +11,7 @@ Look up an option or method while writing a test. If you are starting from scrat
 | [Options and results](results.md)     | Run conditions, timeouts and measurements                      |
 | [CLI commands](cli.md)                | Lower-level app operations and flags                           |
 | [App tools](mcp-tools.md)             | Direct tool names and input schemas                            |
-| [Configuration](configuration.md)     | Environment overrides and alternate Vortex installations       |
+| [Configuration](configuration.md)     | Defaults, overrides and alternate Vortex installations         |
 | [Package scripts](package-scripts.md) | Repository checks and development commands                     |
 
 Ordinary tests import `./harness/benchmarks/index`. The supplied proposal catalog lives in `./benchmarks/`; its saved collection choices come from `./benchmarks/setup`.

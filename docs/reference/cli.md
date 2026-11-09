@@ -14,6 +14,7 @@ Use [Get started](../getting-started/first-session.md) for your first test and [
 - `click`
 - `collection`
 - `deploy`
+- `design`
 - `doctor`
 - `down`
 - `e2e`
@@ -22,8 +23,6 @@ Use [Get started](../getting-started/first-session.md) for your first test and [
 - `fill`
 - `help`
 - `install`
-- `kit`
-- `lease`
 - `login-import`
 - `pr-checks`
 - `pr-preflight`
@@ -36,7 +35,6 @@ Use [Get started](../getting-started/first-session.md) for your first test and [
 - `screenshot`
 - `script`
 - `setup`
-- `slots`
 - `slow-download`
 - `snapshot`
 - `source`
@@ -45,4 +43,3 @@ Use [Get started](../getting-started/first-session.md) for your first test and [
 - `up`
 - `vortex-e2e`
 - `watch`
-- `worktree`

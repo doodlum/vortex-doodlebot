@@ -3,8 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { DEFAULT_CACHE_DIR, DEFAULT_ARTIFACT_DIR } from "../harness/src/paths";
-import { holdLease } from "../harness/src/lease";
-import { claimOperations } from "../harness/src/operations";
+import { assertNoHarnessVortex } from "../harness/src/runningVortex";
 import {
   createGameSnapshot,
   verifyGameSnapshot,
@@ -49,6 +48,11 @@ export type BenchmarkSetup = z.infer<typeof setupSchema>;
 export const benchmarkSetupFile = path.join(DEFAULT_CACHE_DIR, "benchmark-setup.json");
 
 /** Read local preparation choices. No account check, app launch or file copying. */
+/** Setup's sign-in launches Vortex, and only one doodlebot Vortex runs at a time. */
+export function assertBenchmarkSetupCanLaunch(): void {
+  assertNoHarnessVortex("benchmark setup");
+}
+
 export function readBenchmarkSetup(file = benchmarkSetupFile): BenchmarkSetup {
   if (!fs.existsSync(file)) return { version: 1, snapshots: [], collections: [] };
   assertRegularPath(file);
@@ -132,7 +136,6 @@ export interface PrepareCollectionOptions {
   /** The operator confirms the source is clean and the game/launcher are closed. */
   cleanSource: true;
   authCache: string;
-  owner: string;
   /** Copy this source into a new snapshot, even when an older snapshot is saved. */
   source?: string;
   /** Register an existing verified copy rather than copying the installed game. */
@@ -152,79 +155,66 @@ export async function prepareCollection(
   if (options.source && options.snapshot)
     throw new Error("Choose a new source or an existing snapshot, not both");
   const file = options.setupFile ?? benchmarkSetupFile;
-  const lock = holdLease(`benchmark-setup:${path.resolve(file).toLowerCase()}`, options.owner, {
-    purpose: "prepare collection prerequisites",
-  });
-  let operation: ReturnType<typeof claimOperations> | undefined;
-  try {
-    operation = claimOperations(
-      [`benchmark-setup:${path.resolve(file).toLowerCase()}`],
-      options.owner,
-    );
-    const setup = readBenchmarkSetup(file);
-    const code = codeSchema.parse(options.code);
-    const gameId = pinnedCollections[code].gameId;
-    const edition = editionFor(code);
-    const selectedSnapshot = setup.collections.find((item) => item.code === code)?.snapshotId;
-    let snapshot = options.snapshot
-      ? setup.snapshots.find(
-          (item) => path.resolve(item.directory) === path.resolve(options.snapshot!),
-        )
-      : options.source
-        ? undefined
-        : (setup.snapshots.find((item) => item.id === selectedSnapshot) ??
-          setup.snapshots.findLast((item) => item.gameId === gameId && item.edition === edition));
-    if (snapshot && (snapshot.gameId !== gameId || snapshot.edition !== edition))
-      throw new Error("Snapshot game/content does not match the selected collection");
-    if (snapshot) {
-      await verifyPreparedSnapshot(snapshot);
-      snapshot.verifiedAt = new Date().toISOString();
-    } else {
-      const now = new Date().toISOString();
-      const id = `${gameId}-${edition ?? "game"}-${randomUUID()}`;
-      const directory = options.snapshot
-        ? path.resolve(options.snapshot)
-        : path.join(options.snapshotRoot ?? path.join(DEFAULT_ARTIFACT_DIR, "game-fixtures"), id);
-      let manifest;
-      if (options.snapshot) manifest = await verifyGameSnapshot(directory);
-      else {
-        const source = options.source ?? findGamePath(KNOWN_GAMES[gameId]!);
-        if (!source)
-          throw new Error(
-            `${KNOWN_GAMES[gameId]!.name} was not found. Install it in Steam or provide its directory.`,
-          );
-        if (!fs.statSync(path.join(source, KNOWN_GAMES[gameId]!.executable)).isFile())
-          throw new Error("Selected source has no matching game executable");
-        manifest = edition
-          ? await createSkyrimSnapshot({ source, destination: directory, edition })
-          : await createGameSnapshot({ source, destination: directory });
-      }
-      snapshot = {
-        id,
-        directory,
-        gameId,
-        edition,
-        createdAt: manifest.createdAt,
-        verifiedAt: now,
-        bytes: manifest.files.reduce((sum, item) => sum + item.size, 0),
-      };
-      await verifyPreparedSnapshot(snapshot);
-      setup.snapshots.push(snapshot);
+  const setup = readBenchmarkSetup(file);
+  const code = codeSchema.parse(options.code);
+  const gameId = pinnedCollections[code].gameId;
+  const edition = editionFor(code);
+  const selectedSnapshot = setup.collections.find((item) => item.code === code)?.snapshotId;
+  let snapshot = options.snapshot
+    ? setup.snapshots.find(
+        (item) => path.resolve(item.directory) === path.resolve(options.snapshot!),
+      )
+    : options.source
+      ? undefined
+      : (setup.snapshots.find((item) => item.id === selectedSnapshot) ??
+        setup.snapshots.findLast((item) => item.gameId === gameId && item.edition === edition));
+  if (snapshot && (snapshot.gameId !== gameId || snapshot.edition !== edition))
+    throw new Error("Snapshot game/content does not match the selected collection");
+  if (snapshot) {
+    await verifyPreparedSnapshot(snapshot);
+    snapshot.verifiedAt = new Date().toISOString();
+  } else {
+    const now = new Date().toISOString();
+    const id = `${gameId}-${edition ?? "game"}-${randomUUID()}`;
+    const directory = options.snapshot
+      ? path.resolve(options.snapshot)
+      : path.join(options.snapshotRoot ?? path.join(DEFAULT_ARTIFACT_DIR, "game-fixtures"), id);
+    let manifest;
+    if (options.snapshot) manifest = await verifyGameSnapshot(directory);
+    else {
+      const source = options.source ?? findGamePath(KNOWN_GAMES[gameId]!);
+      if (!source)
+        throw new Error(
+          `${KNOWN_GAMES[gameId]!.name} was not found. Install it in Steam or provide its directory.`,
+        );
+      if (!fs.statSync(path.join(source, KNOWN_GAMES[gameId]!.executable)).isFile())
+        throw new Error("Selected source has no matching game executable");
+      manifest = edition
+        ? await createSkyrimSnapshot({ source, destination: directory, edition })
+        : await createGameSnapshot({ source, destination: directory });
     }
-    setup.collections = setup.collections.filter((item) => item.code !== code);
-    setup.collections.push({
-      code,
-      snapshotId: snapshot.id,
-      authCache: path.resolve(options.authCache),
-      dedicatedWindowsAccount: true,
-      warningsAsErrors: options.warningsAsErrors ?? false,
-    });
-    writeBenchmarkSetup(setup, file);
-    return preparedCollection(code, file);
-  } finally {
-    operation?.release();
-    lock.release();
+    snapshot = {
+      id,
+      directory,
+      gameId,
+      edition,
+      createdAt: manifest.createdAt,
+      verifiedAt: now,
+      bytes: manifest.files.reduce((sum, item) => sum + item.size, 0),
+    };
+    await verifyPreparedSnapshot(snapshot);
+    setup.snapshots.push(snapshot);
   }
+  setup.collections = setup.collections.filter((item) => item.code !== code);
+  setup.collections.push({
+    code,
+    snapshotId: snapshot.id,
+    authCache: path.resolve(options.authCache),
+    dedicatedWindowsAccount: true,
+    warningsAsErrors: options.warningsAsErrors ?? false,
+  });
+  writeBenchmarkSetup(setup, file);
+  return preparedCollection(code, file);
 }
 /** Use a setup choice from TypeScript without copying local paths into source. */
 export function preparedCollection(

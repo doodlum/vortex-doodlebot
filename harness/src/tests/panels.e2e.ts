@@ -3,7 +3,6 @@ import { expect } from "@playwright/test";
 
 import { attachToRenderer, captureScreenshot } from "../cdp";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { VortexMcpClient } from "../mcpClient";
 import { clickByName } from "../uiDriver";
 
@@ -20,7 +19,6 @@ const onePanel = (pageId: string): Workspace => ({
 });
 
 const config = loadConfig();
-claimInstanceLease(config, "split-view regression", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 expect(await mcp.call("vortex_query", { selector: "activeGameId" })).toBe("fallout4");

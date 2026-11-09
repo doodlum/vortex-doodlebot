@@ -58,8 +58,29 @@ Check repeat spread, cold/warm cache mode, network changes, and security scannin
 
 Failed tests preserve the disposable workspace so you can inspect logs and files. Successful runs close the app and remove that workspace. A cleanup failure means app shutdown could not be confirmed; retain the reported path and diagnose the running process before removing its files.
 
+## A harness Vortex is running
+
+Doodlebot runs one Vortex at a time. A command that would start a second one, or change the checkout a running one uses, stops with a message like one of these:
+
+```text
+A harness Vortex is running (pid 1234, cache C:\dev\doodlebot\harness\.cache); run `pnpm run ai -- down` before the core suite.
+A harness Vortex is running from C:\dev\doodlebot\.vortex-src (pid 1234); run `pnpm run ai -- down` before building it.
+```
+
+The message names the process ID, the cache or checkout it uses, and the step that was refused. Nothing was started or changed. Run `pnpm run ai -- down`. You do not need to repeat the options you started it with: `down` reads the record of the running Vortex, and when that Vortex uses another cache or port (for example one left by a benchmark or test run) it prints `Stopping the harness Vortex of cache <folder> (MCP port <port>).` and stops that one. `down` asks Vortex to quit and waits for it to exit cleanly; then repeat your command.
+
+Doodlebot keeps the record of the running Vortex in `harness/.cache/instance.json`. A record whose process has exited is cleared automatically. If the refusal continues although no Doodlebot Vortex window is open, and `down` reports that it waited and the process did not exit, the process ID may now belong to another Electron app. Check in Task Manager that the named process is not a Doodlebot Vortex, then delete `harness/.cache/instance.json`.
+
+## Leftover folders from older versions
+
+Older versions of Doodlebot could run several instances at once and kept extra folders for that. Current versions do not use them, and they can be removed safely once no Doodlebot Vortex is running:
+
+- `~/.vortex-ai/leases` (in your user profile folder)
+- `harness/.slots`
+- `.vortex-worktrees`: commit or copy any work you still need from it, delete the folder, then run `git -C .vortex-src worktree prune` so the Vortex clone forgets the deleted checkouts. Their branches stay in `.vortex-src`.
+
 ## Advanced existing-session problems
 
-For a manually managed session, use the same owner, slot, cache, and target options for setup and scripts. A token rejection or connection failure often means the script is connecting to a different session. Close and restart the intended test session with those same options.
+For a manually managed session, use the same cache, port and target options for setup and scripts. A token rejection or connection failure often means the script is connecting to a different session. Close and restart the intended test session with those same options.
 
 `pnpm run ai -- doctor --installed --sandbox` checks the lower-level local setup. [App sessions](reference/sessions.md#attach-to-an-existing-app) explains that workflow.

@@ -19,7 +19,6 @@ import path from "node:path";
 import { attachToRenderer } from "../cdp";
 import { bethesdaSandboxPaths, pluginBytes } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { deployMods } from "../deployment";
 import { fillFilterScript, seedLibrary } from "../largeLibrary";
 import { VortexMcpClient } from "../mcpClient";
@@ -33,8 +32,6 @@ const PLUGINS = "gamebryo-plugins";
 const MODS = "mods";
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:plugins-mod-link", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const status = await mcp.call<{ paths?: { documents: string | null } }>("automation_status");

@@ -7,7 +7,6 @@ import { BenchmarkSession } from "./session";
 import type { HarnessConfig } from "../src/config";
 import type { VortexInstance } from "../src/instance";
 import type { RendererHandle } from "../src/cdp";
-import type { HoldResult } from "../src/lease";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -21,7 +20,6 @@ function setup(child: { exitCode: number | null; signalCode: null }) {
   roots.push(root);
   vi.doMock("../src/tests/appHealth", () => ({ assertNoUnrecoverableErrors: vi.fn() }));
   const finish = vi.fn();
-  const release = vi.fn();
   const session = new BenchmarkSession(
     { cacheDir: root, gameId: "skyrimse" } as HarnessConfig,
     {
@@ -33,26 +31,23 @@ function setup(child: { exitCode: number | null; signalCode: null }) {
     undefined,
     "real",
     { finish },
-    { release } as unknown as HoldResult,
   );
-  return { session, finish, release };
+  return { session, finish };
 }
 it("retries retained cleanup after the previously live app exits", async () => {
   const child = { exitCode: null as number | null, signalCode: null };
-  const { session, finish, release } = setup(child);
+  const { session, finish } = setup(child);
   await expect(session.close(true)).rejects.toThrow("Could not confirm Vortex exit");
   expect(finish).not.toHaveBeenCalled();
-  expect(release).not.toHaveBeenCalled();
   child.exitCode = 0;
   await session.close(true);
   expect(finish).toHaveBeenCalledTimes(1);
-  expect(release).toHaveBeenCalledTimes(1);
 });
 it.each([false, true])(
-  "retains failed-replacement reservations until its exact child exits: stopped=%s",
+  "keeps the OAuth rotation unsaved until a failed replacement's exact child exits: stopped=%s",
   async (stopped) => {
     const child = { exitCode: null as number | null, signalCode: null };
-    const { session, finish, release } = setup({ exitCode: 0, signalCode: null });
+    const { session, finish } = setup({ exitCode: 0, signalCode: null });
     vi.doMock("../src/instance", () => ({
       launchVortex: async (options: { onProcessSpawn: (child: ChildProcess) => void }) => {
         options.onProcessSpawn(child as unknown as ChildProcess);
@@ -68,6 +63,46 @@ it.each([false, true])(
     if (stopped) await session.close(true);
     else await expect(session.close(true)).rejects.toThrow("Could not confirm Vortex exit");
     expect(finish).toHaveBeenCalledTimes(stopped ? 1 : 0);
-    expect(release).toHaveBeenCalledTimes(stopped ? 1 : 0);
   },
 );
+
+it("refuses a benchmark session while a harness Vortex runs, before launching anything", async () => {
+  const cache = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-benchmark-refusal-test-"));
+  roots.push(cache);
+  vi.resetModules();
+  vi.doMock("../src/paths", async (original) => ({
+    ...(await original<typeof import("../src/paths")>()),
+    DEFAULT_CACHE_DIR: cache,
+  }));
+  vi.doMock("../src/processes", async (original) => ({
+    ...(await original<typeof import("../src/processes")>()),
+    processImageName: () => "electron.exe",
+  }));
+  try {
+    const running = await import("../src/runningVortex");
+    const { createSession } = await import("./session");
+    running.writeInstanceRecord({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      cacheDir: cache,
+      userDataDir: path.join(cache, "live"),
+      mcpPort: 3701,
+    });
+    const temporaryBefore = fs
+      .readdirSync(os.tmpdir())
+      .filter((name) => name.startsWith("doodlebot-benchmark-") && !name.includes("test"));
+    await expect(createSession({} as Parameters<typeof createSession>[0])).rejects.toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${cache}); run \`pnpm run ai -- down\` before a benchmark session.`,
+    );
+    // Refused before creating its private cache workspace.
+    expect(
+      fs
+        .readdirSync(os.tmpdir())
+        .filter((name) => name.startsWith("doodlebot-benchmark-") && !name.includes("test")),
+    ).toEqual(temporaryBefore);
+  } finally {
+    vi.doUnmock("../src/paths");
+    vi.doUnmock("../src/processes");
+    vi.resetModules();
+  }
+});

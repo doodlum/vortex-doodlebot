@@ -34,25 +34,6 @@ describe("private OAuth rotation persistence", () => {
     expect(fs.readFileSync(next, "utf8")).toBe("opaque rotated unit credential bytes");
     nextLease.finish();
   });
-  it("refuses an overlapping session with the same private cache", () => {
-    const { canonical, local } = fixture();
-    const lease = beginOAuthCache(canonical, local);
-    expect(() => beginOAuthCache(canonical, `${local}.other`)).toThrow(
-      "reserved by another benchmark",
-    );
-    expect(fs.existsSync(`${local}.other`)).toBe(false);
-    lease.finish();
-  });
-  it("shares the reservation across filesystem aliases of the canonical cache", () => {
-    const { root, canonical, local } = fixture();
-    const alias = path.join(root, "alias");
-    fs.symlinkSync(root, alias, "junction");
-    const lease = beginOAuthCache(canonical, local);
-    expect(() => beginOAuthCache(path.join(alias, "canonical.json"), `${local}.other`)).toThrow(
-      "reserved by another benchmark",
-    );
-    lease.finish();
-  });
   it("preserves logout tombstones instead of resurrecting older credentials", () => {
     const { canonical, local } = fixture();
     const lease = beginOAuthCache(canonical, local);
@@ -60,7 +41,7 @@ describe("private OAuth rotation persistence", () => {
     lease.finish();
     expect(fs.readFileSync(canonical, "utf8")).toBe("null");
   });
-  it("keeps both caches and reservation when external credential use changes canonical input", () => {
+  it("keeps both caches when external credential use changes canonical input", () => {
     const { canonical, local } = fixture();
     const lease = beginOAuthCache(canonical, local);
     fs.writeFileSync(local, "unit benchmark rotation");
@@ -68,7 +49,6 @@ describe("private OAuth rotation persistence", () => {
     expect(() => lease.finish()).toThrow("changed during this benchmark");
     expect(fs.readFileSync(canonical, "utf8")).toBe("unit external rotation");
     expect(fs.readFileSync(local, "utf8")).toBe("unit benchmark rotation");
-    expect(fs.existsSync(`${canonical}.benchmark-lock`)).toBe(true);
   });
   it("saves final rotation even when the callback fails and its fixture is retained", async () => {
     const { root, canonical, local } = fixture();
@@ -94,7 +74,7 @@ describe("private OAuth rotation persistence", () => {
     expect(fs.readFileSync(canonical, "utf8")).toBe("unit rotation during shutdown");
     expect(fs.existsSync(root)).toBe(true);
   });
-  it("does not save or release the reservation without confirmed owned app exit", async () => {
+  it("does not save the rotation without confirmed app exit", async () => {
     const { root, canonical, local } = fixture();
     const lease = beginOAuthCache(canonical, local);
     fs.writeFileSync(local, "unflushed unit rotation");
@@ -111,7 +91,6 @@ describe("private OAuth rotation persistence", () => {
     );
     await expect(session.close()).rejects.toThrow("Could not confirm Vortex exit");
     expect(fs.readFileSync(canonical, "utf8")).toBe("opaque initial unit credential bytes");
-    expect(fs.existsSync(`${canonical}.benchmark-lock`)).toBe(true);
     expect(fs.existsSync(root)).toBe(true);
   });
 });

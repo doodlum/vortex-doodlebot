@@ -5,7 +5,10 @@ description: Write or debug a Playwright test for Vortex's UI in this repo, driv
 
 # Writing a Vortex UI test
 
-Specs live in `harness/src/tests/`. Run them with `pnpm run ai:test`. Read
+Specs live in `harness/src/tests/`. Run them with `pnpm run ai:test`. One harness Vortex
+runs at a time: the core suite starts its own and refuses while another is running ("A
+harness Vortex is running (pid N, cache C); run `pnpm run ai -- down` before the core
+suite."), so run `pnpm run ai -- down` first. Read
 `harness/AGENT-WORKFLOW.md` and use `harness/KNOWLEDGE-ROUTES.md` for the relevant
 manual, test guidance and confirmed pitfalls. Before
 changing Vortex, follow its own `AGENTS.md`, docs index, and relevant frontend,
@@ -15,10 +18,10 @@ test needs a capability that is missing; verify the workflow after adding it.
 ## The shape of a test
 
 When upstream E2E is requested and source mutation is authorized, run the failing spec with
-`pnpm run ai -- vortex-e2e --owner <worker> --checkout <dir> --spec src/tests/<spec>.spec.ts`:
-CI's hidden-window mode (`CI=1`, `VORTEX_E2E_HEADED` unset), under the E2E and checkout
-operation guards, with the fixture's startup race patched for the run only. Stop any app
-using that checkout first. If source is read-only, report this runner's mutation requirement
+`pnpm run ai -- vortex-e2e --checkout <dir> --spec src/tests/<spec>.spec.ts`:
+CI's hidden-window mode (`CI=1`, `VORTEX_E2E_HEADED` unset), with the fixture's startup race
+patched for the run only. It refuses while a harness Vortex runs from that checkout; run
+`down` first. If source is read-only, report this runner's mutation requirement
 instead of temporarily patching it. Keep the failing report before
 editing and rerun that same command afterward (`--compare <report>`). Our visible
 harness app alone does not reproduce CI's painting behavior. See `KNOWLEDGE.md`
@@ -45,8 +48,9 @@ test("a click through MCP changes what Playwright sees", async ({ mcp, vortexWin
 ## Fixtures
 
 The kit's core fixtures are worker-scoped: they share an app within a worker and restore
-state between assertions. Tests needing a pristine lifecycle use their own cache and ports.
-This does not describe Vortex's separate upstream E2E fixture lifecycle.
+state between assertions. The fixture launches Vortex in a temporary cache on free ports,
+writes the instance record at launch and clears it after a confirmed exit. This does not
+describe Vortex's separate upstream E2E fixture lifecycle.
 
 | Fixture        | What it is                                                  |
 | -------------- | ----------------------------------------------------------- |
@@ -67,7 +71,9 @@ This does not describe Vortex's separate upstream E2E fixture lifecycle.
 - **Test width and height independently**, then exercise relevant loading,
   empty, populated, error, modal, filter and selection states. Structural layout
   scans are advisory; independently inspect screenshots and asserted behavior.
-- **Use distinct ports and cache roots** when a test starts another instance.
+- **A script that launches its own Vortex** calls `assertNoHarnessVortex("<action>")` from
+  `harness/src/runningVortex.ts` before launching, writes the instance record right after
+  spawn and clears it after a confirmed exit. Never start one beside a running instance.
 - **Assert a direction, not an exact number,** for anything the OS clamps. A
   window resize below the minimum is clamped, so assert "moved towards" rather
   than equality.
@@ -77,16 +83,18 @@ This does not describe Vortex's separate upstream E2E fixture lifecycle.
   for Ctrl+wheel. It releases Control in a finally block. `ui_scroll` does not
   exercise native wheel or browser zoom behavior. The opt-in `ai:test:zoom`
   script checks applied scaling and UI behavior, including every rendered frame
-  during rapid zoom changes. Run it with `--signed-out` for an isolated anonymous
-  profile. For an automated WebM demonstration, start `kit.recording.startRecording` and
-  perform the UI actions inside one guarded `doodlebot script` invocation, then stop recording
-  in `finally`. Standalone `record` holds the operation throughout and can capture human input;
-  a second independent CLI command is correctly refused during it.
+  during rapid zoom changes. Run it with `--signed-out` for a separate anonymous
+  profile on the default ports; it refuses while a harness Vortex runs, so `down` first.
+  For an automated WebM demonstration, start `kit.recording.startRecording` and
+  perform the UI actions inside one `doodlebot script` invocation, then stop recording
+  in `finally`. Standalone `record` captures human input; do not drive the instance from
+  another command while it records.
 
 ## Panel-system regression
 
 Use `pnpm run ai:test:panels` against a running Bethesda sandbox to verify the
-right-hand split view. Match `VORTEX_AI_OWNER` to the instance owner. The test
+right-hand split view. It attaches to the running instance, so give it the same cache and
+port settings (flags or variables) as the `up` that started it. The test
 restores Home and per-sidebar game workspaces and the window size. The sidebar
 page's modern header has the Dock right toggle (`[data-split-view-toggle]`): it
 keeps one icon, changes `aria-pressed` and its highlight when open, and animates

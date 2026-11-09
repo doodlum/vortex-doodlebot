@@ -16,8 +16,9 @@ import { excludedDuration } from "./timing";
 import { retainedFixtureError, runInSession } from "./lifecycle";
 import { beginOAuthCache, type OAuthCacheLease } from "./credentials";
 import { verifyGameSnapshot, gameSnapshotManifest, assertRegularPath } from "./gameFixtures";
-import { resetGameSettings, gameSettingsResource } from "./gameSettings";
-import { holdLease, addInstancePid, removeInstancePid, type HoldResult } from "../src/lease";
+import { resetGameSettings } from "./gameSettings";
+import { processAlive } from "../src/processes";
+import { assertNoHarnessVortex, runningVortex } from "../src/runningVortex";
 import {
   BenchmarkBlocked,
   type RunManifest,
@@ -85,7 +86,6 @@ export class BenchmarkSession {
     readonly manifest: RunManifest | undefined,
     readonly dataset: DatasetKind,
     private readonly oauthCache?: OAuthCacheLease,
-    private readonly gameSettingsLease?: HoldResult,
     private readonly spawnedProcesses: Set<ChildProcess> = new Set(),
   ) {}
   get page(): Page {
@@ -839,8 +839,6 @@ export class BenchmarkSession {
     await this.instance.stop();
     if (this.instance.process.exitCode === null && this.instance.process.signalCode === null)
       throw new Error("Cannot restart before confirming Vortex exit");
-    if (this.gameSettingsLease && this.instance.process.pid)
-      removeInstancePid(this.gameSettingsLease.lease, this.instance.process.pid);
     const { launchVortex } = await import("../src/instance");
     let start: number | undefined;
     this.instance = await launchVortex({
@@ -851,12 +849,8 @@ export class BenchmarkSession {
       },
       onProcessSpawn: (child) => {
         this.spawnedProcesses.add(child);
-        if (this.gameSettingsLease && child.pid)
-          addInstancePid(this.gameSettingsLease.lease, child.pid);
       },
     });
-    if (this.gameSettingsLease && this.instance.process.pid)
-      addInstancePid(this.gameSettingsLease.lease, this.instance.process.pid);
     const { attachToRenderer } = await import("../src/cdp");
     this.handle = await attachToRenderer(this.config);
     await this.page
@@ -966,17 +960,6 @@ export class BenchmarkSession {
     )
       failures.push(new Error("Could not confirm Vortex exit"));
     else {
-      if (this.gameSettingsLease) {
-        try {
-          if (this.instance.process.pid)
-            removeInstancePid(this.gameSettingsLease.lease, this.instance.process.pid);
-          for (const child of this.spawnedProcesses)
-            if (child.pid) removeInstancePid(this.gameSettingsLease.lease, child.pid);
-          this.gameSettingsLease.release();
-        } catch (error) {
-          failures.push(error);
-        }
-      }
       try {
         this.oauthCache?.finish();
       } catch (error) {
@@ -1107,12 +1090,12 @@ async function freePort(): Promise<number> {
   return port;
 }
 export async function createSession(options: SessionOptions): Promise<BenchmarkSession> {
+  assertNoHarnessVortex("a benchmark session");
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-benchmark-"));
   let config: HarnessConfig | undefined;
   let instance: VortexInstance | undefined;
   let handle: RendererHandle | undefined;
   let oauthCache: OAuthCacheLease | undefined;
-  let gameSettingsLease: HoldResult | undefined;
   let settingsBackup: Awaited<ReturnType<typeof resetGameSettings>> | undefined;
   let editionProof: ReturnType<typeof verifySkyrimEdition> | undefined;
   const spawnedProcesses = new Set<ChildProcess>();
@@ -1135,8 +1118,6 @@ export async function createSession(options: SessionOptions): Promise<BenchmarkS
       cacheDir,
       mcpPort,
       cdpPort,
-      slot: 0,
-      owner: `benchmark-${crypto.randomUUID()}`,
       apiKey: undefined,
       production: true,
       headless: false,
@@ -1194,16 +1175,15 @@ export async function createSession(options: SessionOptions): Promise<BenchmarkS
       if (collection.skyrimEdition) verifySkyrimEdition(fixture, collection.skyrimEdition);
       config = { ...config, gameId: collection.gameId, gamePath: fixture };
       oauthCache = beginOAuthCache(collection.authCache, authCacheFile(config));
-      if (!config.owner) throw new Error("Real benchmark session requires a named owner");
-      gameSettingsLease = holdLease(gameSettingsResource(config.gameId), config.owner, {
-        purpose: "real benchmark shared game settings",
-      });
       if (options.cleanStart)
         settingsBackup = await resetGameSettings({
           gameId: config.gameId,
-          owner: config.owner,
           dedicatedWindowsAccount: true,
           backupDir: path.join(config.artifactDir, "game-settings-backups"),
+          isRunning: () =>
+            [...spawnedProcesses].some(
+              (child) => child.pid !== undefined && processAlive(child.pid),
+            ) || runningVortex() !== undefined,
         });
     } else {
       if (options.cleanStart)
@@ -1218,11 +1198,8 @@ export async function createSession(options: SessionOptions): Promise<BenchmarkS
       preserveGameFixture: dataset === "real",
       onProcessSpawn: (child) => {
         spawnedProcesses.add(child);
-        if (gameSettingsLease && child.pid) addInstancePid(gameSettingsLease.lease, child.pid);
       },
     }));
-    if (gameSettingsLease && instance.process.pid)
-      addInstancePid(gameSettingsLease.lease, instance.process.pid);
     const { attachToRenderer } = await import("../src/cdp");
     handle = await attachToRenderer(config);
     await instance.mcp.call("vortex_dispatch", { action: "setAutoDeployment", args: [false] });
@@ -1258,7 +1235,6 @@ export async function createSession(options: SessionOptions): Promise<BenchmarkS
       options.manifest,
       dataset,
       oauthCache,
-      gameSettingsLease,
       spawnedProcesses,
     );
     const status = await instance.mcp.call<Record<string, unknown>>("automation_status");
@@ -1292,21 +1268,14 @@ export async function createSession(options: SessionOptions): Promise<BenchmarkS
           )
         )
           throw new Error(
-            "Could not confirm every spawned benchmark Vortex exited; reservations retained",
+            "Could not confirm every spawned benchmark Vortex exited; fixture retained",
           );
         oauthCache?.finish();
-        if (gameSettingsLease) {
-          if (instance?.process.pid)
-            removeInstancePid(gameSettingsLease.lease, instance.process.pid);
-          for (const child of spawnedProcesses)
-            if (child.pid) removeInstancePid(gameSettingsLease.lease, child.pid);
-          gameSettingsLease.release();
-        }
       } catch (cleanupError) {
         throw retainedFixtureError(
           new AggregateError(
             [error, cleanupError],
-            "Benchmark startup failed and private OAuth cache persistence could not complete; fixture and credential reservation preserved",
+            "Benchmark startup failed and its cleanup could not complete; fixture preserved; OAuth rotation not saved",
           ),
           cacheDir,
         );

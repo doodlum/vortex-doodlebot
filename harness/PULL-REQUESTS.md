@@ -7,6 +7,12 @@ link the issue and report platform/checks. Its approximate 400-line/10-file guid
 a substitute for assessing blast radius; discuss large or multi-extension work with maintainers
 before implementing it. The submitter must understand every line.
 
+A feature or refactor PR implements an approved design
+([design first](AGENT-WORKFLOW.md#design-first-elephant-and-goldfish)). Its description links
+the approved design and states its content digest, and its diff stays inside the design's file
+boundary. Vortex designs live in doodlebot's task artifacts, not in the Vortex PR, so link or
+attach the approved copy rather than committing it.
+
 ## Title
 
 Use Conventional Commits, such as `fix(collections): ...` or `perf(ui): ...`, with an
@@ -28,6 +34,9 @@ Link the issue or user report. Label uncertainty instead of inventing a version 
 
 The resulting behavior and the relevant implementation decisions.
 
+Design: link to the approved design, content sha256 <D>, approved by <person>; or "None"
+for a bug fix, documentation or test-only change without a supplied design.
+
 ## Behaviour changes
 
 What users and extension consumers can observe, including failure/cancellation paths.
@@ -36,6 +45,7 @@ Write "None" only after inspecting affected consumers.
 ## Evidence
 
 - Revision/platform: final head, baseline, runtime/build identity and fixture.
+- Design: confirmation-round result and `design scope` result against the final head, if any.
 - Scoped tests and task-appropriate control: command, result, intended assertion or invariant.
 - App/UI: applicable scenario and independently observed outcome, or justified N/A.
 - Performance: if applicable, production base/head runs, workload, spread and artifacts.
@@ -70,7 +80,8 @@ description and affected evidence when the head changes.
 ## Author and mechanical checks
 
 Before implementation, identify affected callers, exported extension contracts, changed state
-readers, success/failure/cancel/re-entry paths and observable behavior changes. Use
+readers, success/failure/cancel/re-entry paths and observable behavior changes. For a
+feature or refactor, that analysis and the file boundary belong in the approved design. Use
 [knowledge routes](KNOWLEDGE-ROUTES.md) for specialist sources and relevant review lessons.
 Write the task-appropriate control described in AGENT-WORKFLOW.md.
 
@@ -83,7 +94,14 @@ A positive exit without the fix is a failed negative control. An import/setup/co
 is inconclusive. When the reverted run fails, inspect the assertion and show it exercises the
 reported mechanism; the command cannot decide that causal question. Use `--skip-revert` when
 another task-appropriate control applies and explain why. Source mutation must be authorized,
-and no app may be using that checkout during a revert check.
+and no app may be using that checkout during a revert check: run `pnpm run ai -- down` first,
+or the check refuses with "A harness Vortex is running from <checkout> (pid N); run
+`pnpm run ai -- down` before reverting it."
+
+For a design-bound change, run
+`pnpm run ai -- design scope <design> --checkout <checkout> --base <base-sha>` before
+independent QA. It lists changed files outside the approved boundary and exits 1 if there are
+any; revert them, or amend the design and have the human approve its new digest.
 
 Classify useful findings as missing/mechanically missed checks, author omissions, newly
 discovered reusable lessons, or judgment requiring independent review. These classifications
@@ -95,36 +113,45 @@ in the task report and promote verified ones through the canonical workflow.
 Fill in the canonical worker brief, then add Vortex-specific details:
 
 ```text
-Implement <neutral issue> in <checkout>, owner <name>, base <sha/ref>.
+Implement <neutral issue> in <a branch of .vortex-src or a --dev-dir checkout>, base <sha/ref>.
+Design: <approved design path>, content sha256 <D>; or none for a bug fix.
 User-authorized actions: <accurate scope, including commit/push/PR if granted>.
 Excluded repositories/actions: <explicit constraints>.
-Acceptance and affected contracts: <criteria and required evidence>.
+Acceptance and affected contracts: <the design's criteria and contracts, and required evidence>.
 
 Read the checkout's AGENTS.md, relevant nested instructions and docs index, plus the
 applicable knowledge routes and review lessons. Establish the reproduction or acceptance
 control, inspect consumers and exit paths, implement the smallest complete change and run
 scoped checks. Use applicable preflight; disposition its warnings.
 
-Use only your owned checkout/app/slot. Stop the app before rewriting checkout output.
-Report the identified diff or actual commit, commands/results, controls, consumer/behavior
-analysis, artifacts, remaining uncertainty and candidate kit lessons. Stop or explicitly
-hand off the processes/resources you created. Publish only within the user's authorization.
+Change only files inside the design's boundary and check with design scope. Only one
+doodlebot Vortex runs at a time: run down before rewriting checkout output, recording
+evidence or handing off to QA. Report the identified diff or actual commit, commands/results,
+controls, consumer/behavior analysis, design scope result, artifacts, remaining uncertainty
+and candidate kit lessons. Confirm Vortex has exited and hand off any other processes you
+created. Publish only within the user's authorization.
 ```
 
 ## Independent review and QA
 
 Start a fresh reviewer with `fork_turns="none"` or equivalent. Provide the neutral issue,
 criteria, scope, exact revision and primary source entry points before the author's diagnosis.
-Preserve relevant failed evidence and known constraints. Give driving QA its own checkout
-and slot; read-only reviewers need neither. They may inspect but not edit the author's tree.
+Preserve relevant failed evidence and known constraints. Driving QA starts after the author
+has run `down`, and begins with `up --fresh` so it does not inherit the author's profile
+state; read-only reviewers need no app. Reviewers may inspect but not edit the author's tree.
+For a design-bound change, give the reviewer the approved design and its digest, and have it
+compare the actual diff with the design's boundary (`design scope`) and acceptance criteria.
 
 ```text
 Review <neutral issue> at head <sha or identified local diff>, base <sha>.
+Design: <approved design path>, content sha256 <D>; or none.
 You did not author it. Allowed: read, scoped checks, and <authorized disposable app actions>.
 No production edits or publication. Constraints: <scope, including any read-only checkout>.
 Read the relevant repository instructions and AGENT-WORKFLOW.md report contract.
 
-Independently inspect the actual diff and acceptance/gate applicability. Reproduce the issue
+Independently inspect the actual diff and acceptance/gate applicability. With a design,
+confirm its Approved line matches the digest, run design scope, and check every changed file
+is inside the boundary and every acceptance criterion has evidence. Reproduce the issue
 or acceptance behavior using a scenario derived from the task. Exercise affected consumers
 and relevant cancellation, error, re-entry, data and UI boundaries. Use independent observations.
 Run task-appropriate scoped checks/control; run app checks only where applicable and authorized.
@@ -136,21 +163,23 @@ with hypothetical defects. Save the authorized report at <path>, or return it in
 writes are excluded. Include process/resource cleanup and candidate lessons.
 ```
 
-Useful commands for an authorized Vortex review, with the reviewer's app stopped before
-checks that rewrite output:
+Useful commands for an authorized Vortex review of the author's branch, checked out at the
+identified head in `.vortex-src` or in a separate checkout given with `--dev-dir`. The author
+has already run `down`; the reviewer stops its own app before checks that rewrite output or
+record evidence in that checkout:
 
 ```powershell
-pnpm run ai -- worktree add qa-topic --owner qa-topic --ref origin/<branch>
-pnpm run ai -- up --owner qa-topic --worktree qa-topic --slot auto --sandbox
-pnpm run ai -- down --owner qa-topic --worktree qa-topic --slot auto
-pnpm run ai -- evidence run --owner qa-topic --checkout <qa-checkout> --base <base-sha> --out <new-evidence.json> -- pnpm run verify
-pnpm run ai:preflight -- --owner qa-topic --checkout <qa-checkout> --base <base-sha>
+pnpm run ai -- up --dev-dir <qa-checkout> --sandbox --fresh
+pnpm run ai -- down
+pnpm run ai -- design scope <design> --checkout <qa-checkout> --base <base-sha>
+pnpm run ai -- evidence run --checkout <qa-checkout> --base <base-sha> --out <new-evidence.json> -- pnpm run verify
+pnpm run ai:preflight -- --checkout <qa-checkout> --base <base-sha>
 ```
 
 Resolve confirmed findings, identify the resulting revision and renew affected QA. Verify that
 test-only follow-ups really contain no production behavior change. Run expensive final gates
 after scoped checks and review; do not keep restarting a reviewer while the design is changing.
-Never release another worker's lease or take timings while another task occupies the machine.
+Never take timings while another task occupies the machine.
 
 Save authorized reports promptly and link them from the next brief. Transcripts are not a
 knowledge base. A report needs concrete findings and evidence, not hidden model reasoning.

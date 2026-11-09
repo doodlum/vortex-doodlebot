@@ -7,36 +7,30 @@ relevant symptom or subsystem rather than loading the whole catalogue for every 
 Entries state symptom, confirmed cause, remedy, applicable scope and source/test evidence.
 A matching symptom is a lead to verify against the current revision. Keep measurements,
 incident history and unconfirmed explanations in task artifacts. Promote only verified,
-reviewed lessons under [the workflow](harness/AGENT-WORKFLOW.md#improve-from-verified-lessons)
-and kit lock. Correct disproved claims and remove obsolete workarounds; retain useful
+reviewed lessons under [the workflow](harness/AGENT-WORKFLOW.md#improve-from-verified-lessons),
+committed after `pnpm run ci` passes. Correct disproved claims and remove obsolete workarounds; retain useful
 preventive tests. Existing undated entries require rechecking before a task relies on them.
 
 ## Extensions
 
 ### Harness and extension invariants that broke once
 
-The next three entries were checked during the 2026-10-07 workflow rework on kit base
+The next two entries were checked during the 2026-10-07 workflow rework on kit base
 `df5d2feef23b2dce2134d1433d299fad612741cb` plus its identified local changes. Recheck the linked
 source/tests when using another revision.
 
-- A shared owner name joins ownership leases; it does not serialize independent commands.
-  Supported commands also take UUID operation guards. Pass an execution context only to
-  intentionally nested commands; give parallel workers distinct owners and slots.
-  Scope: supported harness operations in the 2026-10-07 workflow rework; raw clients are outside
-  these guards. Evidence: [operations.ts](harness/src/operations.ts),
-  [leaseCommand.ts](harness/src/leaseCommand.ts) and the same-owner/nested-process cases in
-  [operations.test.ts](harness/src/operations.test.ts).
 - Repeated E2E test IDs can fail for different causes, and passed tests can disappear or skip.
   Reconcile selection, outcome and failure evidence before declaring readiness.
   Scope: native Vortex E2E reports and final readiness in the 2026-10-07 workflow rework.
   Evidence: `compareRuns`/`e2eReportSchema` in [vortexE2e.ts](harness/src/vortexE2e.ts),
   [vortexE2e.test.ts](harness/src/vortexE2e.test.ts) and [readiness.test.ts](harness/src/readiness.test.ts).
 - Configuration must not require Electron's auto-installing module. Resolve paths without
-  side effects, then install only inside the guarded launch/provisioning operation.
-  Scope: source-target resolution in the 2026-10-07 workflow rework. Evidence: `resolveTarget` in
+  side effects (`peekDevElectron`), then install only when launching or provisioning
+  (`resolveDevElectron`).
+  Scope: source-target resolution since the 2026-10-07 workflow rework. Evidence: `resolveTarget` in
   [config.ts](harness/src/config.ts), `peekDevElectron`/`resolveDevElectron` in
-  [electronRuntime.ts](harness/src/electronRuntime.ts), and the separate-process installation
-  exclusion checks in [electronRuntime.test.ts](harness/src/electronRuntime.test.ts).
+  [electronRuntime.ts](harness/src/electronRuntime.ts), and the install-once and
+  interrupted-install cases in [electronRuntime.test.ts](harness/src/electronRuntime.test.ts).
 
 - A ref counter that restarts at `e1` lets an old ref hit a new element. Refs carry a renderer
   lifetime and never reuse a counter within it. Test that old refs are rejected.
@@ -142,33 +136,34 @@ game by itself. Register the path with a raw `type:ADD_DISCOVERED_GAME` dispatch
 
 ## Building Vortex from here
 
-### lease run ran the kit's scripts, under the kit's pnpm
+### A command started through `pnpm run ai` runs in the kit unless it takes the caller's directory
 
-`pnpm run ai -- lease run … pnpm run verify`, typed in a worktree, failed at the `assets` step
-with `ERR_PNPM_BROKEN_LOCKFILE`. `pnpm run` starts the CLI in the kit's own root, so the command
-ran there too, with the kit's pnpm 9 first on PATH. `lease run` now takes the caller's directory
-from `INIT_CWD`, and a command outside the kit gets a cleaned environment (`commandEnv` in
-`source.ts`). Anything else that spawns a Vortex command must do the same: `childEnv` for kit
-code, `commandEnv` for a user's command.
+A Vortex command (`pnpm run verify`) passed through the kit's CLI from a Vortex checkout failed
+at the `assets` step with `ERR_PNPM_BROKEN_LOCKFILE`. `pnpm run` starts the CLI in the kit's own
+root, so the command ran there too, with the kit's pnpm 9 first on PATH. `callerCwd` in
+`harness/src/processRunner.ts` takes the caller's directory from `INIT_CWD`; `script` runs there
+with a cleaned environment (`commandEnv` in `source.ts`), and `evidence run` uses the subject
+checkout (or a contained `--cwd`) explicitly. Anything else that spawns a Vortex command must do
+the same: `childEnv` for kit code, `commandEnv` for a user's command.
 
-### Worktree chores a build or commit trips on
+### Checkout chores a build or commit trips on
 
 - `pnpm nx run @vortex/renderer:build` and `pnpm run verify` rewrite `etc/vortex.api.md` (and
   `etc/Dependency Report.md`) with drift that isn't yours. Restore them before committing; only
-  the kit's `build` and `worktree add` do it for you. Commit a real API change's own lines only.
+  the kit's `build` does it for you. Commit a real API change's own lines only.
 - Vortex's husky pre-commit hook runs pnpm: a commit from a shell without pnpm 11 on PATH fails
   with "pnpm: command not found". Prepend the node22 PATH in the same command.
-- In some sandboxed agent shells a worktree's install fails at electron-rebuild (MSBuild C1083,
+- In some sandboxed agent shells a checkout's install fails at electron-rebuild (MSBuild C1083,
   "Cannot open compiler generated file"), and `pnpm exec vitest` re-runs that install, so even
-  unit tests can't run. Give such an agent a worktree built from an unsandboxed shell. For unit tests
+  unit tests can't run. Give such an agent a checkout built from an unsandboxed shell. For unit tests
   alone, a vitest config that aliases the native modules (`winapi-bindings`, `drivelist`,
   `leveldown`, `xxhash-addon`, `@nexusmods/fomod-installer-native`, `@parcel/watcher`) to a
   Proxy stub, run as `node node_modules/vitest/vitest.mjs run -c <config>`, gets the suites going.
 
-### The first vitest run in a new worktree installs
+### The first vitest run in a new checkout installs
 
-`pnpm exec vitest` in a worktree nobody has run tests in yet starts an install and postinstall,
-native-module rebuild included, even while a Vortex runs from that worktree. Run the first scoped
+`pnpm exec vitest` in a checkout nobody has run tests in yet starts an install and postinstall,
+native-module rebuild included, even while a Vortex runs from that checkout. Run the first scoped
 test before `up`, or expect the wait.
 
 ### A running app holds native modules open
@@ -632,28 +627,40 @@ close the window. Stop cleanly before copying a profile. Even then Windows relea
 handles just after exit, so an immediate `rmSync` hits EPERM: retry with backoff. Directory renames
 can hit EPERM from indexers however often you retry, so build in place and write a marker last.
 
-## Leases
+## One instance
 
-### Slots and worktrees: what is still shared
+### A refusal names a harness Vortex that seems not to be running
 
-The instance lease is per cache (`instance:<cache dir>`, bare `instance` for the default), and
-`--slot <n|auto>` gives each owner its own cache, artifacts and ports. Still shared:
+Launches, the core suite, benchmark sessions and setup, and builds or evidence runs in the
+checkout Vortex was launched from refuse with "A harness Vortex is running (pid N, cache C); run
+`pnpm run ai -- down` before <action>." (or "…is running from <checkout> (pid N)…"). They read
+the one instance record, `harness/.cache/instance.json`, whatever `--cache-dir` says. A record
+whose pid is dead, or no longer `Vortex.exe`/`electron.exe`, is stale and cleared on read, so a
+refusal means that pid is a live Vortex or Electron process. Run `down`: it waits up to 30 s for
+a clean exit and then clears the record; it never signals the pid. If the pid was reused by
+another Electron app after a crash, `down` reports it still running; check the process, then
+delete `harness/.cache/instance.json`. Scope: every kit launcher (`launchVortex` in
+`instance.ts`, the core fixture, benchmark `createSession`, `benchmarks/setup-cli.mts`,
+`zoom.e2e.ts --signed-out`). Evidence: `runningVortex.ts` and `runningVortex.test.ts`.
 
-- **The checkout.** A `--dev-dir` or `--worktree` launch also takes (or joins) `checkout:<dir>`
-  and holds it until that Vortex exits, even if you release it. Checks driving a running instance
-  take the checkout it was launched from (`<cache>/instance.json`), not their own flags'. Two slots
-  from one checkout conflict, so give each agent a worktree (`worktree add <name>`).
-- **The kit's files.** Parallel edits overwrite each other, so the kit is changed only under the
-  kit lock (`kit lock` … `kit push`).
-- **OAuth copies diverge between slots.** A new slot copies slot 0's login once, then refreshes its
-  own. If Nexus rotates refresh tokens, a stale slot needs `login-import --slot <n> --force`.
-- **CPU.** Timings taken while another slot builds or runs Vortex measure the other agent.
+### What the instance record does not cover
+
+- **Launches outside the kit's launchers.** A raw Playwright or Electron start writes no record,
+  and the refusals cannot see it.
+- **Two commands at once.** Nothing serializes harness commands: two sessions driving the same
+  instance invalidate each other's UI refs, and a watcher reload mid-test does the same. Drive
+  it from one session at a time.
+- **OAuth copies diverge between caches.** A non-default cache copies the default cache's login
+  once (`seedLoginFromDefaultCache` in `bootstrap.ts`), then refreshes its own. If Nexus rotates
+  refresh tokens, a stale copy needs `login-import --cache-dir <dir> --force`.
+- **CPU.** Timings taken while a build or another process runs measure that work too.
 
 ## Tooling on Windows
 
 ### Account-free lifecycle tests must prevent automatic login import
 
-`bootstrap` seeds a new cache from slot 0's OAuth cache. After the operator logs in, a fresh
+`bootstrap` seeds a new non-default cache from the default cache's OAuth login
+(`seedLoginFromDefaultCache`). After the operator logs in, a fresh
 test profile can unexpectedly be signed in. Core fixtures write a `null` OAuth tombstone in
 their disposable cache before bootstrapping; this prevents import without touching the login.
 
@@ -666,9 +673,9 @@ Read the DOM dimensions independently; a tool's requested size is not proof it r
 ### Concurrent Electron resolution can overwrite a running binary
 
 Electron 44's module downloads a missing executable during `require("electron")`. Two setup
-commands can both download and one then fails replacing a DLL the other's app has loaded.
-`electronRuntime.ts` serializes resolution with a process lease beside the Electron package,
-including when different slots resolve the same binary, and releases it after failures.
+commands at once can both download, and one then fails replacing a DLL the other's app has
+loaded. `electronRuntime.ts` resolves and installs without a lock, so run one launch or setup at
+a time; the instance record refuses a second launch only once the first Vortex has spawned.
 
 ### No `pnpm`, or only Node 20, on the agent's PATH
 
@@ -677,7 +684,7 @@ pnpm 11 (Vortex's) needs Node ≥ 22.13 (`node:sqlite`). Run the kit as
 `npx -y pnpm@9.15.0 run ai -- …`. For Vortex, `npm install node@22 --prefix J:\tools\node22` on a
 roomy drive, install `pnpm@11.10.0` globally into that prefix, prepend
 `J:\tools\node22\node_modules\node\bin;J:\tools\node22` to `PATH`, and set `VORTEX_AI_PNPM` to
-`J:\tools\node22\pnpm.cmd`. `source`, `worktree add` and `build` then skip `pnpm dlx`, which can
+`J:\tools\node22\pnpm.cmd`. `source` and `build` then skip `pnpm dlx`, which can
 fail with ENOENT in `pnpm-cache\dlx` on a nearly full C:. A hand-run build must restore
 `etc/vortex.api.md` and `etc/Dependency Report.md` itself; only the kit's `build` does.
 
@@ -695,14 +702,15 @@ instead of downloading its own), put it first on `PATH` and run `corepack enable
 MFC, Windows 11 SDK), Python with `setuptools`, CMake, .NET 9. ARM64 builds of Python, CMake
 and .NET are fine. Electron then downloads as x64; `eval --expr "process.arch"` should say `x64`.
 
-### With corepack, `lease run` from a checkout picks the checkout's pnpm
+### With corepack, the kit's CLI started from a checkout picks the checkout's pnpm
 
-`pnpm --dir <kit> run ai -- lease run -- pnpm run verify`, started in a Vortex checkout, fails
-with "This project is configured to use 9.15.0 of pnpm": corepack chooses pnpm by the directory
-it starts in, so the kit runs under Vortex's pnpm 11. Started in the kit instead, the command runs
-in the kit, since pnpm overwrites `INIT_CWD` (`callerCwd` in `leaseCommand.ts`). Run the kit's CLI
-directly from the checkout: `node <kit>/node_modules/tsx/dist/cli.mjs <kit>/harness/src/cli.ts
-lease run --owner <you> --checkout <dir> -- pnpm run verify`.
+`pnpm --dir <kit> run ai -- …`, started in a Vortex checkout, fails with "This project is
+configured to use 9.15.0 of pnpm": corepack chooses pnpm by the directory it starts in, so the
+kit runs under Vortex's pnpm 11. Started in the kit instead, a command that uses the caller's
+directory (`script`) runs in the kit, since pnpm overwrites `INIT_CWD` (`callerCwd` in
+`processRunner.ts`). Run a checkout command through `evidence run --checkout <dir>`, which
+chooses its directory explicitly, or run the kit's CLI directly from the checkout:
+`node <kit>/node_modules/tsx/dist/cli.mjs <kit>/harness/src/cli.ts script <file.mts>`.
 
 ### Windows on ARM: "You installed esbuild for another platform" means the wrong Node
 
@@ -735,7 +743,7 @@ On Windows on ARM, the first `up` of a new cache can fail with "Vortex did not e
 though Vortex's log says "clean application end": the bootstrap's quit takes longer than
 `stopInstance` waits. The retry can then fail with "Port … is occupied", held only by `TIME_WAIT`
 sockets from that quit. A third `up` works; other times the first one does. Retry rather than
-clearing leases or killing processes.
+deleting the instance record or killing processes.
 
 ### PowerShell's UTF-8 writes start with a BOM
 
@@ -750,7 +758,7 @@ JSON through `readJsonFile` (`harness/src/jsonFile.ts`), which strips it; new re
   clean. In a Vortex checkout `pnpm nx run @vortex/renderer:lint` prints a result; use that.
 - A here-string piped into `git commit -F -` fails with "did not match any file(s)". Use a file.
 - `git show <sha>:<path> | Set-Content` re-encodes the file (Vitest may report "no tests"). Use
-  `git restore --source=<sha> --worktree -- <path>`.
+  `git restore --source=<sha> -W -- <path>` (`-W` restores the working tree).
 - `@(@("a", "b"))` flattens to `@("a", "b")`, so a one-pair find/replace list corrupts files.
   Write `@(,@("a", "b"))` or use Python, and lint after bulk edits.
 - `pnpm exec oxfmt $files` fails with "Expected at least one target file"; splat with `@files`.

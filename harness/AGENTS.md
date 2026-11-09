@@ -12,11 +12,12 @@ and `pnpm run docs:check` enforces the mapping in `scripts/documentation-map.jso
 
 - [KNOWLEDGE-ROUTES.md](KNOWLEDGE-ROUTES.md): shared specialist reading paths and evidence rules.
 - [KNOWLEDGE.md](../KNOWLEDGE.md): confirmed pitfalls; search the affected area and recheck its scope.
-- [WORKFLOWS.md](WORKFLOWS.md): bug reproduction, features, designs, state and window-size
-  matrices, several issues at once.
+- [WORKFLOWS.md](WORKFLOWS.md): bug reproduction, features, design-first work, supplied visual
+  designs, state and window-size matrices.
 - [PULL-REQUESTS.md](PULL-REQUESTS.md): Vortex PR titles, description template, reviews.
 - [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md): canonical task routing, delegation and handoff.
-- `.claude/skills/`: `drive-vortex`, `vortex-dev`, `vortex-ui-test`. Apply the relevant ones.
+- `.claude/skills/`: `drive-vortex`, `vortex-dev`, `vortex-elephant`, `vortex-ui-test`. Apply the
+  relevant ones; `vortex-elephant` is the design-first procedure for features and refactors.
 - [ARCHITECTURE.md](../ARCHITECTURE.md): where a new capability belongs.
 
 When developing Vortex, **read and follow its own `AGENTS.md`, `CLAUDE.md` when present, its
@@ -28,7 +29,6 @@ Windows, a Node version compatible with package.json, the pinned pnpm (`pnpm@9.1
 installed Vortex. No game or Nexus account is needed for sandbox tests.
 
 ```powershell
-$env:VORTEX_AI_OWNER = 'operator'
 pnpm install --frozen-lockfile
 pnpm run ai -- setup --installed --sandbox
 pnpm run ai -- doctor --installed --sandbox
@@ -144,9 +144,11 @@ listener each cycle and drains remaining pages at stop. Sequence gaps, subscript
 projection errors invalidate timings without aborting install verification. No invalid/partial
 phase timings are published; the benchmark is blocked unless an install error makes it failed.
 
-The shared game-settings lease tracks each cold/live child at spawn and stays protected on failed
-shutdown. Independent same-owner resets are excluded by operation guards; reset refuses live Vortex.
-Human procedure and recovery: [clean restart](../docs/testing/benchmarks.md#restart-a-real-collection-from-scratch).
+`resetGameSettings` refuses with `Cannot reset game settings while Vortex is running` while its
+`isRunning` option reports a running Vortex. The benchmark session passes "any child it spawned
+is alive, or the instance record names a running Vortex"; the default checks the instance
+record only. A benchmark session and benchmark setup also refuse to start while a harness
+Vortex runs. Human procedure and recovery: [clean restart](../docs/testing/benchmarks.md#restart-a-real-collection-from-scratch).
 Snapshots establish file integrity, not arbitrary source provenance. Supply a known clean game,
 close the game first, preserve saves/purchased catalogs, and never reset the Steam installation.
 
@@ -174,111 +176,51 @@ pnpm run ai -- up --installed --sandbox --rebuild-snapshot
 - `down` waits for a clean shutdown. An unresponsive instance is reported and left intact, never
   killed and certified; close that window and retry. A server of another cache is never stopped
   for holding the same port.
-- For another instance take a slot (next section), not a hand-picked `--cache-dir`, `--port`
-  and `--cdp-port`.
 
-## Parallel sessions: a worktree and a slot per agent
+Human benchmark preparation is available through `pnpm run setup` (`benchmarks/setup-cli.mts`). It creates a local example or prepares a pinned collection, discovers Steam games, reuses a saved kit login when unambiguous, and tracks verified game snapshots in gitignored `harness/.cache/benchmark-setup.json`. `--status` is read-only/offline; cached credentials and dated Premium observations do not prove current refresh/download access. `--status --verify` checks all tracked bytes. Constellations still requires a separately prepared downgrade. Guided real setup requires explicit clean-source and QA-only Windows/test-machine acknowledgements. The catalog loads these local choices; `--exploratory` supplies observed host facts without approving budgets, and `--timeout-minutes` gives a deliberate operation timeout. Setup starts no collection downloads and retains incomplete copies. Normal automation still performs no retries or recovery.
 
-Human preparation is available through `pnpm run setup` (`benchmarks/setup-cli.mts`). It creates a local example or prepares a pinned collection, discovers Steam games, reuses a saved kit login when unambiguous, and tracks verified game snapshots in gitignored `harness/.cache/benchmark-setup.json`. `--status` is read-only/offline; cached credentials and dated Premium observations do not prove current refresh/download access. `--status --verify` checks all tracked bytes. Constellations still requires a separately prepared downgrade. Guided real setup requires explicit clean-source and QA-only Windows/test-machine acknowledgements. The catalog loads these local choices; `--exploratory` supplies observed host facts without approving budgets, and `--timeout-minutes` gives a deliberate operation timeout. Setup starts no collection downloads and retains incomplete copies. Normal automation still performs no retries or recovery.
+### One instance
 
-Each doodlebot session works in its own worktree and slot, so their Vortex instances coexist, and
-changes the kit only under the kit lock (WORKFLOWS.md, "Several agents at once").
+Only one doodlebot Vortex runs at a time, driven by one agent. That is a convention: nothing
+serializes two commands. Run `down` before starting another profile, the core suite or
+independent QA. A few refusals stop the cases where two would damage data.
 
-```powershell
-pnpm run ai -- worktree add fix-a --owner fix-a --base upstream/master   # .vortex-worktrees/fix-a, installed and built
-pnpm run ai -- up --owner fix-a --worktree fix-a --slot auto --bethesda-sandbox
-pnpm run ai -- slots                                       # who has which slot, and whether it runs
-pnpm run ai -- down --owner fix-a --slot auto
-pnpm run ai -- worktree list
-pnpm run ai -- worktree remove fix-a --owner fix-a         # the branch stays
-```
-
-- **Slots** (`slots.ts`). Slot 0 is `harness/.cache` and `harness/.artifacts` on MCP 3701 and CDP
-  9222, the default. Slot n (1–19) is `harness/.slots/<n>/cache` and `…/artifacts` on 3701+10n and
-  9222+10n, with its own instance lease. `--slot auto` (or `VORTEX_AI_SLOT=auto`; needs an owner)
-  gives the owner a slot of its own, recorded in `<lease dir>/slots.json` and reused later; when all
-  19 are given out, the least recently used idle one. `--slot <n>` picks one. Explicit
-  `--cache-dir`, `--port` or `--cdp-port` win over the slot.
-- **Pass the same `--owner` and `--slot` to every command.** `ai:test:*` scripts read
-  `VORTEX_AI_SLOT` and `VORTEX_AI_OWNER`; `script` passes its instance on.
-- A slot's first `up` copies slot 0's OAuth login; the copies then refresh separately. If Nexus
-  refuses one, `login-import --slot <n> --force`.
-- **Worktrees** (`worktree.ts`) of `.vortex-src` share its object store. `add` fetches the base
-  (default `upstream/master`), creates `--branch` (default the name) or checks out an existing one,
-  then installs and builds with the pinned pnpm (`--no-install`, `--no-build`).
-  `--worktree <name>` on a command selects that checkout as `--dev-dir`.
-  `worktree add <name> --owner <worker> --ref origin/<branch>` makes a detached review
-  checkout. `remove` refuses while the checkout is owned/live, or dirty unless `--force`.
-  Reuse a suitable owned checkout instead of provisioning one for each read-only specialist.
-- Shared by all: `dist/` (rebuilt by whoever changes the extension, under the kit lock), the pnpm
-  store, the CPU. Don't take timings while other slots are busy (`slots`).
-- **The kit lock** (`kit lock --owner <you> [--wait <min>]`, `kit sync`, `kit push`, `kit unlock --acquisition <id>`,
-  `kit status`): one session at a time edits and pushes this repo. `kit push` rebases `main` onto
-  `origin/main`, refusing without the lock, with uncommitted changes or off `main`. If rebase
-  changes the checked head, it stops before push for revalidation. `kit status --json` gives
-  the acquisition ID; renew it with `kit renew --owner <you> --acquisition <id> --ttl 30`
-  before expiry. Save the original acquisition ID for unlock; ordinary release checks it
-  atomically and cannot clear a same-owner successor. `kit unlock --force` is explicit inspected
-  recovery; it still refuses live operations and a dirty kit. Expired/replaced acquisitions
-  require inspection, not silent reacquisition.
-- `vortex-e2e` has an E2E operation guard as well as the checkout guard. Overlapping runs
-  refuse; retry the root invocation after the prior run ends.
-- `pnpm run ai:test:parallel-sessions -- [--a <checkout>] [--b <checkout>]` checks two sessions side
-  by side: own ports, profile and lease, isolated installs, clean stop.
-
-## The instance lease: one agent drives each Vortex
-
-A lease per instance in `~/.vortex-ai/leases` (shared by every kit checkout; `VORTEX_AI_LEASE_DIR`
-overrides) says who drives it. Owner: `--owner`, else `VORTEX_AI_OWNER`; supported live and
-provisioning operations reject anonymous owners. Use a distinct owner per active worker.
-Operation guards exclude independent commands even with the same owner. Explicit execution
-contexts compose nested commands; never share one among concurrent workers. Snapshots are
-guarded because they invalidate UI refs. Watchers guard each complete build/copy/reload cycle,
-allowing commands between cycles. Raw MCP/CDP clients remain outside harness ownership enforcement.
-
-```powershell
-pnpm run ai -- lease status                     # live/stale ownership and operation guards
-pnpm run ai -- lease acquire --owner qa --slot auto --purpose "PR QA" --ttl 120 --checkout C:/dev/vx-ab
-pnpm run ai -- up --owner qa --slot auto --dev-dir C:/dev/vx-ab --sandbox
-pnpm run ai -- down --owner qa --slot auto --dev-dir C:/dev/vx-ab
-pnpm run ai -- lease release --owner qa         # keeps ownership if an app still runs
-pnpm run ai -- evidence run --owner qa --checkout C:/dev/vx-ab --base <base-sha> --out <new-report.json> -- pnpm run verify
-```
-
-- `up`, `bootstrap`, `setup`, `save-login`, `down`, `e2e`, `vortex-e2e`, `ai:test` (whole run) and
-  `ai:test:*` take it implicitly: free or stale, taken; same owner, joined; another live owner,
-  **refused before anything stops**, naming the holder and how to wait.
-- `up` leaves it held by the running Vortex until `down` or exit.
-- `lease acquire` lasts `--ttl` minutes (default 60, `0` none) or, with `--pid <n>`, that process's
-  life. Re-acquire to renew. `--checkout <dir>` also takes that checkout's lock, all or nothing;
-  `--checkout-only` just the checkout.
-- `lease release --owner <name>` releases all that owner holds; `--checkout <dir>` only that one. A
-  live instance and its checkout stay owned until confirmed exit; ordinary release cannot expose
-  a running app to another owner.
-- `lease run [flags] [--] <cmd...>` holds the lease for the command, passes `VORTEX_AI_OWNER`,
-  waits for known child exit before releasing operation holds and returning its exit code.
-  Flags go first (PowerShell 5.1 strips `--`). It uses the caller's `INIT_CWD`; `--checkout`
-  reserves that path but does not change the command directory. Prefer `evidence run` for
-  checkout checks: it chooses an explicit cwd and refuses a live app using the checkout.
-  Arbitrary shell commands remain responsible for their declared resources and side effects.
-- `--wait <minutes>` on lease commands retries a root acquisition after releasing partial holds.
-  Nested operations and a script already inside a live operation refuse contention immediately.
-- Stale: every implicit holding process exited, or an idle explicit reservation expired. An active
-  launcher or running Vortex keeps its ownership even after reservation expiry. App PID registration
-  and cleanup use the acquisitions captured at launch. Known children retain protection
-  until confirmed exit. Inspect surviving/uncertain descendants before recovery.
-- `lease release --force` clears the instance lease; `--owner <name> --force` all of an owner's.
-  Use only for explicitly authorized recovery after checking the holder and known children
-  have exited and inspecting the preserved state. Do not bypass a live worker's ownership.
-- Obsolete or corrupt lease records fail closed, including older records without an acquisition
-  ID. Inspect the exact named record and its recorded live processes, then have their owner stop
-  them before any narrowly scoped manual repair or removal. Never wipe the lease directory or
-  silently migrate an active session.
-- Checkout locks (`checkout:<path>`): `pr-preflight`'s revert check, `vortex-e2e`'s patch, `build`,
-  and every launch from `--dev-dir`, `--worktree` or `.vortex-src` (held until that Vortex exits).
-  `script` and `ai:test:*` take the checkout recorded in `<cache>/instance.json`.
-- Liveness is a PID check, so a reused PID can keep a dead lease looking live. The lease cannot stop
-  a process that ignores it.
+- **The instance record** is always `harness/.cache/instance.json`, whatever `--cache-dir` says:
+  `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir?}` (`runningVortex.ts`). Every kit
+  launcher writes it right after spawn, before readiness: `up`, `setup`, `bootstrap`, the core
+  fixture, a benchmark session, `pnpm run setup` and `ai:test:zoom -- --signed-out`. A failed
+  write stops the child and fails the launch. Per-cache `instance.pid` and `<cache>/instance.json`
+  files from older kits are deleted when found.
+- A record is **running** only while its pid is alive and that process is `Vortex.exe`,
+  `electron.exe`, `vortex` or `electron`. Otherwise it is stale (dead pid, or a pid reused after a
+  crash) and is cleared when read.
+- A launch while another harness Vortex runs, the core suite (`ai:test:core` / `ai:test`, through
+  Playwright's global setup), a benchmark session, benchmark setup and the signed-out zoom check
+  refuse with
+  ``A harness Vortex is running (pid <pid>, cache <cacheDir>); run `pnpm run ai -- down` before <action>.``
+  Actions: `starting Vortex`, `the core suite`, `a benchmark session`, `benchmark setup`,
+  `the signed-out zoom check`. `up` and `bootstrap` first stop their own cache's leftover, so a
+  repeated `up` on the same profile restarts it.
+- `build`, source installs and builds, `evidence run`, `pr-preflight`'s revert check and
+  `vortex-e2e` refuse when the record's `sourceDir` is the checkout they would change:
+  ``A harness Vortex is running from <checkout> (pid <pid>); run `pnpm run ai -- down` before <action>.``
+  Actions: `building it`, `installing it`, `recording evidence in it`, `reverting it`,
+  `patching it`.
+- `down` follows the record (`stopRunningInstance`): it stops the running harness Vortex using
+  the record's cache and MCP port, so one left in a benchmark or test cache, or started with
+  another `--port`, needs no repeated options; for another cache it first prints
+  `Stopping the harness Vortex of cache <cacheDir> (MCP port <mcpPort>).`. It asks Vortex to quit
+  over MCP (`vortex_quit`) after the profile check, waits up to 30 s for a clean exit (MCP silent
+  and the recorded pid gone), then clears the record. With no live record it stops only the
+  configured cache. It clears a stale record without waiting. It never signals a pid; an
+  instance that does not exit is reported and left intact. `up` and `bootstrap` stop only their
+  own cache's leftover, never another cache's instance.
+- A pid reused by another Electron app still looks running: `down` waits 30 s and reports it.
+  Check that no harness Vortex window is open, then delete `harness/.cache/instance.json`.
+- A Vortex started outside the kit's launchers (raw Playwright or Electron) writes no record and
+  is invisible to these refusals. The record does not detect the operator's own Vortex or a game.
+- Vortex source work happens on a branch of `.vortex-src` or in a checkout given with
+  `--dev-dir`. Independent QA runs after `down`, in a fresh context, starting with `up --fresh`.
 
 ## Drive from any agent or shell
 
@@ -299,7 +241,8 @@ pnpm run ai -- screenshot --label before [--full-page]
 
 The loop is snapshot, act, wait, inspect. Refs expire on the next snapshot, reload or element
 removal: never reuse one. Filter or scroll virtualized rows into the DOM first. Check
-`activeDialogs` when an action seems blocked. Independent clients must coordinate UI actions.
+`activeDialogs` when an action seems blocked. Drive the instance from one client at a time;
+nothing serializes UI actions from separate clients.
 
 | Tool/path                                                  | Use                                                                                                                                    |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -327,10 +270,13 @@ scopes the snapshot so a large table can't exhaust its node budget. Avoid native
 
 ### Scratch scripts and renderer diagnostics
 
-`doodlebot script <file.mts> [args...]` runs a scratch script with the kit's tsx under the instance
-lease, with the instance's cache, ports and token in its environment. `--owner`, `--wait` and the
-instance flags (`--slot`, `--worktree`, `--dev-dir`, `--cache-dir`, ports) are the kit's anywhere; other arguments, and all after `--`, are the script's. Outside this repo use
-`.mts` (top-level `await`) and import the kit by the URL in `VORTEX_AI_KIT`:
+`doodlebot script <file.mts> [args...]` runs a scratch script with the kit's tsx, in the caller's
+directory (`INIT_CWD` under pnpm; a relative `<file>` is resolved there too), with the instance's cache, artifacts folder, ports and token in
+its environment. The instance flags (`--dev-dir`, `--cache-dir`, `--port`, `--cdp-port`) are the
+kit's anywhere, even after the file; other arguments, and all after `--`, are the script's. It
+exits with the script's code: 130 after Ctrl+C, `128 + signal` when the script died from a
+signal. Outside this repo use `.mts` (top-level `await`) and import the kit by the URL in
+`VORTEX_AI_KIT`:
 
 A script's own path: use `fileURLToPath(import.meta.url)`. `new URL(import.meta.url).pathname`
 keeps `%20` for the space in "Vortex MCP", and writes beside it fail.
@@ -352,10 +298,10 @@ report a profile in this cache, so it never touches the operator's Vortex.
 ### Recording a feature
 
 Standalone `doodlebot record --ffmpeg <exe> --seconds <1-60> --label <name>` records the
-renderer while a human drives it, holding the live operation throughout. For automated actions,
-run `kit.recording.startRecording(config, { encoder, label })`, the UI actions and
-`recording.stop()` in one guarded `doodlebot script`; stop recording in `finally`.
-A second independent CLI session cannot drive that instance during recording.
+renderer while a human drives it. For automated actions, run
+`kit.recording.startRecording(config, { encoder, label })`, the UI actions and
+`recording.stop()` in one `doodlebot script`; stop recording in `finally`.
+Do not drive the instance from another command while it records.
 The encoder needs MJPEG in and
 VP8/WebM out (`pnpm exec playwright install ffmpeg`). Frames repeat, so pauses keep their length;
 keep durations when converting. For PR media, `gh pr edit --attach <file>` (GitHub CLI 2.99+)
@@ -374,7 +320,7 @@ pnpm run ai -- e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch
 - `slow-download [--count <n>] [--seconds <n>] [--stagger <s>]` keeps real downloads in flight
   (throttled local files, no network or account) for work on the UI that reports them: the
   spine's download button and panel, the Downloads page. It returns when they finish, so run it
-  it with the UI actions inside one guarded `script` using `kit.slowDownload` when automation
+  it with the UI actions inside one `script` using `kit.slowDownload` when automation
   needs to observe downloads in flight. `--stagger` starts each after the one before, so a UI
   that announces arrivals sees them separately.
 - `install` waits for the installer; `collection` checks OAuth first and waits for required
@@ -397,21 +343,23 @@ pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000
 ```
 
 - Say which suite ran and disclose skips. Quote comma lists in PowerShell.
+- The core suite launches its own Vortex and refuses while a harness Vortex runs
+  (`... before the core suite.`): run `pnpm run ai -- down` first.
 - See [TESTING.md](TESTING.md) for the core contract, pinned-release CI and opt-in scenarios.
   Feature regressions and performance scripts stay outside the default kit gate.
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (WORKFLOWS.md has the state matrix).
-- `pnpm run ai:source` prepares the managed base `.vortex-src` (`--update`, `--no-build`,
-  `--where`); create or reuse a worker worktree before editing. `up` defaults to the managed
-  source when present. Select `--installed`, `--exe <path>`, `--dev-dir <path>` or
-  `--worktree <name>` explicitly for reproducible checks.
-- Extension work uses one watcher: `pnpm run ai:watch -- --owner <you> --slot auto` or
-  `pnpm run dev -- --owner <you> --slot auto`, against your already-running instance.
-  It observes doodlebot source and runs finite build/copy/reload cycles, retaining pending
-  edits through contention and allowing other commands between cycles. Build failure never
-  installs partial output. It does not build Vortex source. `pnpm run build` is one-shot;
-  `build-extension` or `up --rebuild-extension` forces a build. Recheck `tools --json` after
-  tool registration changes. Do not start a watcher inside an inherited long-lived operation.
+- `pnpm run ai:source` prepares the managed `.vortex-src` (`--update`, `--no-build`,
+  `--where`); make your changes on a branch of it, or in a separate checkout passed with
+  `--dev-dir`. `up` defaults to the managed source when present. Select `--installed`,
+  `--exe <path>` or `--dev-dir <path>` explicitly for reproducible checks.
+- Extension work uses one watcher: `pnpm run ai:watch` or `pnpm run dev`, against your
+  already-running instance. It observes doodlebot source and runs one finite build/copy/reload
+  cycle per settled edit. Build failure never installs partial output. It does not build Vortex
+  source. `pnpm run build` is one-shot; `build-extension` or `up --rebuild-extension` forces a
+  build. Running the watcher and `build-extension` together is unsupported. Recheck
+  `tools --json` after tool registration changes. Do not run the watcher during tests or
+  scripted UI actions: a reload can invalidate UI refs mid-action.
 - Live CLI attachment and every watch cycle check `automation_status.userDataDir` against the
   exact canonical live profile; a reachable port or changed runtime ID is insufficient.
 - Extension builds compile captured source, configuration, package/lock and `info.json` bytes
@@ -424,14 +372,57 @@ pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000
   inspect that path before retrying. An interrupted rename sequence may also need manual
   recovery; this is not a crash-atomic filesystem transaction. The current capture covers
   `src` production files and the fixed root build configs, package, lock and metadata, with
-  Node/platform/architecture/`NODE_ENV` identity. Provision pinned dependencies under the kit
-  lock. New external config inputs, environment dependencies or symlinks need an explicit
+  Node/platform/architecture/`NODE_ENV` identity. Install pinned dependencies
+  (`pnpm install --frozen-lockfile`) before building, not while a build runs. New external config inputs, environment dependencies or symlinks need an explicit
   capture-contract change; dependency integrity is not proved by the generation marker.
 - `ai:test:nexus` (opt-in; same target, cache and ports as account setup): a separate
   `nexus-smoke` profile and disposable Stardew Valley folder, the five required members of
   revision 1 of `stardewvalley/nudx7b`, SHA-256 checks of deployed files, purge, evidence,
   refreshed credentials copied back. No launch. Needs Nexus Premium for unattended downloads.
   Outages are failures, not a reason to repeat OAuth.
+
+### Design-first work
+
+Features and refactors start with a design written and reviewed with Google's
+[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM,
+`v0.1.1`) before any implementation. Follow `.claude/skills/vortex-elephant/SKILL.md`, which
+every agent reads (Codex included). Bug fixes, docs and test-only changes need no design unless
+the user supplies or asks for one. The approved design defining this workflow is
+`designs/egm-workflow.md`.
+
+```powershell
+pnpm run ai -- design new <file> --title <t> --target vortex|doodlebot
+pnpm run ai -- design check <file> [--ready] [--json]
+pnpm run ai -- design scope <file> --checkout <dir> --base <ref> [--json]
+```
+
+- `design new` writes the design template (required sections, `Status: Draft`, today's date);
+  it refuses an existing file and needs both `--title` and `--target`.
+- `design check` validates the structure (title, status, target, required sections, acceptance
+  ids, contracts, file boundary) and the `Approved` line, and prints `content sha256: <d>`. It
+  prints `OK <file>` or `ISSUES <file>` with one issue per line and exits 1 on any issue.
+  `--ready` applies the approval-time checks (open questions, `TBD`) whatever the Status.
+  `--json` prints `{file, contentSha256, issues, design}`. Run `pnpm exec oxfmt <file>` first
+  whenever you record the digest: CI formats Markdown, and a format change changes the digest.
+- `design scope` lists the checkout's changed files (committed or not, plus untracked
+  non-ignored files) against `--base` that fall outside the design's file boundary, as
+  `outside: <file>` lines, or `IN SCOPE`; it exits 1 when any file is outside and warns
+  `design is not approved` for an unapproved design. The design file itself is exempt when it
+  lies inside the checkout.
+- Design paths: `designs/<topic>.md` for doodlebot (listed in `designs/SITEMAP.md`),
+  `harness/.artifacts/designs/<topic>.md` for Vortex (never in a Vortex PR). EGM's own briefs,
+  drafts and stage reports go to `harness/.artifacts/egm`; confirmation-round reports to
+  `harness/.artifacts/designs/<topic>.reviews/`.
+- The digest covers the whole text except the `Status`, `Date` and `Approved` header bullets.
+  Approval is the human's line `- **Approved:** <person>; content <sha256>; <reference>`; any
+  body edit afterwards voids it. Each header bullet stays on one line: a wrapped continuation
+  counts as body. Never write an `Approved` line the person has not given.
+- The confirmation round (after the last edit, on a checkout without implementation changes)
+  runs two fresh reviewers: EGM's `implementation_readiness` with its standard, and
+  `vortex-runtime-goldfish` (`.claude/agents/vortex-runtime-goldfish.md`, persona
+  `harness/egm/vortex_runtime.md`) with `harness/egm/vortex-change-standard.md`.
+- After implementing, run `design scope`, then `down`; independent QA starts with `up --fresh`
+  in a fresh context. Readiness binds the result to the approved design (next section).
 
 ### Recorded checks and readiness
 
@@ -443,13 +434,14 @@ Use `pnpm --silent run ai` when redirecting JSON so pnpm's command banner is omi
 
 ```powershell
 pnpm --silent run ai -- evidence identity --checkout . --base <base-sha> > harness/.artifacts/identity.json
-pnpm run ai -- evidence run --owner <you> --checkout . --base <base-sha> --out harness/.artifacts/ci.json -- pnpm run ci
-pnpm run ai -- evidence run --owner <you> --checkout . --base <base-sha> --out harness/.artifacts/scoped.json --test-format vitest --test-report <new-test-report.json> -- pnpm exec vitest run <test-files> --reporter=json --outputFile <new-test-report.json>
+pnpm run ai -- evidence run --checkout . --base <base-sha> --out harness/.artifacts/ci.json -- pnpm run ci
+pnpm run ai -- evidence run --checkout . --base <base-sha> --out harness/.artifacts/scoped.json --test-format vitest --test-report <new-test-report.json> -- pnpm exec vitest run <test-files> --reporter=json --outputFile <new-test-report.json>
 ```
 
 `evidence run` executes an explicit command in the subject root, or a contained `--cwd`,
-using the subject's already-installed pinned pnpm. It never installs a toolchain. It guards
-the checkout, refuses an app running from it, records the actual executable/arguments/cwd,
+using the subject's already-installed pinned pnpm. It never installs a toolchain. It refuses
+while the harness Vortex runs from the checkout (`... before recording evidence in it.`),
+records the actual executable/arguments/cwd,
 retains output and captures before/after source identity. Choose new output/report paths
 for every run; existing evidence is never overwritten. A valid failed/interrupted receipt
 remains failed evidence. If reporter JSON is missing or malformed, receipt collection fails;
@@ -458,8 +450,8 @@ change the subject diff.
 
 For released-app core evidence, create a runtime JSON with `--kind installed`, a release
 `--label` and `--mode production`, including the actual Vortex executable, app bundle and
-`dist/index.js`. Use an isolated owner/slot; the collector sets the selected executable and
-target from that runtime identity. Set `PLAYWRIGHT_JSON_OUTPUT_FILE` to a new absolute path,
+`dist/index.js`. Run `down` first: the core suite refuses while a harness Vortex runs. The
+collector sets the selected executable and target from that runtime identity. Set `PLAYWRIGHT_JSON_OUTPUT_FILE` to a new absolute path,
 pass the same path as `--test-report` with `--test-format playwright`, and run
 `pnpm run ai:test:core --reporter=json` through `evidence run --runtime <runtime.json>`.
 Core evidence must include the complete unfiltered suite with no skips.
@@ -467,11 +459,10 @@ Core evidence must include the complete unfiltered suite with no skips.
 For example, in PowerShell 7, from the kit root (replace paths/version with the actual runtime):
 
 ```powershell
-$env:VORTEX_AI_OWNER = 'task-validation'
-$env:VORTEX_AI_SLOT = 'auto'
+pnpm run ai -- down
 pnpm --silent run ai -- evidence runtime --kind installed --label <actual-version> --mode production C:/Vortex/Vortex.exe C:/Vortex/resources/app.asar dist/index.js > harness/.artifacts/runtime.json
 $env:PLAYWRIGHT_JSON_OUTPUT_FILE = Join-Path (Get-Location) 'harness/.artifacts/core-tests.json'
-pnpm run ai -- evidence run --owner task-validation --checkout . --base <base-sha> --out harness/.artifacts/core.json --runtime harness/.artifacts/runtime.json --test-format playwright --test-report $env:PLAYWRIGHT_JSON_OUTPUT_FILE -- pnpm run ai:test:core --reporter=json
+pnpm run ai -- evidence run --checkout . --base <base-sha> --out harness/.artifacts/core.json --runtime harness/.artifacts/runtime.json --test-format playwright --test-report $env:PLAYWRIGHT_JSON_OUTPUT_FILE -- pnpm run ai:test:core --reporter=json
 (Get-FileHash -Algorithm SHA256 harness/.artifacts/core.json).Hash.ToLowerInvariant()
 ```
 
@@ -485,12 +476,67 @@ roles such as scoped tests, control and runtime checks. The schema in `src/readi
 defines all roles. Every artifact reference contains an absolute path and its SHA-256.
 The independent reviewer inspects gate applicability against the actual diff.
 
+A feature or refactor (or any task given a design) also names its approved design and one
+`design-review` entry from the confirmation round. Fragment of a schema-3 feature manifest
+(`<pre-implementation identity>` is the `evidence identity` JSON recorded before implementation,
+whose changed files are only the design and `designs/SITEMAP.md`):
+
+```json
+{
+  "schemaVersion": 3,
+  "task": { "kind": "feature", "target": "doodlebot", "author": "author-name" },
+  "design": { "path": "C:/abs/designs/<topic>.md", "sha256": "<file sha256>" },
+  "acceptance": [{ "id": "same-id-as-design", "criterion": "Same text as the design" }],
+  "evidence": [
+    {
+      "role": "design-review",
+      "status": "pass",
+      "subject": "<pre-implementation identity>",
+      "reason": "Confirmation round <n> clean; no uncontested Blocker or Major",
+      "inspectedBy": "goldfish:implementation_readiness,vortex-runtime-goldfish",
+      "criteria": [],
+      "reviewedDesignSha256": "<design check contentSha256>",
+      "artifacts": [
+        {
+          "path": "C:/abs/harness/.artifacts/designs/<topic>.reviews/round-<n>-implementation_readiness.md",
+          "sha256": "<sha256>"
+        },
+        {
+          "path": "C:/abs/harness/.artifacts/designs/<topic>.reviews/round-<n>-vortex-runtime-goldfish.md",
+          "sha256": "<sha256>"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Add `contested.md` to the artifacts when it exists. The design rules readiness applies:
+
+- A feature or refactor without `design` fails (`design: an approved design is required for
+feature and refactor tasks`); a `design-review` entry without one fails too.
+- Every `design check` issue is reported as `design: <issue>`, plus `design: not approved`
+  unless Status is Approved. The design's target must equal the task target; its acceptance ids
+  and texts (whitespace collapsed) must equal the manifest's; its declared contracts must be in
+  `risk.contracts`; every changed file must lie inside its boundary
+  (`design: <file> outside the approved boundary`).
+- `design-review` requires `reviewedDesignSha256` equal to the approved digest (the field is
+  rejected on other roles), `inspectedBy` different from the task author, empty `criteria`,
+  both reports from one round, each containing the line `Reviewed content sha256: <digest>` and
+  a `Checkout: <headSha> <changesSha256>` line matching its `subject`, a reviewed checkout with no
+  implementation changes, the same `baseSha` as the manifest subject (`design-review: reviewed
+checkout used another base`), and a reviewed head that is an ancestor of the subject head. It is
+  exempt from the current-diff rule. Readiness does not read the findings; the independent
+  `review` entry judges the round, `contested.md` and the approval reference.
+
 ```powershell
 pnpm run ai -- readiness --manifest <task-manifest.json> --json
 ```
 
-Readiness uses schema **v2**; command receipts use **v1**, preflight and upstream E2E reports
-use **v4**, including producing kit identities before and after execution. Current and baseline
+Readiness uses schema **v3** and rejects any other version before parsing
+(`readiness manifest schemaVersion <v> is not supported; this doodlebot reads schema 3`);
+command receipts use **v1**; preflight reports use **v4** and upstream E2E reports **v5**, each
+including producing kit identities before and after execution. Current and baseline
 native reports must use the manifest's unchanged kit code. Obsolete formats must be rerun.
 Scoped and control test receipts require nonempty execution with zero failures and zero skips
 or TODO tests; a failed baseline control still requires nonempty execution with zero omissions.
@@ -520,8 +566,8 @@ A local-diff result cannot certify a later commit.
 - `pnpm run ai:preflight` (= `pr-preflight`) before pushing; put its report in the PR. It diffs
   the committed `HEAD` of `--checkout` (default `.vortex-src`) against its merge-base with `--base`
   (default `upstream/master`), prints PASS/WARN/FAIL/SKIP per check with file:line, exits 1 on any
-  FAIL or INCONCLUSIVE. `--json` lists every hit. Pass a named `--owner`; the operation guard
-  excludes concurrent checks, including the same owner's independent commands.
+  FAIL or INCONCLUSIVE. `--json` lists every hit. The revert check refuses while the harness
+  Vortex runs from the checkout (`... before reverting it.`); run one check at a time.
 
 | Check                    | Result                                                                                                                                                                   |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -548,10 +594,12 @@ A local-diff result cannot certify a later commit.
 
 ### Vortex's own E2E suite
 
-Only when requested, `pnpm run ai:vortex-e2e -- --owner <worker> --checkout <dir>`
+Only when requested, `pnpm run ai:vortex-e2e -- --checkout <dir>`
 (= `vortex-e2e`) runs `<checkout>/packages/e2e` as
 upstream CI does (`CI=1`, `VORTEX_E2E_HEADED` unset, one worker, no retries). It needs a built
-checkout and holds E2E and checkout operation guards. Stop any app using that checkout first.
+checkout and refuses while the harness Vortex runs from it (`... before patching it.`); a harness
+Vortex running from elsewhere is noted in the report because it may affect timings. Run one
+`vortex-e2e` at a time.
 Its temporary fixture writes require source-mutation authorization. For the run only it:
 
 - applies `harness/patches/` (`e2e-window-startup.patch`; KNOWLEDGE.md explains the local
@@ -569,9 +617,8 @@ Its temporary fixture writes require source-mutation authorization. For the run 
 | `--grep`, `--grep-invert` | Passed to Playwright (credential filter added to the latter)       |
 | `--compare <report.json>` | Regressions, pre-existing and fixed against an earlier run         |
 | `--json`                  | Report as JSON; Playwright's output to stderr                      |
-| `--owner <name>`          | Lease owner                                                        |
 
-Reports use schema v4 and go to `harness/.artifacts/vortex-e2e/<time>-<sha>.json`. Old or malformed
+Reports use schema v5 and go to `harness/.artifacts/vortex-e2e/<time>-<sha>.json`. Old or malformed
 baseline formats must be rerun. Comparison reports distinguish regressions, lost coverage,
 changed failure causes and execution-condition differences. A successful exploratory command
 does not establish final readiness; use the strict revision-bound readiness manifest described
@@ -693,7 +740,7 @@ To wait on a plain `events.emit` event: `vortex_dispatch` with `action: "onEvent
 timing meant to reflect users needs production:
 
 - `pnpm run ai -- build --checkout <dir> [--production]` runs the checkout's `pnpm run build` with
-  its pinned pnpm under the checkout lock, refusing while a Vortex runs from it, with
+  its pinned pnpm, refusing while the harness Vortex runs from it (`... before building it.`), with
   NODE_ENV=production for the build only (unset otherwise). It restores `etc/vortex.api.md` and
   `etc/Dependency Report.md` if rewritten. The caller's environment is untouched; in the agent
   sandbox clear a variable with `$env:NODE_ENV=$null`.
@@ -736,8 +783,10 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
   editor entries rendered. Rows kept after a scroll-through only warn unless
   `--max-accumulated <n>`; `--no-scroll-through` skips it.
 - **zoom** needs no game or account and restores zoom, layout and window size. `--signed-out`
-  uses a separate anonymous profile on the next ports and never logs out the active one.
-- **panels**: match `VORTEX_AI_OWNER` to the instance owner; it saves and restores workspaces and
+  starts its own anonymous profile (`<cache>/zoom-signed-out`) on the default ports, so it refuses
+  while a harness Vortex runs (`... before the signed-out zoom check.`); run `down` first. It
+  never logs out the main profile.
+- **panels**: runs against the running instance; it saves and restores workspaces and
   window size. The toggle is `[data-split-view-toggle]` (`aria-pressed`), the chooser
   `[data-panel-chooser="panel"]`; both panes stay at least 440 px.
 
@@ -755,14 +804,14 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
 | `VORTEX_MCP_TOKEN`                         | Bearer token shared by harness and MCP client                              |
 | `VORTEX_AI_NEXUS_API_KEY`                  | Optional legacy key; sandboxes need `--with-api-key`                       |
 | `VORTEX_AI_HEADLESS`                       | Hide window; screenshots may be blank                                      |
-| `VORTEX_AI_OWNER`                          | Required named worker when `--owner` is absent                             |
-| `VORTEX_AI_SLOT`                           | Instance slot (`0`–`19` or `auto`) when `--slot` is absent                 |
 | `VORTEX_AI_PNPM`                           | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx` |
-| `VORTEX_AI_LEASE_DIR`                      | Lease files; default `~/.vortex-ai/leases`                                 |
 | `VORTEX_AI_KIT`                            | Set by `script`: the `file://` URL of `kit.ts`                             |
 
 - Unclear prerequisites: `doctor` with the same flags. No UI write tools: Vortex started without a
   token. HTTP 403: token, host or origin mismatch.
+- `A harness Vortex is running ...`: run `pnpm run ai -- down`; it follows the instance record,
+  so no cache or port options are needed. If no harness Vortex window is open and the refusal
+  persists (a reused pid), delete `harness/.cache/instance.json` ("One instance").
 - Startup errors name the isolated `userData/vortex.log`. Don't print whole logs: auth flows may
   log sensitive URLs.
 - An instance predating `automation_status`: update its extension and restart it with its MCP

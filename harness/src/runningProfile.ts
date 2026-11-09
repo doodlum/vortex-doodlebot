@@ -1,8 +1,8 @@
 import path from "node:path";
 import type { HarnessConfig } from "./config";
 import { ConfigError } from "./errors";
-import { normalizedPath } from "./lease";
 import { VortexMcpClient } from "./mcpClient";
+import { normalizedPath } from "./paths";
 
 export class ProfileMismatchError extends ConfigError {}
 export interface AutomationProfile {
@@ -28,7 +28,7 @@ export function assertAutomationProfile(
     normalizedPath(status.userDataDir) !== normalizedPath(expected)
   )
     throw new ProfileMismatchError(
-      `The MCP endpoint does not identify the expected isolated profile ${expected}. Check the cache, slot and port before driving it.`,
+      `The MCP endpoint does not identify the expected isolated profile ${expected}. Check the cache and port before driving it.`,
     );
 }
 
@@ -42,7 +42,7 @@ export async function readAutomationProfile(
   return status;
 }
 
-/** Shared CLI attachment; callers hold the configured live operation before entering. */
+/** Shared CLI attachment: the endpoint must be this cache's live profile. */
 export async function requireRunning(
   config: HarnessConfig,
   mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken }),
@@ -52,7 +52,7 @@ export async function requireRunning(
   } catch (cause) {
     if (cause instanceof ProfileMismatchError) throw cause;
     throw new ConfigError(
-      `No matching Vortex instance is answering on ${mcp.url}. Start the owned instance with the same target/cache/slot flags (pnpm run ai:up), or run doodlebot doctor.`,
+      `No matching Vortex instance is answering on ${mcp.url}. Start it with the same target/cache flags (pnpm run ai:up), or run doodlebot doctor.`,
       { cause },
     );
   }

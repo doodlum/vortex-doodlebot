@@ -120,7 +120,7 @@ it("leaves a kit command's environment alone, and cleans a Vortex command's", ()
     VORTEX_AI_PNPM: path.resolve("/node22/pnpm.cmd"),
   };
   expect(commandEnv(path.join(repo, "harness"), base, repo)).toEqual(base);
-  const vortex = commandEnv(path.join(repo, ".vortex-worktrees", "fix-a"), base, repo);
+  const vortex = commandEnv(path.join(repo, ".vortex-src", "src"), base, repo);
   expect(vortex.npm_config_user_agent).toBeUndefined();
   expect(vortex.PATH).toBe(
     [path.resolve("/node22"), path.resolve("/Windows")].join(path.delimiter),

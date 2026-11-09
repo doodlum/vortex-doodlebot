@@ -6,24 +6,25 @@ import { loadConfig } from "../config";
 import { VortexMcpClient } from "../mcpClient";
 import { clickByName } from "../uiDriver";
 import { bootstrap } from "../bootstrap";
-import { claimInstanceLease } from "../instance";
+import { assertNoHarnessVortex, clearInstanceRecord } from "../runningVortex";
 
 const signedOut = process.argv.includes("--signed-out");
 const baseConfig = loadConfig();
+// Signed out, this starts its own anonymous profile on the default ports, so the one harness
+// Vortex must be down first.
 const config = signedOut
   ? loadConfig({
       apiKey: undefined,
       cacheDir: path.join(baseConfig.cacheDir, "zoom-signed-out"),
       artifactDir: path.join(baseConfig.artifactDir, "zoom-signed-out"),
-      mcpPort: baseConfig.mcpPort + 1,
-      cdpPort: baseConfig.cdpPort + 1,
     })
   : baseConfig;
-// Drives (or, signed out, starts) an instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:zoom", {}, { attach: true });
+if (signedOut) assertNoHarnessVortex("the signed-out zoom check");
 const ownedInstance = signedOut
   ? (await bootstrap(config, { skipGame: true, onProgress: console.log })).instance
   : undefined;
+// bootstrap's launchVortex wrote the instance record; this check never writes it itself.
+const ownedPid = ownedInstance?.process.pid;
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const handle = await attachToRenderer(config);
@@ -463,4 +464,6 @@ try {
   if (originalViewport.window) await mcp.call("ui_set_viewport", originalViewport.window);
   await handle.close();
   await ownedInstance?.stop();
+  // stop() resolves only after a confirmed exit.
+  if (ownedPid !== undefined) clearInstanceRecord(ownedPid);
 }

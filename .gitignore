@@ -8,7 +8,7 @@ coverage/
 # Vortex clone this suite manages (see harness/src/source.ts)
 .vortex-src/
 
-# Per-session Vortex worktrees of .vortex-src (see harness/src/worktree.ts)
+# Obsolete: per-agent worktrees from before doodlebot ran one instance; delete leftovers.
 .vortex-worktrees/
 
 # Human documentation output and local Python environment.

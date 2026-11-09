@@ -272,7 +272,7 @@ result(
 const apiBody = inventory.api
   .map(
     (module) =>
-      `## ${module.name}\n\n[Source](${link(module.file)}). ${module.name === "instance" ? "Only `claimInstanceLease` from this module is re-exported by the scratch-script kit; other symbols here require a direct repository import." : ""}\n\n` +
+      `## ${module.name}\n\n[Source](${link(module.file)}). ${module.name === "instance" ? "Nothing from this module is re-exported by the scratch-script kit; its symbols require a direct repository import." : ""}\n\n` +
       module.symbols
         .map(
           (symbol) =>

@@ -3,12 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as evidence from "./evidence";
 import { REPO_ROOT } from "./paths";
 
-import { INSTANCE_RESOURCE, checkoutResource, readLease, type LeaseEnv } from "./lease";
-import { VORTEX_E2E_RESOURCE } from "./vortexE2e";
+import { clearInstanceRecord, INSTANCE_RECORD, writeInstanceRecord } from "./runningVortex";
 import { runEvidenceProcess } from "./evidence";
 import {
   accountsForTest,
@@ -29,6 +28,22 @@ import {
   type TestOutcome,
   type VortexE2eReport,
 } from "./vortexE2e";
+
+// The instance record lives in a private cache, and this process counts as a running Vortex.
+vi.mock("./paths", async (original) => {
+  const nodeFs = await import("node:fs");
+  const nodeOs = await import("node:os");
+  const nodePath = await import("node:path");
+  return {
+    ...(await original<typeof import("./paths")>()),
+    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "vortex-e2e-cache-")),
+  };
+});
+vi.mock("./processes", async (original) => ({
+  ...(await original<typeof import("./processes")>()),
+  processImageName: () => "electron.exe",
+}));
+afterAll(() => fs.rmSync(path.dirname(INSTANCE_RECORD), { recursive: true, force: true }));
 
 const SPEC = `import { test, expect } from "../fixtures/vortex-app";
 import { freeUser, premiumUser } from "../helpers/users";
@@ -422,14 +437,12 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
   let root: string;
   let checkout: string;
   let patch: FixturePatch;
-  let leaseEnv: LeaseEnv;
   let artifactDir: string;
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-e2e-run-"));
     checkout = path.join(root, "vortex");
     artifactDir = path.join(root, "artifacts");
-    leaseEnv = { dir: path.join(root, "leases") };
     fs.mkdirSync(path.join(checkout, "packages", "e2e", "src", "fixtures"), { recursive: true });
     fs.mkdirSync(path.join(checkout, "packages", "e2e", "src", "tests"), { recursive: true });
     fs.writeFileSync(
@@ -459,6 +472,7 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
   });
 
   afterEach(() => {
+    clearInstanceRecord();
     fs.rmSync(root, { recursive: true, force: true });
   });
 
@@ -536,10 +550,8 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
       report = await runVortexE2e({
         checkout,
         artifactDir,
-        owner: "qa",
         patches: [patch],
         runner: stubRunner(seen),
-        leaseEnv,
         handleSignals: false,
       });
     } finally {
@@ -556,14 +568,14 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
         "--grep-invert",
       ]),
     );
-    // Restored byte-identically, tree clean, leases gone.
+    // Restored byte-identically, tree clean.
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
     expect(run(checkout, ["status", "--porcelain"]).trim()).toBe("");
-    expect(readLease(VORTEX_E2E_RESOURCE, leaseEnv)).toBeUndefined();
-    expect(readLease(checkoutResource(checkout), leaseEnv)).toBeUndefined();
 
     expect(report.headSha).toBe(run(checkout, ["rev-parse", "HEAD"]).trim());
-    expect(report.schemaVersion).toBe(4);
+    expect(report.schemaVersion).toBe(5);
+    expect(report).not.toHaveProperty("owner");
+    expect(report.notes.join(" ")).not.toContain("harness Vortex");
     expect(report.kit).toEqual(evidence.captureCheckoutIdentity(REPO_ROOT));
     expect(report.kitAfter).toEqual(report.kit);
     expect(report.patches).toEqual([
@@ -581,8 +593,10 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
     expect(JSON.parse(fs.readFileSync(report.reportFile ?? "", "utf8"))).toMatchObject({
       tool: "vortex-e2e",
     });
-    expect(formatE2eReport(report)).toContain(
-      "1 passed, 1 failed, 0 skipped, 4 skipped for missing credentials",
+    const summary = formatE2eReport(report);
+    expect(summary).toContain("1 passed, 1 failed, 0 skipped, 4 skipped for missing credentials");
+    expect(summary.split("\n")[0]).toBe(
+      `vortex-e2e ${report.checkout} (HEAD ${report.headSha.slice(0, 9)})`,
     );
   });
 
@@ -592,7 +606,6 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
       artifactDir,
       patches: [patch],
       runner: stubRunner({}),
-      leaseEnv,
       handleSignals: false,
     };
     const first = await runVortexE2e(options);
@@ -618,7 +631,6 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
         checkout,
         artifactDir,
         patches: [patch],
-        leaseEnv,
         handleSignals: false,
         runner: async (invocation) => {
           const result = await runner(invocation);
@@ -643,14 +655,12 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
         artifactDir,
         patches: [patch],
         runner: stubRunner({}),
-        leaseEnv,
         handleSignals: false,
       }),
     ).rejects.toThrow(/uncommitted changes/);
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(
       `${FIXTURE_BEFORE}// mine\n`,
     );
-    expect(readLease(VORTEX_E2E_RESOURCE, leaseEnv)).toBeUndefined();
   });
 
   it("fails clearly when the patch no longer applies", async () => {
@@ -670,7 +680,6 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
         artifactDir,
         patches: [patch],
         runner: stubRunner({}),
-        leaseEnv,
         handleSignals: false,
       }),
     ).rejects.toThrow(/does not apply cleanly/);
@@ -694,7 +703,6 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
       artifactDir,
       patches: [patch],
       runner: stubRunner(seen),
-      leaseEnv,
       handleSignals: false,
     });
     expect(report.patches[0]).toMatchObject({ applied: false, alreadyPresent: true });
@@ -711,13 +719,11 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
           if (invocation.list) return stubRunner({})(invocation);
           throw new Error("playwright crashed");
         },
-        leaseEnv,
         handleSignals: false,
       }),
     ).rejects.toThrow("playwright crashed");
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
     expect(run(checkout, ["status", "--porcelain"]).trim()).toBe("");
-    expect(readLease(VORTEX_E2E_RESOURCE, leaseEnv)).toBeUndefined();
   });
 
   it("awaits a cancelled real child before restoring patched fixture bytes", async () => {
@@ -727,9 +733,7 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
       runVortexE2e({
         checkout,
         artifactDir,
-        owner: "cancel",
         patches: [patch],
-        leaseEnv,
         signal: controller.signal,
         handleSignals: false,
         runner: async (invocation) => {
@@ -738,7 +742,6 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
             ...invocation,
             executable: process.execPath,
             args: ["-e", "console.log('ready'); setInterval(()=>{},1000)"],
-            persistentResources: [VORTEX_E2E_RESOURCE, checkoutResource(checkout)],
             onOutput: () => controller.abort(),
           });
           expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_AFTER);
@@ -749,69 +752,49 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
     ).rejects.toThrow(/interrupted/);
     expect(childExitedBeforeRestore).toBe(true);
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
-    expect(readLease(checkoutResource(checkout), leaseEnv)).toBeUndefined();
   });
 
-  it("runs while another owner's harness Vortex holds an instance", async () => {
-    const { acquireLease } = await import("./lease");
-    acquireLease(INSTANCE_RESOURCE, "orchestrator", {
-      ...leaseEnv,
-      mode: "explicit",
-      ttlMinutes: 5,
+  const running = (sourceDir?: string): void =>
+    writeInstanceRecord({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      cacheDir: path.join(root, "cache"),
+      userDataDir: path.join(root, "cache", "userData"),
+      mcpPort: 3701,
+      ...(sourceDir === undefined ? {} : { sourceDir }),
     });
-    await runVortexE2e({
+
+  it("notes a running harness Vortex that does not run from the checkout", async () => {
+    running(path.join(root, "other"));
+    const report = await runVortexE2e({
       checkout,
       artifactDir,
-      owner: "qa",
       patches: [patch],
       runner: stubRunner({}),
-      leaseEnv,
       handleSignals: false,
     });
-    expect(readLease(INSTANCE_RESOURCE, leaseEnv)?.lease.owner).toBe("orchestrator");
-    expect(readLease(VORTEX_E2E_RESOURCE, leaseEnv)).toBeUndefined();
+    expect(report.notes).toContain(
+      `a harness Vortex (pid ${String(process.pid)}) was running during the run; timings may be affected`,
+    );
+    expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
   });
 
-  it("refuses while another owner's vortex-e2e run holds its lease", async () => {
-    const { acquireLease } = await import("./lease");
-    acquireLease(VORTEX_E2E_RESOURCE, "orchestrator", {
-      ...leaseEnv,
-      mode: "explicit",
-      ttlMinutes: 5,
-    });
+  it("refuses to patch a checkout the harness Vortex runs from, before touching it", async () => {
+    running(checkout);
     await expect(
       runVortexE2e({
         checkout,
         artifactDir,
-        owner: "qa",
         patches: [patch],
-        runner: stubRunner({}),
-        leaseEnv,
+        runner: async () => {
+          throw new Error("runner must not start");
+        },
         handleSignals: false,
       }),
-    ).rejects.toThrow(/held by "orchestrator"/);
+    ).rejects.toThrow(
+      `A harness Vortex is running from ${path.resolve(checkout)} (pid ${String(process.pid)}); run \`pnpm run ai -- down\` before patching it.`,
+    );
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
-  });
-
-  it("refuses while another owner holds the checkout, and releases its own lease", async () => {
-    const { acquireLease } = await import("./lease");
-    acquireLease(checkoutResource(checkout), "fixer", {
-      ...leaseEnv,
-      mode: "explicit",
-      ttlMinutes: 5,
-    });
-    await expect(
-      runVortexE2e({
-        checkout,
-        artifactDir,
-        owner: "qa",
-        patches: [patch],
-        runner: stubRunner({}),
-        leaseEnv,
-        handleSignals: false,
-      }),
-    ).rejects.toThrow(/The lease on .* is held by "fixer"/);
-    expect(readLease(VORTEX_E2E_RESOURCE, leaseEnv)).toBeUndefined();
-    expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
+    expect(fs.existsSync(artifactDir)).toBe(false);
   });
 });

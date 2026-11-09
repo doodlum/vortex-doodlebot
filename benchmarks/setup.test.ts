@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { findGamePath, KNOWN_GAMES } from "../harness/src/gameSetup";
 import {
   cachedAccountStatus,
@@ -97,7 +97,6 @@ it("saves a real copy separately, reuses it and refuses changed bytes without re
     cleanSource: true as const,
     source,
     authCache,
-    owner: `setup-test-${path.basename(root)}`,
     setupFile,
     snapshotRoot: path.join(root, "snapshots"),
   };
@@ -130,7 +129,6 @@ it("uses an explicit new source even when the previously saved snapshot is damag
     cleanSource: true as const,
     source,
     authCache: path.join(root, "login.json"),
-    owner: `setup-test-${path.basename(root)}`,
     setupFile: path.join(root, "setup.json"),
     snapshotRoot: path.join(root, "snapshots"),
   };
@@ -161,7 +159,6 @@ it("blocks absent acknowledgements and dirty sources before persisting a configu
     cleanSource: true as const,
     source,
     authCache: path.join(root, "login.json"),
-    owner: `setup-test-${path.basename(root)}`,
     setupFile: path.join(root, "setup.json"),
     snapshotRoot: path.join(root, "snapshots"),
   };
@@ -170,4 +167,37 @@ it("blocks absent acknowledgements and dirty sources before persisting a configu
   ).rejects.toThrow("Confirm");
   await expect(prepareCollection(options)).rejects.toThrow("deployment manifest");
   expect(fs.existsSync(options.setupFile)).toBe(false);
+});
+
+it("refuses benchmark sign-in while a harness Vortex runs, and allows it after", async () => {
+  const cache = fixture();
+  vi.resetModules();
+  vi.doMock("../harness/src/paths", async (original) => ({
+    ...(await original<typeof import("../harness/src/paths")>()),
+    DEFAULT_CACHE_DIR: cache,
+  }));
+  vi.doMock("../harness/src/processes", async (original) => ({
+    ...(await original<typeof import("../harness/src/processes")>()),
+    processImageName: () => "electron.exe",
+  }));
+  try {
+    const running = await import("../harness/src/runningVortex");
+    const setup = await import("./setup");
+    running.writeInstanceRecord({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      cacheDir: cache,
+      userDataDir: path.join(cache, "live"),
+      mcpPort: 3701,
+    });
+    expect(() => setup.assertBenchmarkSetupCanLaunch()).toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${cache}); run \`pnpm run ai -- down\` before benchmark setup.`,
+    );
+    running.clearInstanceRecord();
+    expect(() => setup.assertBenchmarkSetupCanLaunch()).not.toThrow();
+  } finally {
+    vi.doUnmock("../harness/src/paths");
+    vi.doUnmock("../harness/src/processes");
+    vi.resetModules();
+  }
 });

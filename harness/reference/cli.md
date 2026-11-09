@@ -14,6 +14,7 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `click`
 - `collection`
 - `deploy`
+- `design`
 - `doctor`
 - `down`
 - `e2e`
@@ -22,8 +23,6 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `fill`
 - `help`
 - `install`
-- `kit`
-- `lease`
 - `login-import`
 - `pr-checks`
 - `pr-preflight`
@@ -36,7 +35,6 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `screenshot`
 - `script`
 - `setup`
-- `slots`
 - `slow-download`
 - `snapshot`
 - `source`
@@ -45,7 +43,6 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `up`
 - `vortex-e2e`
 - `watch`
-- `worktree`
 
 ## Full help
 
@@ -77,7 +74,7 @@ Instance lifecycle
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
   bootstrap              Build/reset baseline and launch (--no-game supported)
-  down                   Quit this cache's Vortex and wait for clean exit
+  down                   Quit the recorded harness Vortex (any cache), wait for clean exit
   status                 Show endpoint and profile cache status
   source                 Find your fork, clone to .vortex-src and build Vortex
     --update             Fetch origin and upstream in an existing clone
@@ -86,7 +83,7 @@ Instance lifecycle
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
   readiness              Evaluate strict revision-bound task evidence; never runs gates
-    --manifest <json>   Required task/evidence manifest (schema version 2)
+    --manifest <json>   Required task/evidence manifest (schema version 3)
     --json              Print the readiness report; exit 0 ready, 1 incomplete
   evidence identity --checkout <dir> --base <ref>
                          Print current subject and kit identities, including local diff
@@ -113,59 +110,28 @@ Instance lifecycle
     --skip-revert        Skip the revert check
     --pr <number|url>    Also lint that PR's title and description (--repo as above)
     --json               Machine-readable report; exit code 1 on any failure
-  build                  Build a Vortex checkout with its pinned pnpm under its lock:
+  build                  Build a Vortex checkout with its pinned pnpm:
     --checkout <dir>     (default .vortex-src)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
   vortex-e2e             Run Vortex's own E2E suite (packages/e2e, CI=1, one worker, no
-                         retries) under the instance lease, with the kit's fixture
-                         patches applied for the run and restored byte-identically, and
-                         account specs left out when their credentials are absent
+                         retries), with the kit's fixture patches applied for the run
+                         and restored byte-identically, and account specs left out when
+                         their credentials are absent
     --checkout <dir>     Vortex checkout (default: .vortex-src)
     --spec <file>        Spec to run, relative to packages/e2e or src/tests; repeatable
     --grep <re> --grep-invert <re>   Playwright title filters
     --compare <json>     Diff against an earlier report: regressions vs pre-existing
     --json               Print the report as JSON (Playwright's output goes to stderr)
 
-Parallel sessions
-  kit lock               Take the global kit lock before changing doodlebot itself (knowledge,
-                         skills, harness, docs): --owner <name> [--ttl <min>, default 30]
-                         [--wait <min>]. Take it again to renew.
-  kit sync               Under the lock: switch to main and fast-forward to origin/main
-  kit push               Under the lock: rebase main onto origin/main and push it
-  kit renew              Renew the original live lock: --acquisition <id> [--ttl <min>]
-  kit unlock             Release your original lock: --acquisition <id>; --force is inspected recovery
-  kit status             Show who holds it; --json includes its acquisition ID
-  --slot <n|auto>        Instance slot: its own cache, artifacts, ports and instance lease.
-                         0 (default) is harness/.cache on 3701/9222; n uses harness/.slots/<n>
-                         on 3701+10n/9222+10n. auto: this owner's own slot, kept across
-                         commands (needs --owner). Or VORTEX_AI_SLOT. Pass it to every command.
-  slots                  Every slot: who was given it, whether its Vortex runs (--json)
-  worktree add <name>    A Vortex worktree of .vortex-src for one session's work, in
-                         .vortex-worktrees/<name>: [--base <ref>, default upstream/master]
-                         [--branch <name>, default <name>] [--no-build] [--no-install]
-                         [--ref <branch|sha>: that ref detached, e.g. to review a branch
-                         another worktree has checked out]
-  worktree list          The worktrees and their branches
-  worktree remove <name> Remove one (refuses uncommitted changes without --force)
-  --worktree <name>      Use that worktree as the target, like --dev-dir
-
-Leases (one harness Vortex per cache; several agents may share the kit)
-  lease status           Who holds what, live or stale (--json)
-  lease acquire          Hold the instance lease: --owner <name> [--purpose <text>]
-                         [--ttl <minutes>, default 60; 0 = none] [--pid <n>] [--wait <min>]
-                         [--checkout <dir>: that checkout's lock AS WELL, all or nothing;
-                         --checkout-only: just the checkout]. Re-run to renew.
-  lease release          --owner <name>: every lease that owner holds (instance and
-                         checkouts). [--checkout <dir>: only that checkout] [--force]
-  lease run [flags] [--] <cmd...>
-                         Hold the lease (and --checkout's) while <cmd> runs; exit code
-                         propagated. --owner <name> [--wait <minutes>] [--purpose <text>]
-                         Flags go before the command, which starts at its first word.
-  Commands that start or stop Vortex take the lease implicitly and refuse while another
-  owner holds it; up keeps it until down. Vortex run from a checkout also locks that
-  checkout until it exits. Owner: --owner, else VORTEX_AI_OWNER, else "anonymous".
+Design-first work (EGM)
+  design new <file> --title <t> --target vortex|doodlebot
+                         Write the design template; refuses an existing file
+  design check <file> [--ready] [--json]
+                         Validate structure and approval; print the content digest
+  design scope <file> --checkout <dir> --base <ref> [--json]
+                         List changed files outside the approved boundary; exit 1 if any
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -180,10 +146,10 @@ Driving a running instance
     eval <file.js>       renderer over CDP and print the JSON result (refuses any Vortex
                          whose profile is not in this cache). Promises are awaited.
   script <file.mts> [args...]
-                         Run a scratch script with the kit's tsx under the instance lease.
-                         --owner, --wait and the instance flags (--slot, --worktree, --dev-dir,
-                         --cache-dir, --port, --cdp-port) are the kit's anywhere, even after the
-                         file; every other argument (and all after --) is the script's.
+                         Run a scratch script with the kit's tsx. The instance flags
+                         (--dev-dir, --cache-dir, --port, --cdp-port) are the kit's anywhere,
+                         even after the file; every other argument (and all after --) is the
+                         script's.
                          VORTEX_AI_KIT holds the import URL of harness/src/kit.ts
   record                 Save WebM; --ffmpeg <path> --seconds <1-60> --label <name>
   install <archive>      Install local ZIP/7z through Vortex; no account needed
@@ -204,7 +170,6 @@ Testing and iteration
     --screenshots        Save PNG per viewport
     --strict             Nonzero exit for viewport-dependent findings or overflow
   watch                  Watch doodlebot source; finite build/copy/reload cycles
-                         Needs an existing owned app; run directly, outside command wrappers
   build-extension        Force extension build
 
 Target and isolation (repeat the same flags for all commands)
@@ -220,7 +185,6 @@ Target and isolation (repeat the same flags for all commands)
   --game <id> --game-path <dir>   Real game integration; use a disposable copy
   --cache-dir <dir>      Profiles and private OAuth cache
   --port <n> --cdp-port <n>      MCP/CDP endpoints (3701/9222 by default)
-  --owner <name>         Required live/provisioning worker (or VORTEX_AI_OWNER)
   --headless             Hide the window; screenshots/layout may differ
   --production           Run a source build as releases run (production React);
                          use for any timing meant to reflect users' experience.
