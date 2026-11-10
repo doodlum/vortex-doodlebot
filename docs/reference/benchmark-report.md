@@ -28,7 +28,9 @@ A report from `/benchmark:measure` has one build, no Verdict section and no diff
 For each metric and each build, the table gives the median, minimum, maximum and the number of
 values. A comparison also gives the difference `(median B − median A) / median A × 100` in
 percent, left out when median A is 0. The median of an even number of values is the mean of the
-two middle values. Milliseconds and percentages are shown to one decimal place.
+two middle values. Milliseconds and percentages are shown to one decimal place, and the
+verdicts and the difference are worked out from those shown values, so what you read is what
+was compared.
 
 ## Verdicts
 

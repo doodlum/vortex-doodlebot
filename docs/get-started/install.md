@@ -82,6 +82,8 @@ describes the model.
    `egm` marketplace, add it again at the release tag and install it again:
 
    ```text
+   /plugin uninstall egm@egm
+   /plugin marketplace remove egm
    /plugin marketplace add https://github.com/google/elephant-goldfish-model.git#v0.1.1
    /plugin install egm@egm
    ```

@@ -40,7 +40,7 @@ only whether credentials are present, never the credentials themselves.
 - To sign in a source build, name its checkout: `/doodlebot:login --dev-dir <path>`. The agent
   uses `--dev-dir <path>` instead of `--installed` on every command, `setup` and `save-login`
   included.
-- If the target already has a saved login that still works, the agent reports it and no click
+- If the target already has a saved login present, the agent reports it and no click
   is needed.
 - Fresh and rebuilt profiles of the same target inherit the login, but not mod lists or game
   paths.

@@ -33,6 +33,10 @@ A `--dev-dir` that is not a built Vortex checkout fails with
 `--dev-dir <path> is not a built Vortex checkout: <reason>`. `doodlebot doctor` reports the
 same error as a failing `Vortex` check.
 
+`doodlebot doctor` reports the baseline for the flags you give it. With `--no-game` its
+`Profile cache` and `Sandbox baseline` lines describe the no-game baseline, which is separate
+from the sandbox one.
+
 ## Defaults
 
 | Setting         | Default                          | Override                               |

@@ -17,7 +17,7 @@ Read-only: this command starts and stops nothing.
      `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or
      `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this
      `SKILL.md`). If they differ, suggest `/doodlebot:update`.
-2. Run `doodlebot status --installed --sandbox` by default, as doctor does, or
+2. Run `doodlebot status --installed --sandbox` by default, as in the doctor example, or
    `doodlebot status` with the person's target and game flags when they gave any. It
    reports whether the MCP port is `answering`, the game, whether an API key is set, the
    baseline snapshot and the working profile. The baseline and profile lines are for the

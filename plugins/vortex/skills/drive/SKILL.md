@@ -126,7 +126,8 @@ capture open, so the command never returns. So:
    keep `$p` between calls) and check every 10 seconds whether it still runs
    (`Get-Process -Id <pid>`, `kill -0 <pid>`). A command is done when its process has exited
    and its log has its success line: `Vortex is up in` for `up`; for `setup`, `Ready:` (or,
-   with `--oauth`, `Initial setup: click Log in` or the line ending `Setup complete.`). A cold
+   with `--oauth`, the line ending `Setup complete.`, or with `--no-wait` also
+   `Initial setup: click Log in`). A cold
    start launches Vortex up to three times on the same port, so `doodlebot status` answering
    is only a liveness hint, never completion. Read the log, and the exit code when you can.
 3. For a command that may raise a dialog (for example installing an archive that is already

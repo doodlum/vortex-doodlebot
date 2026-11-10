@@ -673,8 +673,9 @@ open is not confirmed. Run it in the background with output to a log file:
 - Bash: `nohup <shim> <args> > <log> 2>&1 &`.
 
 The launch is done when that background process has exited and its log has the success line:
-`Vortex is up in` for `up`; `Ready:` for `setup`, or with `--oauth`
-`Initial setup: click Log in` or `Existing OAuth login cached … Setup complete.`. Do not treat
+`Vortex is up in` for `up`; `Ready:` for `setup`; for `setup --oauth`, a line ending
+`Setup complete.`, or with `--no-wait` also `Initial setup: click Log in` (without
+`--no-wait` that line is printed before the wait and is not success). Do not treat
 `doodlebot status` answering as completion: a cold start launches Vortex up to three times on
 the same port (see "Run and reset" in `harness/AGENTS.md`), so MCP can answer
 between launches. `status` is only a liveness hint. Agent shells keep no variables between

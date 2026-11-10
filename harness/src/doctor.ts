@@ -57,7 +57,7 @@ export async function runDoctor(
   );
   checks.push(checkExtension());
   if (!options.skipGame) checks.push(checkGame(config));
-  checks.push(checkCache(config));
+  checks.push(checkCache(config, options.skipGame === true));
   checks.push(checkSandboxBaseline(config, options.skipGame === true));
   checks.push(checkCapturedLogin(config));
   const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
@@ -93,7 +93,7 @@ function checkSandboxBaseline(config: HarnessConfig, skipGame: boolean): Check {
     ok: present,
     advisory: true,
     detail: present ? `present: ${markerFile(snapshot)}` : "missing",
-    fix: "doodlebot up --sandbox (the first start builds it), then doodlebot down",
+    fix: `doodlebot up ${skipGame ? "--no-game" : "--sandbox"} (the first start builds it), then doodlebot down`,
   };
 }
 
@@ -248,8 +248,8 @@ function checkGame(config: HarnessConfig): Check {
   };
 }
 
-function checkCache(config: HarnessConfig): Check {
-  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS);
+function checkCache(config: HarnessConfig, skipGame: boolean): Check {
+  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS, skipGame);
   const marker = readMarker(snapshot);
   const live = fs.existsSync(path.join(liveDir(config), "userData"));
 

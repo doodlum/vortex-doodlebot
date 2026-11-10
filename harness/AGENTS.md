@@ -100,8 +100,9 @@ from the workspace root.
   and on Windows a captured `up` may never return (KNOWLEDGE.md). Run them in the background
   with output to a log in `harness/.artifacts/runs/`, and wait for the background process to
   exit. A launch is done when that process has exited and its log has the success line
-  (`Vortex is up in` for `up`; `Ready:` for `setup`, or with `--oauth`
-  `Initial setup: click Log in` or `Existing OAuth login cached … Setup complete.`). A cold
+  (`Vortex is up in` for `up`; `Ready:` for `setup`; for `setup --oauth`, a line ending
+  `Setup complete.`, or with `--no-wait` also `Initial setup: click Log in`, which without
+  `--no-wait` is printed before the wait and is not success). A cold
   start launches Vortex up to three times on the same port, so `doodlebot status` answering
   is only a liveness hint, never completion. For a command that may raise a dialog, poll
   `doodlebot call ui_active_dialogs`, take `doodlebot snapshot` for the button's ref and answer
