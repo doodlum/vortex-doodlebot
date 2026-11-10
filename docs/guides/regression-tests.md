@@ -7,8 +7,8 @@ against a real Vortex, with `/doodlebot:ui-test`.
 
 - [Set up doodlebot](../get-started/set-up.md).
 - Know the behavior the test should hold: what the user does and what must be true afterward.
-- Stop any running test Vortex with `/doodlebot:stop`. The test suite starts its own Vortex and
-  refuses while another doodlebot Vortex runs.
+- Stop any running test Vortex with `/doodlebot:stop`, and close your own Vortex. The test suite
+  starts its own Vortex and refuses while another Vortex runs.
 
 ## Write and run the test
 

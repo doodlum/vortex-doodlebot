@@ -137,8 +137,8 @@ const COMMAND_GROUPS = [
   },
   {
     title: "Work on Vortex",
-    description: "Fix, design, drive and check Vortex changes, and prepare their pull requests.",
-    commands: ["design", "fix", "drive", "qa", "ui-test", "pr"],
+    description: "Fix, drive and check Vortex changes, and prepare their pull requests.",
+    commands: ["fix", "drive", "qa", "ui-test", "pr"],
   },
   {
     title: "Benchmark",

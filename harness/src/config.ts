@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { findRelease } from "./content";
 import { ConfigError } from "./errors";
 import { peekDevElectron } from "./electronRuntime";
 import { DEFAULT_ARTIFACT_DIR, DEFAULT_CACHE_DIR, HARNESS_ROOT, REPO_ROOT } from "./paths";
@@ -170,8 +171,19 @@ export function findInstalledVortex(): string | undefined {
  * Vortex, so a clone it manages takes precedence once one exists.
  */
 export function resolveTarget(
-  overrides: { devDir?: string; exe?: string; preferInstalled?: boolean } = {},
+  overrides: { devDir?: string; exe?: string; preferInstalled?: boolean; release?: string } = {},
 ): VortexTarget {
+  // A registered official release (`doodlebot release get`), extracted outside the workspace.
+  if (overrides.release !== undefined) {
+    if (overrides.devDir !== undefined || overrides.exe !== undefined)
+      throw new ConfigError("Choose one of --release, --exe and --dev-dir.");
+    const release = findRelease(overrides.release);
+    if (release === undefined || !fs.existsSync(release.exe))
+      throw new ConfigError(
+        `Release ${overrides.release} is not registered. Get it with \`doodlebot release get ${overrides.release}\`.`,
+      );
+    return { kind: "installed", executable: release.exe, args: [], appName: "Vortex" };
+  }
   // Precedence: an explicit --dev-dir, then the clone this repo manages, then an
   // installed Vortex. The clone wins because if you have gone to the trouble of
   // cloning Vortex here, working on it is the whole point — but --installed
@@ -243,8 +255,10 @@ export function resolveTargetSafely(
   try {
     return resolveTarget(overrides);
   } catch (error) {
-    if (overrides.devDir !== undefined && overrides.devDir !== "" && error instanceof ConfigError)
-      throw error;
+    const explicit =
+      (overrides.devDir !== undefined && overrides.devDir !== "") ||
+      overrides.release !== undefined;
+    if (explicit && error instanceof ConfigError) throw error;
     return { kind: "installed", executable: "", args: [], appName: "Vortex" };
   }
 }

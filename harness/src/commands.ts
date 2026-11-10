@@ -49,6 +49,9 @@ export const commands: CommandEntry[] = [
   { name: "log" },
   { name: "fixture", subcommands: ["mod"] },
   { name: "knowledge", subcommands: ["add", "search", "list", "remove", "path"] },
+  // Content the kit may write to
+  { name: "game", subcommands: ["copy", "register", "restore"] },
+  { name: "release", subcommands: ["get", "list"] },
   // Checks and evidence
   { name: "test" },
   { name: "responsive" },

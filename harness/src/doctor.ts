@@ -18,6 +18,7 @@ import { KNOWN_GAMES, findGamePath, steamLibraryRoots } from "./gameSetup";
 import { VortexMcpClient } from "./mcpClient";
 import { hasVortexSource, vortexSourceDir } from "./source";
 import { authCacheFile } from "./instance";
+import { SEVEN_ZIP_HINT, find7Zip } from "./releaseFetch";
 
 export interface Check {
   name: string;
@@ -60,6 +61,7 @@ export async function runDoctor(
   checks.push(checkCache(config, options.skipGame === true));
   checks.push(checkSandboxBaseline(config, options.skipGame === true));
   checks.push(checkCapturedLogin(config));
+  checks.push(checkSevenZip());
   const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
   if (lease !== undefined) checks.push(lease);
   checks.push(await checkRunning(config));
@@ -94,6 +96,18 @@ function checkSandboxBaseline(config: HarnessConfig, skipGame: boolean): Check {
     advisory: true,
     detail: present ? `present: ${markerFile(snapshot)}` : "missing",
     fix: `doodlebot up ${skipGame ? "--no-game" : "--sandbox"} (the first start builds it), then doodlebot down`,
+  };
+}
+
+/** 7-Zip, which `release get` needs to extract a release without running its installer. */
+export function checkSevenZip(find: () => string | undefined = find7Zip): Check {
+  const found = find();
+  return {
+    name: "7-Zip",
+    ok: found !== undefined,
+    advisory: true,
+    detail: found ?? "not found; only `doodlebot release get` needs it",
+    fix: SEVEN_ZIP_HINT,
   };
 }
 

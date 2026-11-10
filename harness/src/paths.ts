@@ -14,6 +14,10 @@ export const REPO_ROOT = path.resolve(HARNESS_ROOT, "..");
  * lives here, so the "one doodlebot Vortex" guard spans all of them.
  */
 export const USER_STATE_DIR = path.join(os.homedir(), ".doodlebot");
+/** What the kit created and may write to: game copies, releases, pending restores (content.ts). */
+export const CONTENT_FILE = path.join(USER_STATE_DIR, "content.json");
+/** Official Vortex releases, extracted outside every workspace (releaseFetch.ts). */
+export const RELEASES_DIR = path.join(USER_STATE_DIR, "releases");
 /** Profiles and login cache of the one instance a bare `doodlebot up` runs. */
 export const DEFAULT_CACHE_DIR = path.join(HARNESS_ROOT, ".cache");
 export const DEFAULT_ARTIFACT_DIR = path.join(HARNESS_ROOT, ".artifacts");

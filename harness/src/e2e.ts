@@ -15,7 +15,7 @@ import { bootstrap } from "./bootstrap";
 import type { HarnessConfig } from "./config";
 import { deployMods, modsStillInstalling, purgeGame } from "./deployment";
 import { VortexMcpClient } from "./mcpClient";
-import { KNOWN_GAMES } from "./gameSetup";
+import { gameProcesses } from "./gameSetup";
 
 export class E2eError extends Error {}
 
@@ -171,35 +171,6 @@ export async function runE2e(config: HarnessConfig, options: E2eOptions): Promis
   }
 
   return { steps, ok: steps.every((s) => s.ok), elapsedMs: Date.now() - started };
-}
-
-const GAME_EXECUTABLES: Record<string, string[]> = {
-  fallout4: ["Fallout4.exe", "f4se_loader.exe"],
-  skyrimse: ["SkyrimSE.exe", "skse64_loader.exe"],
-  fallout3: ["Fallout3.exe"],
-  falloutnv: ["FalloutNV.exe"],
-  stardewvalley: ["Stardew Valley.exe", "StardewModdingAPI.exe"],
-};
-
-async function gameProcesses(gameId: string): Promise<{ name: string; pid: number }[]> {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const run = promisify(execFile);
-  const names =
-    GAME_EXECUTABLES[gameId] ?? (KNOWN_GAMES[gameId] ? [KNOWN_GAMES[gameId]!.executable] : []);
-  if (names.length === 0)
-    throw new E2eError(
-      `No launch-process check is defined for ${gameId}. Add its executable or use --no-launch for installation/deployment only.`,
-    );
-  const { stdout } = await run("tasklist", ["/FO", "CSV", "/NH"], { windowsHide: true });
-  return stdout.split(/\r?\n/).flatMap((line) => {
-    const match = /^"([^"]+)","(\d+)"/.exec(line);
-    return match?.[1] &&
-      match[2] &&
-      names.some((name) => name.toLowerCase() === match[1]!.toLowerCase())
-      ? [{ name: match[1], pid: Number(match[2]) }]
-      : [];
-  });
 }
 
 async function waitForGame(

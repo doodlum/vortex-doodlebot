@@ -77,22 +77,23 @@ describe("parseArgs", () => {
     expect(parse(["pr-preflight", "--test", "a", "--test", "b"]).lists.test).toEqual(["a", "b"]);
   });
 
-  it("reads design subcommands and their flags", () => {
+  it("reads game and release subcommands and their flags", () => {
     expect(
-      parse(["design", "scope", "designs/x.md", "--checkout", ".", "--base", "abc", "--json"]),
+      parse(["game", "restore", "fallout4", "--file", "a.ini", "--file", "b.ini"]),
     ).toMatchObject({
-      command: "design",
-      positional: ["scope", at("designs/x.md")],
-      flags: { checkout: CALLER, base: "abc", json: true },
+      command: "game",
+      positional: ["restore", "fallout4"],
+      lists: { file: [at("a.ini"), at("b.ini")] },
     });
-    expect(parse(["design", "check", "designs/x.md", "--ready"]).flags).toEqual({
-      ready: true,
+    // --all is a switch: it neither swallows the next flag nor needs a value.
+    expect(parse(["game", "restore", "fallout4", "--all", "--json"]).flags).toEqual({
+      all: true,
+      json: true,
     });
-    // --ready is a switch: it neither swallows the next flag nor needs a value.
-    expect(parse(["design", "check", "x.md", "--ready", "--json"])).toMatchObject({
-      positional: ["check", at("x.md")],
-      flags: { ready: true, json: true },
+    expect(parse(["game", "copy", "fallout4", "--to", "copies"]).flags).toEqual({
+      to: at("copies"),
     });
+    expect(parse(["up", "--release", "2.8.0"]).flags).toEqual({ release: "2.8.0" });
   });
 
   it.each([true, false])("preserves evidence command flags with separator=%s", (separator) => {
@@ -154,6 +155,8 @@ describe("path rules", () => {
         "ffmpeg",
         "a",
         "b",
+        "to",
+        "file",
       ].sort(),
     );
   });
@@ -189,9 +192,8 @@ describe("path rules", () => {
   });
 
   it.each([
-    [["design", "new", "d.md", "--title", "T", "--target", "vortex"], [1]],
-    [["design", "check", "d.md"], [1]],
-    [["design", "scope", "d.md"], [1]],
+    [["game", "register", "fallout4", "copies/fallout4"], [2]],
+    [["game", "copy", "fallout4"], []],
     [["script", "probe.mts"], [0]],
     [["eval", "probe.js"], [0]],
     [["install", "mod.zip"], [0]],

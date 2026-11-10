@@ -14,7 +14,6 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `click`
 - `collection`
 - `deploy`
-- `design`
 - `doctor`
 - `down`
 - `e2e`
@@ -22,6 +21,7 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `evidence`
 - `fill`
 - `fixture`
+- `game`
 - `help`
 - `install`
 - `knowledge`
@@ -33,8 +33,8 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `pr-preflight`
 - `press`
 - `purge`
-- `readiness`
 - `record`
+- `release`
 - `responsive`
 - `save-login`
 - `screenshot`

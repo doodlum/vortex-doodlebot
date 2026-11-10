@@ -7,8 +7,8 @@ build with `/doodlebot:baseline`, and how to start the test Vortex with it.
 
 - [Set up doodlebot](../get-started/set-up.md).
 - For a real game: install it, finish its updates, close the game and its launcher, and make a
-  copy of the game folder that doodlebot may change. Use a test machine or a QA-only Windows
-  account if you can.
+  registered copy of the game folder that doodlebot may change ("Keep a real game safe" below).
+  Use a test machine or a QA-only Windows account if you can.
 - For a source build: [Work on Vortex source](source-development.md).
 
 ## What a baseline is
@@ -55,17 +55,40 @@ The games you can name:
 | -------------------- | ------------------------------- | ------------------------------------------------------------------------------------------ |
 | The sandbox          | `--sandbox`                     | A disposable game with real install, enable, deploy and purge; not playable                |
 | The Bethesda sandbox | `--bethesda-sandbox`            | A fake Fallout 4 with plugins and a private Documents and LocalAppData; source builds only |
-| A real game          | `--game <id> --game-path <dir>` | Use a copy of the game folder                                                              |
+| A real game          | `--game <id> --game-path <dir>` | A registered copy of the game folder                                                       |
 | No game              | `--no-game`                     | Only the global Vortex UI                                                                  |
 
 ## Keep a real game safe
 
-- A separate Vortex profile does not protect the game folder: deployment writes to the game path
-  you give. Point `--game-path` at a copy.
-- Game support can also write the Windows account's Documents and AppData folders, for example a
-  game's settings and plugin list. Back those folders up before you start a real game, and
-  restore them afterward, or use a test machine or QA-only Windows account.
-- `--isolate-user-folders` redirects those folders for Vortex source builds only.
+Doodlebot manages a real game folder only when it is a registered copy. A store install, such as
+a folder under `steamapps\common`, is never used: a start with it, or with `--game` and no
+`--game-path`, is refused.
+
+- Make a copy of the Steam install and register it:
+
+  ```powershell
+  doodlebot game copy fallout4 --to D:\GameCopies
+  ```
+
+  The copy goes to `D:\GameCopies\fallout4`. Copies are listed in `~/.doodlebot/content.json`.
+
+- Register a copy you already have with `doodlebot game register <gameId> <dir>`.
+
+Game support also writes the Windows account's Documents and AppData folders, for example a
+game's settings and plugin list (`Documents\My Games\<game>` and `%LOCALAPPDATA%\<game>`).
+Doodlebot protects them for every game it knows, and for the Bethesda sandbox:
+
+- Before Vortex starts, it backs both folders up into the profile cache. It refuses to start
+  while the game itself runs, or when the backup cannot be made.
+- `doodlebot down` puts them back after Vortex has closed, and checks every restored file.
+- A file changed outside the run, such as a save you made meanwhile, stops the restore. Doodlebot
+  lists the files and restores nothing.
+- If Vortex crashed or was closed without `down`, nothing is restored automatically and the next
+  start is refused. Run `doodlebot game restore <gameId>` to see the changed files, then choose:
+  `--all` restores them all, `--keep` keeps them all, and `--file <path>` restores the ones you
+  name.
+
+`--isolate-user-folders` still redirects those folders for Vortex source builds.
 
 ## What's next
 

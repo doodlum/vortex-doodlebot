@@ -29,6 +29,13 @@ executable. Without those choices, a configured source directory or the managed
 `<workspace>/.vortex-src` can take precedence over an installed Vortex, so name the target
 explicitly for checks you want to repeat.
 
+`--release <version>` chooses an official release that `doodlebot release get <version>`
+downloaded and registered. Doodlebot checks the download against the SHA-256 GitHub publishes,
+and extracts it with 7-Zip into `~/.doodlebot/releases/<version>`. It never runs the installer, so
+your own Vortex installation is not touched. A release that is not registered fails with
+`Release <version> is not registered. Get it with doodlebot release get <version>.`
+`doodlebot release list` lists the registered releases.
+
 A `--dev-dir` that is not a built Vortex checkout fails with
 `--dev-dir <path> is not a built Vortex checkout: <reason>`. `doodlebot doctor` reports the
 same error as a failing `Vortex` check.
@@ -83,6 +90,7 @@ Both ports must be distinct integers between 1 and 65535.
 | Flag                                                   | Effect                                                                    |
 | ------------------------------------------------------ | ------------------------------------------------------------------------- |
 | `--installed`, `--exe <path>`, `--dev-dir <path>`      | Choose the Vortex to run                                                  |
+| `--release <version>`                                  | Run a release registered by `doodlebot release get`                       |
 | `--cache-dir`, `--port`, `--cdp-port`                  | Choose the profile cache and ports                                        |
 | `--sandbox`                                            | The disposable sandbox game                                               |
 | `--bethesda-sandbox`                                   | A fake Fallout 4 with private per-user folders; source builds only        |
@@ -99,6 +107,8 @@ Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands.
 | Path                             | Contents                                                  |
 | -------------------------------- | --------------------------------------------------------- |
 | `~/.doodlebot/instance.json`     | The record of the running test Vortex                     |
+| `~/.doodlebot/content.json`      | Registered game copies and releases, pending restores     |
+| `~/.doodlebot/releases/`         | Official releases extracted by `release get`              |
 | `<workspace>/harness/.cache`     | Test profiles, baselines and saved logins                 |
 | `<workspace>/harness/.artifacts` | Run reports, benchmark reports, designs and other outputs |
 | `<workspace>/harness/.env`       | Optional private local configuration                      |

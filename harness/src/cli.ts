@@ -64,6 +64,10 @@ import { fixtureCommand } from "./fixtureCommand";
 import { knowledgeCommand } from "./knowledgeCommand";
 import { logCommand, vortexLogFile } from "./logCommand";
 import { perfSummaryCommand } from "./perfSummary";
+import { gameCommand } from "./gameCommand";
+import { releaseCli, windowsProductVersion } from "./releaseFetch";
+import { assertNoHarnessVortex, runningVortex } from "./runningVortex";
+import { settlePendingRestores } from "./userFolders";
 import { waitForCollectionCompletion } from "./collectionCompletion";
 import {
   buildVortexSource,
@@ -89,12 +93,19 @@ function configFrom(
   if (typeof flags.game === "string") overrides.gameId = flags.game;
   if (typeof flags["game-path"] === "string") overrides.gamePath = flags["game-path"];
   const devDir = typeof flags["dev-dir"] === "string" ? flags["dev-dir"] : undefined;
-  if (devDir !== undefined || typeof flags.exe === "string" || flags.installed === true) {
+  const release = typeof flags.release === "string" ? flags.release : undefined;
+  if (
+    devDir !== undefined ||
+    typeof flags.exe === "string" ||
+    flags.installed === true ||
+    release !== undefined
+  ) {
     try {
       overrides.target = resolveTargetSafely({
         devDir,
         exe: typeof flags.exe === "string" ? flags.exe : undefined,
         preferInstalled: flags.installed === true,
+        ...(release === undefined ? {} : { release }),
       });
     } catch (error) {
       if (!(error instanceof ConfigError) || command !== "doctor") throw error;
@@ -159,8 +170,21 @@ Instance lifecycle
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
   bootstrap              Build/reset baseline and launch (--no-game supported)
-  down                   Quit the recorded harness Vortex (any cache), wait for clean exit
+  down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
+                         then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
+
+Game copies and released builds (registered in ~/.doodlebot/content.json)
+  game copy <gameId> [--to <folder>]
+                         Copy the Steam install into <folder>/<gameId> and register it
+  game register <gameId> <dir>
+                         Register an existing copy (never a store install)
+  game restore <gameId>  List the user-folder files changed since the last backup;
+    --all | --keep | --file <path>   restore them all, keep them all, or restore some
+  release get <version>  Download an official release, check its published SHA-256 and
+                         extract it with 7-Zip into ~/.doodlebot/releases (never runs
+                         the installer); use it with --release <version>
+  release list [--json]  The registered releases
   source                 Find your fork, clone to .vortex-src and build Vortex
     --update             Fetch origin and upstream in an existing clone
     --no-build           Clone only
@@ -271,6 +295,7 @@ Testing and iteration
 Target and isolation (repeat the same flags for all commands)
   --installed            Use released Vortex even when .vortex-src exists
   --exe <path>           Explicit Vortex.exe
+  --release <version>    A release registered by release get
   --dev-dir <path>       Explicit source checkout
   --sandbox              Disposable test game for local install/deploy tests
   --bethesda-sandbox     Fake Fallout 4 (plugins, LOOT, masters) with private
@@ -278,7 +303,7 @@ Target and isolation (repeat the same flags for all commands)
   --with-api-key         Seed harness/.env's API key into a sandbox profile too (off by
                          default: with a key, every local install waits on a Nexus lookup)
   --isolate-user-folders Give any game private LocalAppData and Documents folders
-  --game <id> --game-path <dir>   Real game integration; use a disposable copy
+  --game <id> --game-path <dir>   Real game integration: a registered copy only
   --cache-dir <dir>      Profiles and private OAuth cache
   --port <n> --cdp-port <n>      MCP/CDP endpoints (3701/9222 by default)
   --headless             Hide the window; screenshots/layout may differ
@@ -467,6 +492,20 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  if (command === "game") {
+    if (positional[0] === "restore") assertNoHarnessVortex("restoring user folders");
+    const result = await gameCommand(positional, flags, lists, {
+      fileVersion: windowsProductVersion,
+    });
+    log(result.text);
+    return result.code;
+  }
+
+  if (command === "release") {
+    log(await releaseCli(positional, flags));
+    return 0;
+  }
+
   const { config, targetError } = configFrom(flags, command);
   const dispatch = async (): Promise<number> => {
     switch (command) {
@@ -611,7 +650,12 @@ async function main(): Promise<number> {
       }
 
       case "down": {
-        log((await stopRunningInstance(config)) ? "Vortex exited cleanly." : "Nothing is running.");
+        const live = runningVortex() !== undefined;
+        const stopped = await stopRunningInstance(config);
+        log(stopped ? "Vortex exited cleanly." : "Nothing is running.");
+        // After the confirmed exit, the run's user folders go back; after an unclean end the
+        // changed files are listed for `game restore` instead.
+        await settlePendingRestores({ clean: live || stopped, write: log });
         return 0;
       }
 

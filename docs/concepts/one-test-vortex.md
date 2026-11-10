@@ -18,13 +18,24 @@ Vortex from two sessions at once. Stop it with `/doodlebot:stop` before you hand
 session, start a different profile, run regression tests or benchmark.
 
 The rule covers only doodlebot's test Vortex. Your own Vortex is separate, and doodlebot never
-closes it.
+closes it. While it runs, doodlebot does not start a test Vortex at all:
+
+```text
+Your own Vortex is running (pid 1234). Close it, then retry.
+```
+
+Any `Vortex.exe` counts, and so does a Vortex source build you started yourself. There is no
+option to start beside it.
 
 ## The instance record
 
 Every doodlebot command that launches Vortex writes the record `~/.doodlebot/instance.json` in
 your user profile folder, right after the launch. It holds the process ID, start time, cache,
-profile folder, MCP port and, for a source build, the checkout.
+profile folder, MCP port, the checkout or executable it runs, and your `nxm://` link handler.
+
+Every Vortex registers itself as the handler for `nxm://` links, so doodlebot keeps the one you
+had. When the test Vortex is stopped, or found closed after a crash, doodlebot puts your handler
+back.
 
 A record counts as running only while its process is alive and is `Vortex.exe`, `electron.exe`,
 `vortex` or `electron`. Otherwise it is stale and is cleared when read.
@@ -54,14 +65,24 @@ A record counts as running only while its process is alive and is `Vortex.exe`, 
   A harness Vortex is running; run doodlebot down before updating.
   ```
 
+- **Starting the same profile with another build**, such as a second worktree or another
+  release. The test Vortex belongs to the session that started it, so it is left running:
+
+  ```text
+  A harness Vortex of another build is running from C:\work\vortex-a (branch fix-a) (pid 1234); run `doodlebot down` before starting Vortex.
+  ```
+
 Nothing was started or changed. Run `/doodlebot:stop`, then repeat the command. Starting the
-same profile again is not refused: it restarts that profile.
+same profile with the same build again is not refused: it restarts that profile. The first start
+with a different build on a profile starts fresh from its baseline.
 
 ## How stopping works
 
 `/doodlebot:stop` runs `doodlebot down`. It reads the record, so it stops the running test
-Vortex whatever cache or port it uses. It asks Vortex to quit, waits up to 30 seconds for a clean
-exit, then clears the record. It never kills a process: a Vortex that does not exit is reported
+Vortex whatever cache or port it uses, and first names the checkout and branch, or the
+executable, it runs. It asks Vortex to quit, waits up to 30 seconds for a clean exit, then clears
+the record and restores your `nxm://` handler and the game's user folders
+([Use real games and baselines](../guides/games-and-baselines.md#keep-a-real-game-safe)). It never kills a process: a Vortex that does not exit is reported
 and left running. Close its window and stop it again.
 
 ## Records from older doodlebot versions

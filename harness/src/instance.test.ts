@@ -232,6 +232,8 @@ describe("the instance record at launch", () => {
       cacheDir: config.cacheDir,
       userDataDir,
       mcpPort: config.mcpPort,
+      // A released build is recorded by its executable, so a restart can tell builds apart.
+      exe: process.execPath,
     });
     expect(seen).not.toHaveProperty("sourceDir");
     expect(processAlive(spawnedPid!)).toBe(false);
@@ -359,6 +361,7 @@ describe("stopping", () => {
     const stopping = stopRunningInstance(config, (message) => messages.push(message));
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(messages).toEqual([
+      `Stopping the harness Vortex from an unrecorded build (pid ${String(child.pid)}).`,
       `Stopping the harness Vortex of cache ${otherCache} (MCP port ${String(otherPort)}).`,
     ]);
     // It waits on that cache's pid without signalling it.
@@ -366,6 +369,21 @@ describe("stopping", () => {
     child.kill("SIGKILL");
     await expect(stopping).resolves.toBe(false);
     expect(readInstanceRecord()).toBeUndefined();
+  }, 15_000);
+
+  it("down names the checkout the running Vortex comes from before stopping it", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    const child = idleChild();
+    writeInstanceRecord(record(child.pid!, config.cacheDir, { sourceDir: checkout }));
+    const messages: string[] = [];
+    const stopping = stopRunningInstance(config, (message) => messages.push(message));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    child.kill("SIGKILL");
+    await stopping;
+    // Not a git checkout, so no branch is named.
+    expect(messages).toEqual([
+      `Stopping the harness Vortex from ${checkout} (pid ${String(child.pid)}).`,
+    ]);
   }, 15_000);
 
   it("down without a live record stops only this cache, silently", async () => {

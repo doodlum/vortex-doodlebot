@@ -49,6 +49,7 @@ export const BOOLEAN_FLAGS = new Set([
   "with-api-key",
   "ready",
   "list",
+  "all",
 ]);
 
 /**
@@ -76,6 +77,8 @@ export const PATH_FLAGS = new Set([
   "ffmpeg",
   "a",
   "b",
+  "to",
+  "file",
 ]);
 
 /** The positional arguments that are files the caller named, by command. */
@@ -87,6 +90,8 @@ function positionalPaths(command: string, positional: string[]): number[] {
       return [0];
     case "evidence":
       return positional[0] === "runtime" ? positional.map((_, i) => i).slice(1) : [];
+    case "game":
+      return positional[0] === "register" ? [2] : [];
     default:
       return [];
   }

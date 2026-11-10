@@ -87,7 +87,73 @@ export const KNOWN_GAMES: Record<string, GameDefinition> = {
     steamDir: "Cyberpunk 2077",
     executable: "bin/x64/Cyberpunk2077.exe",
   },
+  starfield: {
+    id: "starfield",
+    name: "Starfield",
+    steamAppId: "1716740",
+    steamDir: "Starfield",
+    executable: "Starfield.exe",
+  },
 };
+
+/**
+ * The per-user folders a game (and Vortex managing it) writes outside the game folder:
+ * `Documents\My Games\<myGames>` and `%LOCALAPPDATA%\<localAppData>`. A launch that manages a
+ * game listed here backs both up and restores them at `down` (userFolders.ts). `{}` means the
+ * game has none. A registered copy of a game missing from this table cannot be launched.
+ */
+export interface UserFolderNames {
+  myGames?: string;
+  localAppData?: string;
+}
+
+export const USER_FOLDERS: Record<string, UserFolderNames> = {
+  vortexaisandbox: {},
+  fallout4: { myGames: "Fallout4", localAppData: "Fallout4" },
+  falloutnv: { myGames: "FalloutNV", localAppData: "FalloutNV" },
+  skyrimse: { myGames: "Skyrim Special Edition", localAppData: "Skyrim Special Edition" },
+  starfield: { myGames: "Starfield", localAppData: "Starfield" },
+  stardewvalley: {},
+};
+
+/** The executables that mean a game is running (its launcher-script loaders included). */
+export const GAME_EXECUTABLES: Record<string, string[]> = {
+  fallout4: ["Fallout4.exe", "f4se_loader.exe"],
+  skyrimse: ["SkyrimSE.exe", "skse64_loader.exe"],
+  fallout3: ["Fallout3.exe"],
+  falloutnv: ["FalloutNV.exe"],
+  stardewvalley: ["Stardew Valley.exe", "StardewModdingAPI.exe"],
+  starfield: ["Starfield.exe", "sfse_loader.exe"],
+};
+
+/** The game's running processes, from `tasklist`. Throws for a game with no known executable. */
+export async function gameProcesses(gameId: string): Promise<{ name: string; pid: number }[]> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+  const names =
+    GAME_EXECUTABLES[gameId] ?? (KNOWN_GAMES[gameId] ? [KNOWN_GAMES[gameId]!.executable] : []);
+  if (names.length === 0)
+    throw new Error(
+      `No launch-process check is defined for ${gameId}. Add its executable or use --no-launch for installation/deployment only.`,
+    );
+  const { stdout } = await run("tasklist", ["/FO", "CSV", "/NH"], { windowsHide: true });
+  return stdout.split(/\r?\n/).flatMap((line) => {
+    const match = /^"([^"]+)","(\d+)"/.exec(line);
+    return match?.[1] &&
+      match[2] &&
+      names.some((name) => name.toLowerCase() === match[1]!.toLowerCase())
+      ? [{ name: match[1], pid: Number(match[2]) }]
+      : [];
+  });
+}
+
+/** Whether the game itself is running. A game with no known executable counts as not running. */
+export async function gameRunning(gameId: string): Promise<boolean> {
+  if (process.platform !== "win32") return false;
+  if (GAME_EXECUTABLES[gameId] === undefined && KNOWN_GAMES[gameId] === undefined) return false;
+  return (await gameProcesses(gameId)).length > 0;
+}
 
 export class GameNotFoundError extends Error {}
 

@@ -42,7 +42,16 @@ import { bethesdaSandboxPaths } from "./bethesdaSandbox";
 import { resetDisposableGameData } from "./sandbox";
 import { importLogin } from "./loginImport";
 import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
-import { assertNoHarnessVortex, runningVortex } from "./runningVortex";
+import {
+  assertNoHarnessVortex,
+  buildOf,
+  leftoverRefusal,
+  runningVortex,
+  sameBuild,
+} from "./runningVortex";
+import { assertNoOwnVortex } from "./ownVortex";
+import { assertGamePathAllowed } from "./gameCommand";
+import { protectUserFolders, settlePendingRestores } from "./userFolders";
 import { missingBuildOutputs } from "./source";
 
 /**
@@ -234,18 +243,83 @@ export async function bootstrap(
 
   // One harness Vortex per machine: a running one of another cache (another workspace, a test
   // cache) is refused here with the documented message, never restarted or left to fail on a
-  // port. A restart of this cache's own instance goes on below.
+  // port. A restart of this cache's own instance goes on below, but only of the same build:
+  // another build's Vortex is another session's, and is refused too.
   const running = runningVortex();
   if (running !== undefined && normalizedPath(running.cacheDir) !== normalizedPath(config.cacheDir))
     assertNoHarnessVortex("starting Vortex");
+  const build = buildOf(config.target);
+  if (running !== undefined) {
+    const refusal = leftoverRefusal(running, build);
+    if (refusal !== undefined) throw new ConfigError(refusal);
+  }
+  // A real game folder is managed only when it is a registered copy (content.json).
+  if (options.skipGame !== true) assertGamePathAllowed(config);
 
   // An instance left over from an earlier run holds both the MCP port and the
   // working directory; every later step would fail on that rather than on
   // anything to do with what was asked for.
-  if (await stopStaleInstance(config)) {
-    report("stopped a Vortex instance left over from an earlier run");
-  }
+  const stopped = await stopStaleInstance(config);
+  if (stopped) report("stopped a Vortex instance left over from an earlier run");
+  // The leftover's user folders: restored after the clean stop just confirmed; after an unclean
+  // end (no live leftover) nothing is restored and the launch refuses with the changed files.
+  await settlePendingRestores({ clean: running !== undefined || stopped, write: report });
+  // Checked once this cache's own leftover is gone, so its processes never count.
+  assertNoOwnVortex(runningVortex()?.pid);
 
+  const lastBuild = readLastBuild(config.cacheDir);
+  const fresh = options.fresh === true || buildChanged(lastBuild, build);
+  if (options.fresh !== true && fresh)
+    report(`the build changed since the last launch on this cache (${lastBuild!}); starting fresh`);
+
+  const pending =
+    options.skipGame === true
+      ? undefined
+      : await protectUserFolders(config.gameId, config.cacheDir);
+  if (pending !== undefined)
+    report(`backed up the user folders of ${config.gameId} to ${pending.backupDir}`);
+  try {
+    const result = await launchProfile(config, { ...options, fresh }, apiKey, started);
+    writeLastBuild(config.cacheDir, build);
+    return result;
+  } catch (error) {
+    // Nothing of this launch is running any more: its folders go back now, not at a later down.
+    if (pending !== undefined && runningVortex() === undefined)
+      await settlePendingRestores({ clean: true, write: report }).catch((restoreError: unknown) =>
+        report(restoreError instanceof Error ? restoreError.message : String(restoreError)),
+      );
+    throw error;
+  }
+}
+
+const LAST_BUILD_FILE = "last-build.json";
+
+/** The build the last successful launch on this cache ran, if recorded. */
+export function readLastBuild(cacheDir: string): string | undefined {
+  try {
+    const value = readJsonFile<{ build?: unknown }>(path.join(cacheDir, LAST_BUILD_FILE));
+    return typeof value.build === "string" ? value.build : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLastBuild(cacheDir: string, build: string): void {
+  fs.writeFileSync(path.join(cacheDir, LAST_BUILD_FILE), JSON.stringify({ build }, null, 2));
+}
+
+/** A launch of another build than the last one on the same cache starts from the baseline. */
+export function buildChanged(lastBuild: string | undefined, build: string): boolean {
+  return lastBuild !== undefined && !sameBuild(lastBuild, build);
+}
+
+async function launchProfile(
+  config: HarnessConfig,
+  options: BootstrapOptions,
+  apiKey: string,
+  started: number,
+): Promise<BootstrapResult> {
+  const report = options.onProgress ?? ((): void => undefined);
   const builtAt = await ensureExtensionBuilt({ rebuild: options.rebuildExtension });
   report(`extension ready (${builtAt})`);
   report(`target: ${config.target.kind} — ${config.target.executable}`);
@@ -429,6 +503,8 @@ export async function captureLogin(
   fs.writeFileSync(path.join(login, MARKER_FILE), JSON.stringify(marker, null, 2));
   fs.writeFileSync(path.join(live, MARKER_FILE), JSON.stringify(marker, null, 2));
   report(`snapshot updated at ${snapshot}`);
+  // Vortex exited cleanly above: its run's user folders go back now.
+  await settlePendingRestores({ clean: true, write: report });
   return snapshot;
 }
 

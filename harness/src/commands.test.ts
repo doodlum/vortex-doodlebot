@@ -56,7 +56,9 @@ describe("the command list", () => {
       "remove",
       "path",
     ]);
-    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(3);
+    expect(findCommand("game")?.subcommands).toEqual(["copy", "register", "restore"]);
+    expect(findCommand("release")?.subcommands).toEqual(["get", "list"]);
+    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(5);
     expect(findCommand("help")).toBeUndefined();
   });
 });

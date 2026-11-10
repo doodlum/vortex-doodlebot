@@ -38,6 +38,8 @@ import {
 import { VortexMcpClient } from "../mcpClient";
 import { resolveDevElectron } from "../electronRuntime";
 import { assertNoHarnessVortex, writeInstanceRecord } from "../runningVortex";
+import { assertNoOwnVortex } from "../ownVortex";
+import { readNxmHandler } from "../nxmHandler";
 import { FixtureCleanup, closeFixtureApp } from "./fixtureCleanup";
 import { assertNoUnrecoverableErrors } from "./appHealth";
 
@@ -139,6 +141,9 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       // helpers can attach alongside Playwright's own connection. Like every launcher, it
       // refuses while another harness Vortex runs (the global setup checks once up front too).
       assertNoHarnessVortex("the core suite");
+      assertNoOwnVortex();
+      // Vortex re-registers itself as the nxm link handler; closing the fixture writes this back.
+      const nxmHandler = readNxmHandler();
       const app = await fixtureCleanup.preserveOnFailure(async () => {
         if (config.target.kind === "dev" && !fs.existsSync(config.target.executable))
           config.target.executable = resolveDevElectron(config.target.args[0]!);
@@ -161,7 +166,10 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
             userDataDir,
             mcpPort: config.mcpPort,
             // So checkout refusals see a suite running from a source build.
-            ...(config.target.kind === "dev" ? { sourceDir: config.target.sourceDir } : {}),
+            ...(config.target.kind === "dev"
+              ? { sourceDir: config.target.sourceDir }
+              : { exe: config.target.executable }),
+            ...(nxmHandler === undefined ? {} : { nxmHandler }),
           });
         } catch (error) {
           await launched.close();

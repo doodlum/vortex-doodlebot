@@ -7,7 +7,9 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { ConfigError } from "./errors";
+import { restoreNxmHandlerOrWarn, type NxmHandler } from "./nxmHandler";
 import { USER_STATE_DIR, normalizedPath } from "./paths";
 import { processAlive, processImageName } from "./processes";
 
@@ -22,6 +24,10 @@ export interface InstanceRecord {
   mcpPort: number;
   /** The Vortex checkout it runs from, for a source build. */
   sourceDir?: string;
+  /** The executable it runs, for a released build. */
+  exe?: string;
+  /** The nxm link handler before the launch, written back when this Vortex is gone. */
+  nxmHandler?: NxmHandler;
 }
 
 const VORTEX_IMAGES = new Set(["vortex.exe", "electron.exe", "vortex", "electron"]);
@@ -68,12 +74,26 @@ export function readInstanceRecordFile(file: string): InstanceRecord | undefined
     userDataDir: r.userDataDir,
     mcpPort: r.mcpPort as number,
     ...(typeof r.sourceDir === "string" ? { sourceDir: r.sourceDir } : {}),
+    ...(typeof r.exe === "string" ? { exe: r.exe } : {}),
+    ...nxmHandlerOf(r.nxmHandler),
   };
 }
 
-/** Delete the record; with a pid, only when the record names that pid. */
+function nxmHandlerOf(value: unknown): { nxmHandler?: NxmHandler } {
+  if (typeof value !== "object" || value === null) return {};
+  const v = value as Record<string, unknown>;
+  if (v.absent === true) return { nxmHandler: { absent: true } };
+  return typeof v.command === "string" ? { nxmHandler: { command: v.command } } : {};
+}
+
+/**
+ * Delete the record; with a pid, only when the record names that pid. Called once that Vortex is
+ * known to be gone, so the nxm link handler it recorded is written back first.
+ */
 export function clearInstanceRecord(pid?: number): void {
-  if (pid !== undefined && readInstanceRecord()?.pid !== pid) return;
+  const record = readInstanceRecord();
+  if (pid !== undefined && record?.pid !== pid) return;
+  if (record?.nxmHandler !== undefined) restoreNxmHandlerOrWarn(record.nxmHandler);
   fs.rmSync(INSTANCE_RECORD, { force: true });
 }
 
@@ -117,4 +137,67 @@ export function assertNoVortexRunningFrom(checkout: string, action: string): voi
     throw new ConfigError(
       `A harness Vortex is running from ${checkout} (pid ${running.pid}); run \`doodlebot down\` before ${action}.`,
     );
+}
+
+/** What a launch runs: the checkout of a source build, or the executable of a released one. */
+export function buildOf(target: {
+  kind: string;
+  executable: string;
+  sourceDir?: string | undefined;
+}): string {
+  return target.kind === "dev" && target.sourceDir !== undefined
+    ? target.sourceDir
+    : target.executable;
+}
+
+/** The build a record's Vortex runs, when the record says. */
+export function recordedBuild(record: InstanceRecord): string | undefined {
+  return record.sourceDir ?? record.exe;
+}
+
+export function sameBuild(a: string | undefined, b: string | undefined): boolean {
+  return a !== undefined && b !== undefined && normalizedPath(a) === normalizedPath(b);
+}
+
+/** The checked-out branch of a git checkout, or undefined. */
+export function gitBranch(dir: string): string | undefined {
+  try {
+    const branch = execFileSync("git", ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"], {
+      encoding: "utf8",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return branch === "" ? undefined : branch === "HEAD" ? "detached HEAD" : branch;
+  } catch {
+    return undefined;
+  }
+}
+
+/** "from <checkout> (branch <b>)", "from <exe>", or "from an unrecorded build". */
+export function describeRecordedBuild(
+  record: InstanceRecord,
+  branchOf: (dir: string) => string | undefined = gitBranch,
+): string {
+  if (record.sourceDir !== undefined) {
+    const branch = branchOf(record.sourceDir);
+    return `from ${record.sourceDir}${branch === undefined ? "" : ` (branch ${branch})`}`;
+  }
+  return record.exe !== undefined ? `from ${record.exe}` : "from an unrecorded build";
+}
+
+/**
+ * `up` and `bootstrap` restart this cache's leftover only when it runs the build they launch.
+ * Another build's Vortex belongs to another session (another worktree, another release): the
+ * launch refuses, naming it, and leaves it running. Undefined means the restart may go on.
+ */
+export function leftoverRefusal(
+  record: InstanceRecord,
+  build: string,
+  branchOf: (dir: string) => string | undefined = gitBranch,
+): string | undefined {
+  if (sameBuild(recordedBuild(record), build)) return undefined;
+  return (
+    `A harness Vortex of another build is running ${describeRecordedBuild(record, branchOf)} ` +
+    `(pid ${String(record.pid)}); run \`doodlebot down\` before starting Vortex.`
+  );
 }

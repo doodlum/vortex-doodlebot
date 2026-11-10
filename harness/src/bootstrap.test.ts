@@ -4,7 +4,19 @@ import path from "node:path";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bootstrap, captureLogin, liveDir, loginDir, readMarker, snapshotDir } from "./bootstrap";
+import {
+  bootstrap,
+  buildChanged,
+  captureLogin,
+  liveDir,
+  loginDir,
+  readLastBuild,
+  readMarker,
+  snapshotDir,
+} from "./bootstrap";
+import { assertNoOwnVortex } from "./ownVortex";
+import { assertGamePathAllowed } from "./gameCommand";
+import { protectUserFolders, settlePendingRestores } from "./userFolders";
 import type { HarnessConfig } from "./config";
 import { requireOAuth } from "./auth";
 import { authCacheFile, launchVortex, stopStaleInstance } from "./instance";
@@ -39,6 +51,15 @@ vi.mock("./gameSetup", () => ({
     }),
   ),
   waitForGameStartup: vi.fn(async () => true),
+}));
+
+// The protections reach the machine (its processes, the owner's folders, content.json); their
+// own tests cover them. Here only their place in the launch is checked.
+vi.mock("./ownVortex", () => ({ assertNoOwnVortex: vi.fn() }));
+vi.mock("./gameCommand", () => ({ assertGamePathAllowed: vi.fn() }));
+vi.mock("./userFolders", () => ({
+  protectUserFolders: vi.fn(async () => undefined),
+  settlePendingRestores: vi.fn(async () => undefined),
 }));
 
 vi.mock("./auth", () => ({
@@ -90,13 +111,14 @@ afterEach(() => {
 });
 afterAll(() => fs.rmSync(USER_STATE_DIR, { recursive: true, force: true }));
 
-function liveRecord(cacheDir: string) {
+function liveRecord(cacheDir: string, exe = "C:/Vortex/Vortex.exe") {
   return {
     pid: process.pid,
     startedAt: new Date().toISOString(),
     cacheDir,
     userDataDir: path.join(cacheDir, "live"),
     mcpPort: 3701,
+    exe,
   };
 }
 
@@ -122,6 +144,55 @@ describe("one harness Vortex per machine", () => {
     expect(stopStaleInstance).toHaveBeenCalledWith(config);
     expect(launchVortex).toHaveBeenCalled();
     await result.instance.stop();
+  });
+
+  it("refuses to stop this cache's leftover of another build, naming it", async () => {
+    const config = fakeConfig();
+    const other = liveRecord(config.cacheDir, "C:/releases/2.7.1/app/Vortex.exe");
+    writeInstanceRecord(other);
+    await expect(bootstrap(config, { fresh: true })).rejects.toThrow(
+      `A harness Vortex of another build is running from C:/releases/2.7.1/app/Vortex.exe (pid ${String(process.pid)}); run \`doodlebot down\` before starting Vortex.`,
+    );
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(readInstanceRecord()).toEqual(other);
+  });
+
+  it("checks the game, restores the leftover's folders, then checks for the owner's Vortex, then backs up", async () => {
+    const config = fakeConfig();
+    writeInstanceRecord(liveRecord(config.cacheDir));
+    const result = await bootstrap(config, { fresh: true });
+    const order = (mock: unknown) => vi.mocked(mock as () => void).mock.invocationCallOrder[0]!;
+    expect(order(assertGamePathAllowed)).toBeLessThan(order(stopStaleInstance));
+    expect(order(stopStaleInstance)).toBeLessThan(order(settlePendingRestores));
+    expect(settlePendingRestores).toHaveBeenCalledWith(expect.objectContaining({ clean: true }));
+    expect(order(settlePendingRestores)).toBeLessThan(order(assertNoOwnVortex));
+    expect(order(assertNoOwnVortex)).toBeLessThan(order(protectUserFolders));
+    expect(order(protectUserFolders)).toBeLessThan(order(launchVortex));
+    await result.instance.stop();
+  });
+
+  it("settles a dead leftover's restore as unclean", async () => {
+    const config = fakeConfig();
+    await bootstrap(config, { fresh: true });
+    expect(settlePendingRestores).toHaveBeenCalledWith(expect.objectContaining({ clean: false }));
+  });
+
+  it("starts fresh when the build differs from the last launch on this cache", async () => {
+    const config = fakeConfig();
+    await bootstrap(config, { fresh: true });
+    expect(readLastBuild(config.cacheDir)).toBe("C:/Vortex/Vortex.exe");
+    expect(buildChanged(readLastBuild(config.cacheDir), "C:\\Vortex\\Vortex.exe")).toBe(false);
+    expect(buildChanged(readLastBuild(config.cacheDir), "C:/releases/2.8.0/Vortex.exe")).toBe(true);
+    expect(buildChanged(undefined, "C:/Vortex/Vortex.exe")).toBe(false);
+    const messages: string[] = [];
+    await bootstrap(
+      { ...config, target: { ...config.target, executable: "C:/releases/2.8.0/Vortex.exe" } },
+      { onProgress: (m) => messages.push(m) },
+    );
+    expect(messages).toContain(
+      "the build changed since the last launch on this cache (C:/Vortex/Vortex.exe); starting fresh",
+    );
+    expect(messages).toContain("seeding the working directory from the snapshot");
   });
 });
 

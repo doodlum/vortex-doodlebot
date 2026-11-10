@@ -14,7 +14,6 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `click`
 - `collection`
 - `deploy`
-- `design`
 - `doctor`
 - `down`
 - `e2e`
@@ -22,6 +21,7 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `evidence`
 - `fill`
 - `fixture`
+- `game`
 - `help`
 - `install`
 - `knowledge`
@@ -33,8 +33,8 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `pr-preflight`
 - `press`
 - `purge`
-- `readiness`
 - `record`
+- `release`
 - `responsive`
 - `save-login`
 - `screenshot`
@@ -84,17 +84,27 @@ Instance lifecycle
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
   bootstrap              Build/reset baseline and launch (--no-game supported)
-  down                   Quit the recorded harness Vortex (any cache), wait for clean exit
+  down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
+                         then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
+
+Game copies and released builds (registered in ~/.doodlebot/content.json)
+  game copy <gameId> [--to <folder>]
+                         Copy the Steam install into <folder>/<gameId> and register it
+  game register <gameId> <dir>
+                         Register an existing copy (never a store install)
+  game restore <gameId>  List the user-folder files changed since the last backup;
+    --all | --keep | --file <path>   restore them all, keep them all, or restore some
+  release get <version>  Download an official release, check its published SHA-256 and
+                         extract it with 7-Zip into ~/.doodlebot/releases (never runs
+                         the installer); use it with --release <version>
+  release list [--json]  The registered releases
   source                 Find your fork, clone to .vortex-src and build Vortex
     --update             Fetch origin and upstream in an existing clone
     --no-build           Clone only
     --where              Print managed source path
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
-  readiness              Evaluate strict revision-bound task evidence; never runs gates
-    --manifest <json>   Required task/evidence manifest (schema version 3)
-    --json              Print the readiness report; exit 0 ready, 1 incomplete
   evidence identity --checkout <dir> --base <ref>
                          Print current subject and kit identities, including local diff
   evidence runtime --kind installed|source --label <version> <binary> [bundle...]
@@ -134,14 +144,6 @@ Instance lifecycle
     --grep <re> --grep-invert <re>   Playwright title filters
     --compare <json>     Diff against an earlier report: regressions vs pre-existing
     --json               Print the report as JSON (Playwright's output goes to stderr)
-
-Design-first work (EGM)
-  design new <file> --title <t> --target vortex|doodlebot
-                         Write the design template; refuses an existing file
-  design check <file> [--ready] [--json]
-                         Validate structure and approval; print the content digest
-  design scope <file> --checkout <dir> --base <ref> [--json]
-                         List changed files outside the approved boundary; exit 1 if any
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -207,6 +209,7 @@ Testing and iteration
 Target and isolation (repeat the same flags for all commands)
   --installed            Use released Vortex even when .vortex-src exists
   --exe <path>           Explicit Vortex.exe
+  --release <version>    A release registered by release get
   --dev-dir <path>       Explicit source checkout
   --sandbox              Disposable test game for local install/deploy tests
   --bethesda-sandbox     Fake Fallout 4 (plugins, LOOT, masters) with private
@@ -214,7 +217,7 @@ Target and isolation (repeat the same flags for all commands)
   --with-api-key         Seed harness/.env's API key into a sandbox profile too (off by
                          default: with a key, every local install waits on a Nexus lookup)
   --isolate-user-folders Give any game private LocalAppData and Documents folders
-  --game <id> --game-path <dir>   Real game integration; use a disposable copy
+  --game <id> --game-path <dir>   Real game integration: a registered copy only
   --cache-dir <dir>      Profiles and private OAuth cache
   --port <n> --cdp-port <n>      MCP/CDP endpoints (3701/9222 by default)
   --headless             Hide the window; screenshots/layout may differ

@@ -20,6 +20,14 @@ vi.mock("./processes", async (original) => ({
   },
 }));
 
+const nxm = vi.hoisted(() => ({ restored: [] as unknown[] }));
+vi.mock("./nxmHandler", async (original) => ({
+  ...(await original<typeof import("./nxmHandler")>()),
+  restoreNxmHandlerOrWarn: (saved: unknown) => {
+    nxm.restored.push(saved);
+  },
+}));
+
 async function load() {
   vi.resetModules();
   return import("./runningVortex");
@@ -114,5 +122,66 @@ describe("the instance record", () => {
     expect(() =>
       m.assertNoVortexRunningFrom(path.join(state.dir, "other"), "building it"),
     ).not.toThrow();
+  });
+
+  it("keeps the build and nxm handler, and writes the handler back when the record goes", async () => {
+    const m = await load();
+    nxm.restored = [];
+    const saved = { command: '"C:\\Vortex\\Vortex.exe" -d "%1"' };
+    m.writeInstanceRecord({
+      ...record(process.pid),
+      exe: "C:/Vortex/Vortex.exe",
+      nxmHandler: saved,
+    });
+    expect(m.runningVortex()).toEqual({
+      ...record(process.pid),
+      exe: "C:/Vortex/Vortex.exe",
+      nxmHandler: saved,
+    });
+    expect(nxm.restored).toEqual([]);
+    // A Vortex that died keeps the value until the next command finds the record stale.
+    image.name = "node.exe";
+    expect(m.runningVortex()).toBeUndefined();
+    expect(nxm.restored).toEqual([saved]);
+    m.writeInstanceRecord({ ...record(process.pid), nxmHandler: { absent: true } });
+    m.clearInstanceRecord(process.pid);
+    expect(nxm.restored).toEqual([saved, { absent: true }]);
+  });
+});
+
+describe("restarting a leftover (no cross-session stop)", () => {
+  beforeEach(() => {
+    state.dir = fs.mkdtempSync(path.join(os.tmpdir(), "running-vortex-"));
+  });
+  afterEach(() => fs.rmSync(state.dir, { recursive: true, force: true }));
+
+  it("restarts only a leftover of the same build", async () => {
+    const m = await load();
+    const worktreeA = path.join(state.dir, "worktree-a");
+    const worktreeB = path.join(state.dir, "worktree-b");
+    const branchOf = (dir: string) => (dir === worktreeA ? "fix-a" : undefined);
+    const fromA = { ...record(4321), sourceDir: worktreeA };
+    expect(m.leftoverRefusal(fromA, `${worktreeA}${path.sep}`, branchOf)).toBeUndefined();
+    expect(m.leftoverRefusal(fromA, worktreeB, branchOf)).toBe(
+      `A harness Vortex of another build is running from ${worktreeA} (branch fix-a) (pid 4321); run \`doodlebot down\` before starting Vortex.`,
+    );
+    const release = { ...record(4321), exe: "C:/releases/2.8.0/app/Vortex.exe" };
+    expect(m.leftoverRefusal(release, "C:\\releases\\2.8.0\\app\\Vortex.exe")).toBeUndefined();
+    expect(m.leftoverRefusal(release, "C:/releases/2.7.1/app/Vortex.exe")).toContain(
+      "running from C:/releases/2.8.0/app/Vortex.exe (pid 4321)",
+    );
+    expect(m.leftoverRefusal(record(4321), "C:/Vortex/Vortex.exe")).toContain(
+      "running from an unrecorded build",
+    );
+  });
+
+  it("names a launch's build by its checkout, or its executable", async () => {
+    const m = await load();
+    expect(m.buildOf({ kind: "dev", executable: "C:/src/electron.exe", sourceDir: "C:/src" })).toBe(
+      "C:/src",
+    );
+    expect(m.buildOf({ kind: "installed", executable: "C:/Vortex/Vortex.exe" })).toBe(
+      "C:/Vortex/Vortex.exe",
+    );
   });
 });

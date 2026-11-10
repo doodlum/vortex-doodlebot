@@ -137,8 +137,9 @@ doodlebot test core
 - `setup` builds the extension when missing and starts an isolated Vortex. `--sandbox` is a
   disposable game with a tiny game-support extension: real archive install, enable, deploy and
   purge, no playable game. `--no-game`: global UI only. A real game:
-  `--game <id> --game-path <dir>` (a disposable copy). An invalid explicit path fails, never
-  falling back to a real install; without one, common games are found through Steam.
+  `--game <id> --game-path <dir>`, a registered copy ("Game copies and user folders"). An invalid
+  or unregistered path fails, never falling back to a real install; the Steam install itself is
+  never managed.
 - Use the **same target, game and cache flags on every command** for a profile. Persist regular
   choices in the gitignored `harness/.env`. `VORTEX_AI_INSTALLED=1` makes tests use the installed
   build even when a source checkout exists.
@@ -265,7 +266,8 @@ suite or independent QA. A few refusals stop the cases where two would damage da
 
 - **The instance record** is `~/.doodlebot/instance.json` (`USER_STATE_DIR` in `paths.ts`), one
   per user whatever workspace or `--cache-dir` a command uses:
-  `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir?}` (`runningVortex.ts`). Every kit
+  `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir? | exe?, nxmHandler?}`
+  (`runningVortex.ts`). Every kit
   launcher writes it right after spawn, before readiness: `up`, `setup`, `bootstrap`, the core
   fixture and `doodlebot test zoom --signed-out`. A failed write stops the child and fails the
   launch. Per-cache `instance.pid` and `<cache>/instance.json` files from older kits are deleted
@@ -276,8 +278,26 @@ suite or independent QA. A few refusals stop the cases where two would damage da
   and `down` with the same text ending `before stopping Vortex.` Close that Vortex, then retry.
 - **A second workspace or cache is refused.** Before stopping its own cache's leftover,
   `bootstrap` checks the record: a running Vortex of another cache (another workspace, a test
-  cache) refuses the launch with the message below and is left untouched. A restart of the same
-  cache is unchanged.
+  cache) refuses the launch with the message below and is left untouched.
+- **Another build is refused too (no cross-session stop).** `up` and `bootstrap` restart this
+  cache's leftover only when the record's `sourceDir` (source build) or `exe` (released build)
+  is the build they launch (`leftoverRefusal`). Otherwise they refuse, leaving it running:
+  ``A harness Vortex of another build is running from <checkout> (branch <b>) (pid <pid>); run `doodlebot down` before starting Vortex.``
+  A launch whose build differs from the last one on the same cache (`<cache>/last-build.json`)
+  starts `--fresh`.
+- **The owner's own Vortex is refused** (`ownVortex.ts`), with no override and never closed:
+  `Your own Vortex is running (pid <pid>). Close it, then retry.` It counts any `Vortex.exe`, or
+  an `electron.exe` whose command line names a Vortex folder, that is not in the recorded
+  instance's process tree, whatever its path: a `.vortex-src` build started by hand counts.
+  Electron helpers (`--type=...`) never count. `up` and `bootstrap` check after stopping their
+  own leftover; the core suite checks in its global setup and fixture. The list comes from
+  `Get-CimInstance Win32_Process`.
+- **The nxm link handler** (`nxmHandler.ts`). Every Vortex re-registers itself in
+  `HKCU\Software\Classes\nxm`. Each launch records `shell\open\command`'s default value (or
+  `absent`) in the record, and `clearInstanceRecord` writes it back (`reg add ... /ve /d`, or
+  deletes the key when it was absent) whenever the recorded Vortex is gone: `down`, the restart
+  path, a cold phase's stop, the core fixture's close, and the next command that finds the record
+  stale after a crash. Unit tests never reach the real registry.
 - A record is **running** only while its pid is alive and that process is `Vortex.exe`,
   `electron.exe`, `vortex` or `electron`. Otherwise it is stale (dead pid, or a pid reused after a
   crash) and is cleared when read.
@@ -300,13 +320,71 @@ suite or independent QA. A few refusals stop the cases where two would damage da
   and the recorded pid gone), then clears the record. With no live record it stops only the
   configured cache. It clears a stale record without waiting. It never signals a pid; an
   instance that does not exit is reported and left intact. `up` and `bootstrap` stop only their
-  own cache's leftover, never another cache's instance.
+  own cache's leftover, never another cache's instance. `down` first prints
+  `Stopping the harness Vortex from <checkout> (branch <b>) (pid <pid>).` (or `from <exe>`), and
+  after the confirmed exit restores the game's user folders ("Game copies and user folders").
 - A pid reused by another Electron app still looks running: `down` waits 30 s and reports it.
   Check that no harness Vortex window is open, then delete `~/.doodlebot/instance.json`.
-- A Vortex started outside the kit's launchers (raw Playwright or Electron) writes no record and
-  is invisible to these refusals. The record does not detect the operator's own Vortex or a game.
+- A Vortex started outside the kit's launchers (raw Playwright or Electron) writes no record;
+  launches still refuse it as the owner's Vortex.
 - Vortex source work happens on a branch of `.vortex-src` or in a checkout given with
   `--dev-dir`. Independent QA runs after `down`, in a fresh context, starting with `up --fresh`.
+
+### Game copies and user folders
+
+`~/.doodlebot/content.json` (`CONTENT_FILE` in `paths.ts`, `content.ts`) lists what the kit
+created and may write to: game copies, the copy folder, releases, pending restores and Nexus
+collections. It is rewritten through a temporary file and a rename.
+
+```powershell
+doodlebot game copy <gameId> [--to <folder>]   # Steam install -> <folder>/<gameId>, registered
+doodlebot game register <gameId> <dir>         # an existing copy; refuses a store path
+doodlebot game restore <gameId> [--all | --keep | --file <path>...]
+```
+
+- **A launch manages only a registered copy** (`assertGamePathAllowed`, `gameCommand.ts`). A path
+  under the cache is the kit's own (the fake game, the fake Fallout 4, `test nexus`'s folder) and
+  exempt. Any other `--game-path` must be a registered copy of that game, and `--game` without
+  `--game-path` refuses: the Steam install is never managed. A store path (what `findGamePath`
+  returns, or anything under `steamapps\common`) is never a copy. `game copy` needs `--to`
+  until a copy folder is stored.
+- **User folders** (`userFolders.ts`). `USER_FOLDERS` next to `KNOWN_GAMES` (`gameSetup.ts`)
+  names each game's `Documents\My Games\<x>` and `%LOCALAPPDATA%\<y>`; a game missing from it
+  cannot be registered or launched from a copy. Every launch that manages a game with folders
+  there (a registered copy and the fake Fallout 4) copies both into
+  `<cache>/user-folder-backups/<game>-<time>`, records each file's path, size, modification time
+  and SHA-256 in its `manifest.json`, and writes a pending restore with the run's start time,
+  before Vortex starts. It refuses while the game runs (`tasklist`) or when the backup fails.
+- **A pending restore blocks every later launch** and the core suite.
+- **`down`** restores after the confirmed exit. A changed file whose modification time lies
+  inside the run (start to confirmed exit) is restored; a deletion counts as the run's. One
+  modified outside it blocks the whole restore and is listed. The restore is byte for byte with
+  the original times, verified by hash; then the pending restore and the backup are deleted. A
+  folder that did not exist before is removed when it holds no files. `save-login` restores the
+  same way after its clean stop.
+- **The restart path** in `up` and `bootstrap` restores only after stopping its own live leftover
+  cleanly. If the leftover was already dead (an unclean end) it restores nothing, refuses and
+  prints the listing. A launch that fails after the backup restores once nothing of it runs.
+- **`game restore <gameId>`** lists every file changed since the backup with its modification
+  time (exit 1), then `--all` restores all, `--keep` keeps all, `--file <path>` (repeatable)
+  restores those; each clears the pending restore. It refuses while the game or a harness Vortex
+  runs. A failed restore keeps the backup and prints its path.
+- The fake Fallout 4 keeps its redirect guard on source builds as well (below).
+
+### Released builds
+
+`doodlebot release get <version>` (`releaseFetch.ts`) reads
+`api.github.com/repos/Nexus-Mods/Vortex/releases/tags/v<version>` (pre-releases count), downloads
+`vortex-setup-<version>.exe` into `~/.doodlebot/releases/<version>/`, and checks its SHA-256
+against the asset's `digest`. A mismatch refuses; a missing digest is
+`blocked: the release publishes no digest`. 7-Zip (on the PATH or under Program Files; `doctor`
+reports it) extracts `$PLUGINSDIR\app-64.7z` and then the app into `<version>/app`; the
+installer never runs, so the owner's installation is never replaced. `Vortex.exe`'s version
+resource must start with the version (`2.8.0.0` matches `2.8.0`). The release is then registered
+in `content.json`, and the installer and inner archive are deleted. `release list [--json]`
+lists them, and `--release <version>` selects one wherever `--exe` is accepted. Releases stay
+outside the workspace: under it the renderer fails with `Cannot find module './common'`
+(KNOWLEDGE.md).
 
 ## Drive from any agent or shell
 
@@ -765,6 +843,8 @@ cache (Documents moved by a `NODE_OPTIONS=--require` preload, `mainPreload.ts`).
   redirects**, so the operator's real Fallout 4 profile is never written.
 - **Source builds only**: packaged Vortex ignores NODE_OPTIONS and is stopped before a game
   activates. For a release's behaviour, build its tag from source.
+- The real `Documents\My Games\Fallout4` and `%LOCALAPPDATA%\Fallout4` are also backed up before
+  each launch and restored at `down` ("Game copies and user folders").
 - `--isolate-user-folders` gives any game the same private folders.
 - `setDeterministicLoadOrder(mcp)` turns LOOT autosort off, orders natives, masters, light plugins
   and plugins by name, and verifies `state.loadOrder`, so Plugins page values compare across runs.

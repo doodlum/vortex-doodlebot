@@ -36,12 +36,14 @@ import {
 import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
 import { preparePreload, verifyPreload } from "./mainPreload";
+import { readNxmHandler } from "./nxmHandler";
 import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { processAlive } from "./processes";
 import {
   INSTANCE_RECORD,
   assertNoHarnessVortex,
   clearInstanceRecord,
+  describeRecordedBuild,
   isVortexProcess,
   readInstanceRecordFile,
   runningVortex,
@@ -317,6 +319,9 @@ export async function stopRunningInstance(
 ): Promise<boolean> {
   const record = runningVortex();
   if (record === undefined) return stopStaleInside(config, "stopping Vortex");
+  write(
+    `Stopping the harness Vortex ${describeRecordedBuild(record)} (pid ${String(record.pid)}).`,
+  );
   if (normalizedPath(record.cacheDir) !== normalizedPath(config.cacheDir))
     write(
       `Stopping the harness Vortex of cache ${record.cacheDir} (MCP port ${String(record.mcpPort)}).`,
@@ -458,6 +463,9 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
     env.NODE_OPTIONS = [env.NODE_OPTIONS, preload.nodeOptions].filter(Boolean).join(" ");
   }
 
+  // Every Vortex re-registers itself as the nxm link handler; the record keeps what was there,
+  // and the confirmed end of this Vortex writes it back (clearInstanceRecord).
+  const nxmHandler = readNxmHandler();
   const logFd = openStdioLog(userDataDir);
   let child: ChildProcess;
   try {
@@ -484,7 +492,8 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
         mcpPort: config.mcpPort,
         ...(target.kind === "dev" && target.sourceDir !== undefined
           ? { sourceDir: target.sourceDir }
-          : {}),
+          : { exe: target.executable }),
+        ...(nxmHandler === undefined ? {} : { nxmHandler }),
       });
       options.onProcessSpawn?.(spawned);
     },
