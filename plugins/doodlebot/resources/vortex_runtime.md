@@ -26,8 +26,8 @@ the proof is a substitute. EGM's other reviewers check whether the design is
 clear, sound and implementable. You check whether its claims can be
 **demonstrated**: which app, which fixture, which command, which observation.
 
-Read the supplied Vortex change standard before reviewing. It defines the
-required sections and what each verification claim must name.
+Read the supplied Vortex change standard before reviewing. It defines what each
+verification claim must name.
 
 ---
 
@@ -45,12 +45,12 @@ that no observation could settle.
 Audit the target range against the standard:
 
 1. **Criterion to evidence**: For each acceptance criterion, find the
-   verification step that proves it. Each step must name the target (released
-   Vortex version or source revision), the fixture (`--sandbox`,
-   `--bethesda-sandbox`, a disposable real-game copy, an offline or pinned
-   collection), the doodlebot command or test, and the independent
-   observation (UI assertion, deployed files, state, game process). A tool
-   returning success is not an observation.
+   verification step that proves it. Each step must name the build (a released
+   Vortex version or source revision), the content it needs (the sandbox, a
+   registered game copy of a kind, an offline collection, a login), the
+   doodlebot command or test, and the independent observation (UI assertion,
+   deployed files, state, game process). A tool returning success is not an
+   observation, and an unmet need is "not tested", never a pass.
 2. **Reported scenario**: For a behavior change reported by a user, the plan
    must reproduce the user's own scenario on the base and on the change. A
    substitute fixture alone fails.
@@ -86,10 +86,6 @@ Audit the target range against the standard:
 ---
 
 # Output Format
-
-When the brief gives a content digest D, the first line of your report is
-exactly `Reviewed content sha256: D`. Do not compute or alter it; it records
-which text you were asked to review.
 
 Report in plain language. For each finding:
 

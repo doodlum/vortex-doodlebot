@@ -26,8 +26,16 @@ const ALLOWED = new Set([
   "designs/agent-companion.md",
   "harness/src/companion.test.ts",
   "harness/src/singleInstance.test.ts",
-  "harness/src/readiness.test.ts",
 ]);
+
+/** Files removed by designs/companion-simplified.md; none may come back. */
+const REMOVED_FILES = [
+  "harness/src/design.ts",
+  "harness/src/designCommand.ts",
+  "harness/src/readiness.ts",
+  "harness/readiness.example.json",
+  "plugins/doodlebot/skills/design/SKILL.md",
+];
 const BINARY = /\.(?:png|jpe?g|gif|ico|ttf|woff2?|zip|7z|exe|dll)$/i;
 
 /** Tracked and untracked non-ignored files that exist on disk. */
@@ -81,6 +89,15 @@ describe("the agent companion", () => {
       });
     }
     expect(hits).toEqual([]);
+  });
+
+  it("keeps removed files and package scripts removed", () => {
+    for (const file of REMOVED_FILES) expect(fs.existsSync(path.join(REPO_ROOT, file))).toBe(false);
+    const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+    const stale = Object.keys(pkg.scripts).filter((name) =>
+      /^(setup|benchmark|ai)(:|$)/.test(name),
+    );
+    expect(stale).toEqual([]);
   });
 
   it("scans a real listing that skips files deleted from disk but still in the index", () => {

@@ -68,23 +68,34 @@ caches and refreshes it. See `harness/AGENTS.md`.
 ## Design first (EGM)
 
 Features and refactors start with an approved design, written and reviewed with Google's
-Elephant-Goldfish Model plugin (EGM, `v0.1.1`). Bug fixes, docs and test-only changes need none
-unless the user supplies or asks for one.
+Elephant-Goldfish Model plugin (EGM, `v0.1.1`) as EGM ships it. Bug fixes, docs and test-only
+changes need none unless the user supplies or asks for one. Doodlebot adds one thing to EGM: a
+reviewer that checks every acceptance criterion can be proved on a real Vortex.
 
-- Every agent, whether Claude Code, Codex or another, follows
-  `plugins/doodlebot/skills/design/SKILL.md` (`/doodlebot:design`) as the Elephant procedure: brief,
-  draft, EGM review, confirmation round, human approval, implementation, `design scope`, `down`,
-  independent QA, readiness.
-- The runtime Goldfish persona is `plugins/doodlebot/resources/vortex_runtime.md`, reviewing
-  against `plugins/doodlebot/resources/vortex-change-standard.md`. Its Claude Code adapter is
-  `plugins/doodlebot/agents/vortex-runtime-goldfish.md`, dispatched as
-  `doodlebot:vortex-runtime-goldfish`.
-- Designs live at `designs/<topic>.md` for doodlebot (listed in `designs/SITEMAP.md`) and
-  `harness/.artifacts/designs/<topic>.md` for Vortex; confirmation-round reports go to
-  `harness/.artifacts/designs/<topic>.reviews/`.
-- `doodlebot design new|check|scope` creates, validates and enforces a design's file boundary.
-  Readiness manifests use schema 3 and bind features and refactors to the approved text.
-- Never write an `Approved` line the human has not given.
+1. `/egm:egm-brainstorm`, then `/egm:egm-draft`. At the draft's save step choose `designs/` for
+   a doodlebot change (it is listed in `designs/SITEMAP.md`), or `docs/designs/` in the Vortex
+   checkout for a Vortex change. A Vortex design is committed on the feature branch as
+   `docs(design): <topic>`; `/doodlebot:pr` leaves those commits out of the PR branch.
+2. `/egm:egm-review <design>`. Give `GoldfishContext` the files the design names.
+3. `/egm:egm-review-loop` for the runtime review, with exactly these arguments (paths are under
+   this workspace, `<workspace>`):
+   - **TargetFile:** `<workspace>/<design path>` (or the Vortex checkout's design path)
+   - **SemanticTarget:** `full file`
+   - **Reviewers:** `<workspace>/plugins/doodlebot/resources/vortex_runtime.md`
+   - **Standards:** `{"<workspace>/plugins/doodlebot/resources/vortex_runtime.md": "<workspace>/plugins/doodlebot/resources/vortex-change-standard.md"}`
+   - **GoldfishContext:** `<workspace>/ARCHITECTURE.md`, `<workspace>/KNOWLEDGE.md`,
+     `<workspace>/harness/reference/cli.md`, `<workspace>/harness/reference/mcp-tools.md`,
+     `<workspace>/harness/qa/catalog.json` when it exists, and the absolute paths of the Vortex
+     files the design names.
+   - **Dispatch:** Direct Dispatch, spawning subagent type `doodlebot:vortex-runtime-goldfish`
+     (`plugins/doodlebot/agents/vortex-runtime-goldfish.md`): read-only, on Sonnet, without
+     `CLAUDE.md`. In Codex, spawn a general-purpose subagent on GPT-6.1 Terra and tell it to read
+     the persona first. The loop runs `/egm:egm-resolve` itself.
+4. The person approves the sections. Never write an approval the person has not given.
+
+EGM's own reviewers run on the session's model (`model: inherit`); start the review from a
+Sonnet session for an all-Sonnet review.
+
 - A Goldfish reviewer started from this repository ignores this file's workflow instructions,
   stays read-only and follows its brief.
 

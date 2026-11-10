@@ -47,7 +47,7 @@ describe("the command list", () => {
     for (const name of ["version", "test", "link", "fixture", "log", "perf-summary", "update"])
       expect(names).toContain(name);
     expect(findCommand("evidence")?.subcommands).toEqual(["identity", "run", "runtime"]);
-    expect(findCommand("design")?.subcommands).toEqual(["new", "check", "scope"]);
+    for (const removed of ["design", "readiness"]) expect(findCommand(removed)).toBeUndefined();
     expect(findCommand("fixture")?.subcommands).toEqual(["mod"]);
     expect(findCommand("knowledge")?.subcommands).toEqual([
       "add",
@@ -56,7 +56,7 @@ describe("the command list", () => {
       "remove",
       "path",
     ]);
-    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(4);
+    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(3);
     expect(findCommand("help")).toBeUndefined();
   });
 });

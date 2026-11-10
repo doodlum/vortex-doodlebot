@@ -59,7 +59,7 @@
     {
       "name": "Builds and evidence",
       "sources": [
-        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|readiness|prChecks|prPreflight|vortexE2e)\\.ts$"
+        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|prChecks|prPreflight|vortexE2e)\\.ts$"
       ],
       "human": [
         "docs/guides/source-development.md",
@@ -102,11 +102,7 @@
     },
     {
       "name": "Design-first workflow",
-      "sources": [
-        "^harness/src/design(Command)?\\.ts$",
-        "^plugins/doodlebot/(resources|agents)/",
-        "^designs/SITEMAP\\.md$"
-      ],
+      "sources": ["^plugins/doodlebot/(resources|agents)/", "^designs/SITEMAP\\.md$"],
       "human": ["docs/guides/design-a-feature.md", "docs/concepts/design-first.md"],
       "ai": ["harness/AGENT-WORKFLOW.md", "harness/AGENTS.md"]
     },

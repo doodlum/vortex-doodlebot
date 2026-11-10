@@ -38,7 +38,6 @@ const PLUGINS: Record<string, PluginSpec> = {
       "status",
       "update",
       "source",
-      "design",
       "fix",
       "drive",
       "qa",
@@ -421,13 +420,13 @@ describe("doodlebot commands named in the plugins", () => {
       "Run doodlebot frobnicate in prose.",
       "Use `doodlebot up --sandbox`, not `doodlebot <command>`.",
       "```powershell",
-      "  doodlebot design check <file>",
+      "  doodlebot knowledge search <words>",
       "$x = doodlebot down",
       "```",
     ].join("\n");
     expect(commandUses(sample).map(({ command, word }) => [command, word])).toEqual([
       ["up", undefined],
-      ["design", "check"],
+      ["knowledge", "search"],
     ]);
   });
 
@@ -460,8 +459,8 @@ describe("workspace paths in plugin skills and agents", () => {
     ["an inline span", "Read `<workspace>/harness/AGENTS.md`.", "Read `harness/AGENTS.md`."],
     [
       "a fenced token",
-      "```\ndoodlebot design check <workspace>/designs/x.md\n```",
-      "```\ndoodlebot design check designs/x.md\n```",
+      "```\ndoodlebot knowledge search <workspace>/designs/x.md\n```",
+      "```\ndoodlebot knowledge search designs/x.md\n```",
     ],
     [
       "a quoted token",

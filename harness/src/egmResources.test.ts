@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { requiredSections } from "./design";
 import { REPO_ROOT } from "./paths";
 
 const read = (file: string): string => fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
@@ -50,26 +49,27 @@ describe("EGM resources", () => {
     );
   });
 
-  it("names every required section in the Vortex change standard", () => {
+  it("makes the Vortex change standard about runtime proof, not doodlebot's old design checks", () => {
     const standard = read("plugins/doodlebot/resources/vortex-change-standard.md");
-    for (const section of requiredSections) expect(standard).toContain(section);
+    for (const text of ["Acceptance criteria with ids", "negative control", "File boundary"])
+      expect(standard).toContain(text);
+    for (const removed of ["design check", "readiness role", "readiness manifest", "sha256"])
+      expect(standard).not.toContain(removed);
+    expect(read("plugins/doodlebot/resources/vortex_runtime.md")).not.toContain("sha256");
   });
 
-  it("provides the Elephant procedure and points every agent at it", () => {
-    expect(frontmatter("plugins/doodlebot/skills/design/SKILL.md").name).toBe("design");
+  it("leaves design to EGM: no design skill, and AGENTS.md gives the runtime review call", () => {
+    expect(fs.existsSync(path.join(REPO_ROOT, "plugins/doodlebot/skills/design"))).toBe(false);
     const agents = read("AGENTS.md");
-    expect(agents).toContain("EGM artifact directory: harness/.artifacts/egm");
-    expect(agents).toContain("plugins/doodlebot/skills/design/SKILL.md");
-    expect(agents).toContain("plugins/doodlebot/resources/vortex_runtime.md");
-    expect(agents).toContain("plugins/doodlebot/agents/vortex-runtime-goldfish.md");
-    const workflow = read("harness/AGENT-WORKFLOW.md");
-    for (const file of [
-      "plugins/doodlebot/resources/vortex-change-standard.md",
+    for (const text of [
+      "EGM artifact directory: harness/.artifacts/egm",
+      "/egm:egm-review-loop",
       "plugins/doodlebot/resources/vortex_runtime.md",
-      "plugins/doodlebot/agents/vortex-runtime-goldfish.md",
-      "plugins/doodlebot/skills/design/SKILL.md",
+      "plugins/doodlebot/resources/vortex-change-standard.md",
+      "Direct Dispatch",
+      "doodlebot:vortex-runtime-goldfish",
     ])
-      expect(workflow).toContain(file);
+      expect(agents).toContain(text);
   });
 
   it("documents EGM setup for each coding agent", () => {

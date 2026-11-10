@@ -39,7 +39,6 @@ import {
   pullRequestChecksPassed,
 } from "./prChecks";
 import { PreflightError, formatPreflightReport, runPreflight } from "./prPreflight";
-import { readinessFromFile } from "./readiness";
 import {
   captureCheckoutIdentity,
   collectCommandEvidence,
@@ -56,7 +55,6 @@ import { runSlowDownloads } from "./slowDownload";
 import { installCollection } from "./collections";
 import { deployMods, needsDeployment, purgeGame } from "./deployment";
 import { runE2e } from "./e2e";
-import { designCommand } from "./designCommand";
 import { importLogin } from "./loginImport";
 import { e2eExitCode, formatE2eReport, playwrightRunner, runVortexE2e } from "./vortexE2e";
 import { versionCommand } from "./versionCommand";
@@ -169,9 +167,6 @@ Instance lifecycle
     --where              Print managed source path
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
-  readiness              Evaluate strict revision-bound task evidence; never runs gates
-    --manifest <json>   Required task/evidence manifest (schema version 3)
-    --json              Print the readiness report; exit 0 ready, 1 incomplete
   evidence identity --checkout <dir> --base <ref>
                          Print current subject and kit identities, including local diff
   evidence runtime --kind installed|source --label <version> <binary> [bundle...]
@@ -211,14 +206,6 @@ Instance lifecycle
     --grep <re> --grep-invert <re>   Playwright title filters
     --compare <json>     Diff against an earlier report: regressions vs pre-existing
     --json               Print the report as JSON (Playwright's output goes to stderr)
-
-Design-first work (EGM)
-  design new <file> --title <t> --target vortex|doodlebot
-                         Write the design template; refuses an existing file
-  design check <file> [--ready] [--json]
-                         Validate structure and approval; print the content digest
-  design scope <file> --checkout <dir> --base <ref> [--json]
-                         List changed files outside the approved boundary; exit 1 if any
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -324,24 +311,6 @@ async function main(): Promise<number> {
     );
     log(flags.json === true ? JSON.stringify(report, null, 2) : formatPullRequestChecks(report));
     return pullRequestChecksPassed(report) ? 0 : 1;
-  }
-
-  if (command === "readiness") {
-    if (typeof flags.manifest !== "string")
-      throw new ConfigError("readiness needs --manifest <json>.");
-    const report = readinessFromFile(flags.manifest);
-    log(
-      flags.json === true
-        ? JSON.stringify(report, null, 2)
-        : `${report.ready ? "EVIDENCE COMPLETE" : "INCOMPLETE"}: ${report.taskId} at ${report.subject.headSha}\n${report.meaning}\n${report.issues.join("\n")}`,
-    );
-    return report.ready ? 0 : 1;
-  }
-
-  if (command === "design") {
-    const result = designCommand(positional, flags, () => new Date().toLocaleDateString("sv-SE"));
-    log(result.stdout);
-    return result.code;
   }
 
   if (command === "evidence") {

@@ -81,8 +81,6 @@ export const PATH_FLAGS = new Set([
 /** The positional arguments that are files the caller named, by command. */
 function positionalPaths(command: string, positional: string[]): number[] {
   switch (command) {
-    case "design":
-      return ["new", "check", "scope"].includes(positional[0] ?? "") ? [1] : [];
     case "script":
     case "eval":
     case "install":

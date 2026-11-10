@@ -6,8 +6,9 @@ argument-hint: "<bug report, issue link or symptom>"
 
 # Fix a Vortex bug
 
-Features and refactors are not fixes: they start with `/doodlebot:design`. A fix needs no
-design unless the person supplies or asks for one.
+Features and refactors are not fixes: they start with a design written and reviewed with EGM
+(`/egm:egm-draft`, `/egm:egm-review`; see `<workspace>/AGENTS.md`). A fix needs no design unless
+the person supplies or asks for one.
 
 ## Before you begin
 
