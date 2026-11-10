@@ -808,6 +808,48 @@ Owner question (2026-11-10): how do I back up the login?
 3. **Never** in chat, `content.json`, run reports, shared issues (4.10's guard) or
    `KNOWLEDGE.md`.
 
+### 4.13 Disk use
+
+Found on 2026-11-10: `harness/.artifacts` held about 262 GB and `harness/.cache` about 92 GB,
+filling a 953 GB drive. The causes:
+
+- full game copies made per task: Cyberpunk 85 GB, two identical Skyrim copies, seven VFS game
+  copies 92 GB;
+- a Linux VM disk (29 GB) inside an evidence folder;
+- collection runs that each downloaded and kept the whole collection;
+- build packages kept per run;
+- nothing ever deleted.
+
+The owner removed them, keeping the VM.
+
+1. **One copy per game version.** `game copy` reuses a registered copy of the same game and
+   version instead of copying again. `--new` makes a second copy only when asked.
+2. **Evidence holds reports, not binaries.**
+   - Run, QA and benchmark folders keep reports, logs, JSON and screenshots.
+   - Game copies, VM disks, packages and downloads go in the cache or the copy folder.
+   - A run that would put a file over 100 MB in an evidence folder writes a link to it instead.
+3. **`doodlebot clean`:**
+   - lists, then deletes after confirmation:
+     - run, QA and benchmark folders older than `--older-than <days>` (default 30), keeping each
+       `report.md`;
+     - caches of other builds or games not used for `--older-than` days;
+     - releases no longer named in `content.json`;
+   - never touches registered game copies, the login, pending restores, or a running instance's
+     cache;
+   - `--dry-run` lists only.
+4. **`setup --check` shows disk use:** the size of `harness/.artifacts`, `harness/.cache`,
+   `~/.doodlebot/releases` and each registered game copy, and the drive's free space. It warns
+   below 10 GB free with the `doodlebot clean` command.
+5. **Dev Drive (documentation only).** On Windows 11, a Dev Drive (ReFS) clones copies
+   copy-on-write, so game copies cost only the files that change. The "Games and baselines"
+   guide says how to put the copy folder on one. Creating it is the person's own disk setting.
+   Hard-link deduplication on NTFS is not used: a game or Vortex writing a file in place would
+   change every copy at once.
+
+Criteria: `copy-reused` (a second `game copy` of the same version reuses the first) and
+`clean-keeps-reports` (`clean` removes an old run's binaries but keeps its `report.md`, and never
+touches a registered copy or the login).
+
 ## 5. Alternatives considered
 
 - **Run the official installer for releases** (as CI does). Rejected for local use: it replaces
@@ -961,6 +1003,8 @@ references in the same step. "Docs" below means:
    - the one-time move (refused while Vortex runs; never overwrites) and the ACL check, with
      tests;
    - the docs: "Sign in" gains "If your login is lost or expired".
+     7e. **Disk use (4.13):** `game copy` reuse with `--new`, `doodlebot clean` with its test,
+     the 100 MB evidence rule in the run-report writers, and disk use in `setup --check` (step 8).
 8. **Commands 16 → 8 (4.1):**
    - skills renamed or merged: `drive` → `try`, `ui-test` into `fix`, `compare` into `measure`,
      login, baseline, update and status into `setup`, start and stop into `try`;
