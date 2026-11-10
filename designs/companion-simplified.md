@@ -80,6 +80,9 @@ benchmarks, nightly and release checks, and game copies.
      gains `release`, `game copy|register|restore`, `inventory`, `qa` and `gap`;
    - no duplicate design machinery, no readiness, no source-only checks;
    - one agent manual.
+   - **Outcome (2026-11-10):** commands and manuals shrank. Production code grew by about 2,500
+     lines (+5,955/−3,430 against `c576db7`), almost all of it the protection, release and
+     content features of 4.3–4.5 and 4.13 (tests and CI review).
 5. Real games and the owner's own Vortex are protected by the kit, not by habit.
 
 **Non-goals**
@@ -272,6 +275,8 @@ Both reviewers' blockers were checked against the code:
            run **and** that is one of the files Vortex writes for that game. The per-game table
            names them: `plugins.txt`, `loadorder.txt`, `DLCList.txt`, `*.ini`. A deleted file
            has no time of its own; its nearest existing folder's modification time dates it.
+         - **Known limit:** an INI setting the owner changes from their own game launcher during
+           a run is put back, because `*.ini` is on the Vortex list (safety review, 2026-11-10).
          - **Listed for the owner instead:** any other changed file (saves especially). The owner
            may have played their own copy of the game during a long run, and the time window
            can't tell their saves from the run's. Found by the safety review, 2026-11-10.
