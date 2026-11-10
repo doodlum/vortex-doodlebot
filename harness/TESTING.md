@@ -21,7 +21,8 @@ further active-game polling, and await in-flight work before rejecting. Separate
 and watcher errors remain distinct causes. These tests need no Vortex, game or account.
 
 `pnpm run ci` runs types, lint, formatting, paired documentation checks and their negative
-controls, unit and filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials;
+controls, the QA catalogue check (`qa:check`, `node bin/doodlebot.cjs qa check`), unit and
+filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials;
 instance-record cases mock `USER_STATE_DIR` (and the default cache) to temporary folders, so
 they never read or write the real `~/.doodlebot/instance.json`. `update.test.ts` passes a
 temporary `stateDir` for the same reason. The operator's package-manager override must not
@@ -70,6 +71,9 @@ Companion unit tests (no Vortex, game or account):
 | `harness/src/fixtureCommand.test.ts`, `logCommand.test.ts`   | The one-file mod archive (unzipped with fflate); log level threshold, `--tail`, `--since` and continuation lines                                                                                                                                                                                     |
 | `harness/src/perfSummary.test.ts`                            | Faster, Slower and No clear difference with fixed numbers, even counts, the percent formula, verdicts and percent from the rounded values the table shows, Blocked metrics and runs, one-sided reports, and every check's metric paths                                                               |
 | `harness/src/doctor.test.ts`                                 | The advisory `Sandbox baseline` (the `--no-game` baseline only with `--no-game`) and `Legacy lease store` checks, and a `targetError` shown as a failing `Vortex` check                                                                                                                              |
+| `harness/src/inventory.test.ts`                              | `inventory-next-step` (no games, no login, a store path only, a stale and a markerless snapshot, an old marker without a build); the choice's order (sandbox, smallest copy, offline before Nexus) and `missing-need-not-tested`                                                                     |
+| `harness/src/qaCatalog.test.ts`                              | The checked-in catalogue passes `qa check` and covers every opt-in check; malformed files, `catalogue-valid` failures (missing guards, pass or needs, unknown check or need); glob matching; unselected reasons; `unguarded-files-listed`; `measured-not-passed`                                     |
+| `harness/src/diskUse.test.ts`, `gameCommand.test.ts`         | `clean-keeps-reports` (old binaries go, `report.md`, small files, registered copies, logins and pending restores stay; the running instance's cache is skipped); the 100 MB evidence link; `copy-reused` and `--new`                                                                                 |
 
 Collection-start regressions use the real UI helpers with a bounded root snapshot and a
 separately observable dialog footer. DOM coverage verifies the default 1,500-node limit;

@@ -35,6 +35,7 @@ function withFixture(prefix, body) {
       "mkdocs.yml",
       "docs",
       "harness/reference",
+      "harness/qa",
       "scripts/documentation-map.json",
       "package.json",
       "AGENTS.md",

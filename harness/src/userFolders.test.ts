@@ -54,6 +54,7 @@ beforeEach(() => {
     roots: () => ({
       documents: path.join(root, "Documents"),
       localAppData: path.join(root, "Local"),
+      roamingAppData: path.join(root, "Roaming"),
     }),
     gameRunning: async () => running,
     now: () => at(0),
@@ -68,8 +69,34 @@ afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 describe("user folders", () => {
   it("are the game's Documents\\My Games and LocalAppData folders from the table", () => {
     expect(userFoldersOf("fallout4", deps.roots!())).toEqual([myGames(), local()]);
-    expect(userFoldersOf("stardewvalley", deps.roots!())).toEqual([]);
+    expect(userFoldersOf("stardewvalley", deps.roots!())).toEqual([
+      path.join(root, "Roaming", "StardewValley"),
+    ]);
+    expect(userFoldersOf("vortexaisandbox", deps.roots!())).toEqual([]);
     expect(userFoldersOf("not-a-game", deps.roots!())).toBeUndefined();
+  });
+
+  it("back up and restore a Roaming AppData folder like the others (Stardew Valley)", async () => {
+    const roaming = path.join(root, "Roaming", "StardewValley");
+    const save = path.join(roaming, "Saves", "Farm_1", "Farm_1");
+    const options = path.join(roaming, "startup_preferences");
+    write(save, "owner farm", at(-86_400_000));
+    write(options, "<StartupPreferences/>", at(-86_400_000));
+    const hashOf = (file: string) =>
+      createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+    const before = [hashOf(save), hashOf(options)];
+
+    const pending = await protectUserFolders("stardewvalley", cache(), deps);
+    expect(pending).toMatchObject({ gameId: "stardewvalley" });
+    write(save, "the run's farm", at(2_000));
+    write(path.join(roaming, "ErrorLogs", "run.txt"), "log", at(3_000));
+    fs.rmSync(options);
+
+    await settlePendingRestores({ clean: true, end: at(10_000), write: () => undefined }, deps);
+    expect([hashOf(save), hashOf(options)]).toEqual(before);
+    expect(fs.existsSync(path.join(roaming, "ErrorLogs", "run.txt"))).toBe(false);
+    expect(fs.statSync(save).mtimeMs).toBe(at(-86_400_000).getTime());
+    expect(readContent(deps.contentFile).pendingRestores).toEqual([]);
   });
 
   it("are backed up before the launch and restored byte for byte after a clean run", async () => {

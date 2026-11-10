@@ -86,6 +86,16 @@
       "ai": ["harness/TESTING.md"]
     },
     {
+      "name": "Inventory, QA catalogue and disk use",
+      "sources": ["^harness/qa/", "^harness/src/(inventory|qaCatalog|diskUse|gameCommand)\\.ts$"],
+      "human": [
+        "docs/reference/qa-catalog.md",
+        "docs/concepts/evidence.md",
+        "docs/guides/games-and-baselines.md"
+      ],
+      "ai": ["harness/AGENTS.md", "harness/TESTING.md"]
+    },
+    {
       "name": "Harness implementation coverage",
       "sources": ["^harness/src/[^/]+\\.ts$"],
       "human": [

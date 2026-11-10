@@ -126,29 +126,52 @@ export function registerCopy(gameId: string, dir: string, deps: GameCommandDeps 
   return copy;
 }
 
+const occupied = (dir: string): boolean => fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
+
 /**
- * `game copy <gameId> [--to <folder>]`: copy the store install into `<folder>/<gameId>`, where
- * the folder is `--to` or the stored copy folder, and register it.
+ * `game copy <gameId> [--to <folder>] [--new]`: copy the store install into `<folder>/<gameId>`,
+ * where the folder is `--to` or the stored copy folder, and register it.
+ *
+ * One copy per game version: when a registered copy of the same game and version is still on
+ * disk, it is reused instead (`reused: true`) and nothing is copied. `fresh` (`--new`) makes
+ * another copy anyway, in `<folder>/<gameId>-<n>`.
  */
 export async function copyGame(
   gameId: string,
   to: string | undefined,
   deps: GameCommandDeps = {},
-): Promise<GameCopy> {
+  options: { fresh?: boolean } = {},
+): Promise<{ copy: GameCopy; reused: boolean }> {
   const game = requireKnownGame(gameId);
   const file = deps.contentFile ?? CONTENT_FILE;
   const source = (deps.storePath ?? storePathOf)(gameId);
   if (source === undefined)
     throw new ConfigError(`${game.name} is not installed through Steam on this machine.`);
-  const folder = to ?? readContent(file).copyFolder;
+  const content = readContent(file);
+  if (options.fresh !== true) {
+    const sourceVersion = versionOf(source, game.executable, deps.fileVersion);
+    const same = content.games.find(
+      (copy) =>
+        copy.gameId === gameId &&
+        sourceVersion !== undefined &&
+        copy.gameVersion === sourceVersion &&
+        fs.existsSync(path.join(copy.path, game.executable)),
+    );
+    if (same !== undefined) return { copy: same, reused: true };
+  }
+  const folder = to ?? content.copyFolder;
   if (folder === undefined)
     throw new ConfigError(
       "No copy folder is stored yet. Pass --to <folder> (a drive with room for the game).",
     );
-  const destination = path.join(folder, gameId);
+  let destination = path.join(folder, gameId);
+  // Another copy goes beside a registered one; an unregistered folder is never written over.
+  const registered = (dir: string) => findGameCopy(gameId, dir, file) !== undefined;
+  for (let n = 2; occupied(destination) && registered(destination); n++)
+    destination = path.join(folder, `${gameId}-${String(n)}`);
   if (isStorePath(destination, source) || inside(destination, source))
     throw new ConfigError(`${destination} is inside a store library; choose another folder.`);
-  if (fs.existsSync(destination) && fs.readdirSync(destination).length > 0)
+  if (occupied(destination))
     throw new ConfigError(
       `${destination} already exists. Register it with \`doodlebot game register ${gameId} ${destination}\`, or remove it.`,
     );
@@ -163,7 +186,7 @@ export async function copyGame(
     registeredAt: (deps.now ?? (() => new Date()))().toISOString(),
   };
   registerGameCopy(copy, file);
-  return copy;
+  return { copy, reused: false };
 }
 
 const describeCopy = (copy: GameCopy): string =>
@@ -179,17 +202,24 @@ export async function gameCommand(
 ): Promise<{ text: string; code: number }> {
   const [sub, gameId, dir] = positional;
   const usage =
-    "Use game copy <gameId> [--to <folder>], game register <gameId> <dir>, or " +
+    "Use game copy <gameId> [--to <folder>] [--new], game register <gameId> <dir>, or " +
     "game restore <gameId> [--all | --keep | --file <path>...].";
   if (gameId === undefined) throw new ConfigError(usage);
   switch (sub) {
     case "copy": {
-      const copy = await copyGame(
+      const { copy, reused } = await copyGame(
         gameId,
         typeof flags.to === "string" ? flags.to : undefined,
         deps,
+        { fresh: flags.new === true },
       );
-      return { text: `Copied and registered the ${describeCopy(copy)}.`, code: 0 };
+      return {
+        text: reused
+          ? `Reused the registered ${describeCopy(copy)}: it is the same version as the Steam install. ` +
+            `Pass --new for another copy.`
+          : `Copied and registered the ${describeCopy(copy)}.`,
+        code: 0,
+      };
     }
     case "register": {
       if (dir === undefined) throw new ConfigError(usage);

@@ -357,6 +357,33 @@ result(
     ) +
     cliBody,
 );
+const catalog = JSON.parse(read("harness/qa/catalog.json"));
+const runText = (run) =>
+  run.check !== undefined
+    ? "`" + ["doodlebot test", run.check, ...(run.args ?? [])].join(" ") + "`"
+    : "Scenario: " + (Array.isArray(run.scenario) ? run.scenario.join("; ") : run.scenario);
+result(
+  "docs/reference/qa-catalog.md",
+  "# QA catalogue\n\n" +
+    banner(
+      "These are the checks Vortex's own end-to-end tests do not cover. When a change touches the Vortex files an entry guards, QA runs that entry. Each entry's needs are kinds of content from `doodlebot inventory`, never a named game or collection; an entry whose needs nothing meets is reported as not tested. An entry that only measures reports a measurement, never a pass. List the entries a change selects with `doodlebot qa list --touching <paths>`. This page is generated from `harness/qa/catalog.json`.",
+    ) +
+    `Vortex's own e2e specs, as of Vortex commit \`${catalog.vortexE2e.commit}\`: ${catalog.vortexE2e.specs.map((spec) => "`" + spec + "`").join(", ")}.\n\n` +
+    "| Entry | Area | Runs | Passes when | Needs | Cost | Account | Network |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+    catalog.entries
+      .map(
+        (entry) =>
+          `| \`${entry.id}\` | ${cell(entry.area)} | ${cell(runText(entry.run))} | ${entry.pass === "measured" ? "Measured only; never a pass" : cell(entry.pass)} | ${entry.needs.map((need) => "`" + need + "`").join(", ")} | ${cell(entry.cost)} | ${entry.account === "logout" ? "logs out" : entry.account ? "yes" : "no"} | ${entry.network ? "yes" : "no"} |`,
+      )
+      .join("\n") +
+    "\n\n## Why each entry exists and what it guards\n\n" +
+    catalog.entries
+      .map(
+        (entry) =>
+          `### ${entry.id}\n\n${entry.why}\n\nGuards (paths in the Vortex repository):\n\n${entry.guards.map((guard) => "- `" + guard + "`").join("\n")}\n`,
+      )
+      .join("\n"),
+);
 const apiBody = inventory.api
   .map(
     (module) =>

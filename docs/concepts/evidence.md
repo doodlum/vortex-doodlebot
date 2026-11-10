@@ -1,7 +1,7 @@
-# Evidence and readiness
+# Evidence and the QA catalogue
 
-This page explains what evidence the agent keeps for a change, and what a readiness check proves
-and does not prove.
+This page explains what evidence the agent keeps for a change, and how the QA catalogue decides
+which checks a change needs.
 
 ## Before you begin
 
@@ -24,6 +24,11 @@ Reports and evidence go under `<workspace>/harness/.artifacts`, which Git ignore
 writes new files; existing evidence is never overwritten. A failed run's evidence is kept as
 failed evidence.
 
+Evidence folders hold reports, logs, JSON and screenshots, not large binaries. A file over 100 MB
+stays where it is, and the evidence folder gets a `.link.txt` file with its path instead.
+`doodlebot clean` removes old binaries and keeps each report; see
+[Use real games and baselines](../guides/games-and-baselines.md).
+
 Passing unit tests alone do not show that a Vortex flow works. A driven run, a regression test
 or a benchmark against a real Vortex does.
 
@@ -37,25 +42,38 @@ The agent records which source and which Vortex the evidence came from:
 Evidence for one revision does not count for a later one. When the code changes, the affected
 checks run again.
 
-## Readiness
+## The QA catalogue
 
-At handoff, the agent lists the change's evidence in a readiness manifest and runs
-`doodlebot readiness --manifest <file>`. Readiness checks that:
+Vortex has its own end-to-end tests. The QA catalogue lists the checks they do not cover, such
+as large collections, the Plugins page and Missing Masters. Each entry names:
 
-- every artifact exists and matches its recorded hash;
-- the evidence belongs to the current revision and Vortex build;
-- the required kinds of evidence for the change are present and passing, including a control
-  that shows the tests detect the change;
-- for a feature or refactor, the design is approved, its acceptance criteria are covered, and
-  every changed file is inside its boundary;
-- a core-suite receipt ran the whole suite: `node bin/doodlebot.cjs test core`, optionally
-  followed by a JSON reporter (`--reporter=json`), and nothing else. A filter, such as a spec
-  path or `--grep`, is refused, and so is a `--` after `test core`, because doodlebot passes it
-  on to Playwright, which reads what follows as a filter.
+- the Vortex files it guards;
+- the check that runs it;
+- what passing means;
+- what it needs, such as the sandbox, the fake Fallout 4 or a Nexus login.
 
-A ready result means the evidence is complete. It is not permission to publish, merge or release,
-and it does not judge whether the change is correct. An independent reviewer still inspects the
-change and its evidence.
+When a change touches files an entry guards, QA runs that entry. To see which entries a change
+selects:
+
+```powershell
+doodlebot qa list --touching src/renderer/src/extensions/collections/index.ts
+```
+
+The output also lists the entries not selected, with the reason, and the touched files that no
+entry guards. Those files are tested by hand, and the agent proposes a new entry for them.
+
+Each result is one of:
+
+| Result     | Meaning                                                               |
+| ---------- | --------------------------------------------------------------------- |
+| Pass       | The check ran and met its pass criterion                              |
+| Fail       | The check ran and did not                                             |
+| Measured   | The check only measures; it reports numbers, never a pass             |
+| Not tested | Nothing on this machine met its needs; the report gives the next step |
+
+The catalogue is checked in, and `doodlebot qa check` validates it in every CI run. Results are
+not checked in: each run writes `harness/.artifacts/qa/<Vortex version>/<entry>/<time>/report.md`.
+The [QA catalogue reference](../reference/qa-catalog.md) lists every entry.
 
 ## What's next
 

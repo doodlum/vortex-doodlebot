@@ -59,7 +59,10 @@ describe("the command list", () => {
     ]);
     expect(findCommand("game")?.subcommands).toEqual(["copy", "register", "restore"]);
     expect(findCommand("release")?.subcommands).toEqual(["get", "list"]);
-    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(5);
+    expect(findCommand("qa")?.subcommands).toEqual(["list", "check"]);
+    for (const name of ["inventory", "clean"])
+      expect(findCommand(name)?.subcommands, name).toBeUndefined();
+    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(6);
     expect(findCommand("help")).toBeUndefined();
   });
 });

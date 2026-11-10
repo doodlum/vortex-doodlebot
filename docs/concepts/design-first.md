@@ -63,9 +63,9 @@ The agent never approves a design for you, and never writes an approval you have
   `doodlebot design scope` reports any changed file outside that list.
 - **Readiness.** At handoff, `doodlebot readiness` fails a feature or refactor unless the design
   is approved, its digest matches, its acceptance criteria match the evidence, and every changed
-  file is inside the boundary. See [Evidence and readiness](evidence.md).
+  file is inside the boundary. See [Evidence and the QA catalogue](evidence.md).
 
 ## What's next
 
 - [Design a feature](../guides/design-a-feature.md).
-- [Evidence and readiness](evidence.md).
+- [Evidence and the QA catalogue](evidence.md).

@@ -336,7 +336,7 @@ created and may write to: game copies, the copy folder, releases, pending restor
 collections. It is rewritten through a temporary file and a rename.
 
 ```powershell
-doodlebot game copy <gameId> [--to <folder>]   # Steam install -> <folder>/<gameId>, registered
+doodlebot game copy <gameId> [--to <folder>] [--new]   # Steam install -> <folder>/<gameId>, registered
 doodlebot game register <gameId> <dir>         # an existing copy; refuses a store path
 doodlebot game restore <gameId> [--all | --keep | --file <path>...]
 ```
@@ -347,10 +347,16 @@ doodlebot game restore <gameId> [--all | --keep | --file <path>...]
   `--game-path` refuses: the Steam install is never managed. A store path (what `findGamePath`
   returns, or anything under `steamapps\common`) is never a copy. `game copy` needs `--to`
   until a copy folder is stored.
+- **One copy per game version.** `game copy` reuses a registered copy of the same game id and
+  version (the executable's `ProductVersion`, still on disk) and prints
+  `Reused the registered <game> copy at <dir> ...`; nothing is copied. `--new` makes another in
+  `<folder>/<gameId>-<n>`, and so does a new game version when `<folder>/<gameId>` is a
+  registered copy. An unregistered folder in the way is never written over.
 - **User folders** (`userFolders.ts`). `USER_FOLDERS` next to `KNOWN_GAMES` (`gameSetup.ts`)
-  names each game's `Documents\My Games\<x>` and `%LOCALAPPDATA%\<y>`; a game missing from it
-  cannot be registered or launched from a copy. Every launch that manages a game with folders
-  there (a registered copy and the fake Fallout 4) copies both into
+  names each game's `Documents\My Games\<x>`, `%LOCALAPPDATA%\<y>` and `%APPDATA%\<z>`
+  (`roamingAppData`; Stardew Valley keeps saves and settings in `%APPDATA%\StardewValley`); a
+  game missing from it cannot be registered or launched from a copy. Every launch that manages a game with folders
+  there (a registered copy and the fake Fallout 4) copies them into
   `<cache>/user-folder-backups/<game>-<time>`, records each file's path, size, modification time
   and SHA-256 in its `manifest.json`, and writes a pending restore with the run's start time,
   before Vortex starts. It refuses while the game runs (`tasklist`) or when the backup fails.
@@ -383,6 +389,87 @@ in `content.json`, and the installer and inner archive are deleted. `release lis
 lists them, and `--release <version>` selects one wherever `--exe` is accepted. Releases stay
 outside the workspace: under it the renderer fails with `Cannot find module './common'`
 (KNOWLEDGE.md).
+
+### Inventory and content choice
+
+`doodlebot inventory [--json]` (`inventory.ts`) lists what this machine can test against. It
+only reads: `content.json`, the default cache (or `--cache-dir`), Steam's manifests and
+`.vortex-src`; it never launches Vortex. Each item is `{id, kind, ready, next?, label, gameId?,
+path?, sizeBytes?, details?}` (`inventorySchema`); `next`, the exact command that makes it
+ready, is present exactly when `ready` is false.
+
+| Kind         | Items                                                                                                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `build`      | `release:<v>` (registered; `next: doodlebot release get <v>` when its exe is gone), `installed` (`findInstalledVortex`), `source` (`.vortex-src`: built, branch, head; else `doodlebot source` or `doodlebot build --checkout <dir>`) |
+| `game`       | `store:<id>`: a Steam install of a game in `USER_FOLDERS`, never usable, `next: doodlebot game copy <id>` (with `--to <folder>` until a copy folder is stored); `copy:<id>:<path>`: a registered copy                                 |
+| `snapshot`   | `snapshot:<dir>` for each `snapshot-*` in the cache, read through its marker. Stale (older format, game folder or build gone): `next: doodlebot up <flags> --rebuild-snapshot`; no marker: delete it                                  |
+| `sandbox`    | `sandbox` (the fake game) and `sandbox:fallout4` (the fake Fallout 4), always ready                                                                                                                                                   |
+| `collection` | `collection:offline` (always ready) and `collection:nexus:<game>/<slug>` from `content.json`, ready with a login                                                                                                                      |
+| `login`      | `login`: an `oauth-*.json` in the cache holding a login, not the null tombstone; else `next: doodlebot setup --oauth --installed`                                                                                                     |
+
+The snapshot marker records `build` (`buildOf`: the checkout or the exe) since this change;
+older markers without it are read as "build not recorded", and their `next` names no target flag.
+
+`chooseContent(needs, inventory)` is the choice the commands make. A need is `sandbox` (the
+fake game, then the fake Fallout 4), `sandbox:fallout4`, `game` (a sandbox, then a registered
+copy), `game:<id>` (a registered copy, smallest first), `collection` (offline before Nexus),
+`collection:offline`, `collection:nexus` or `login`; anything else throws. It returns
+`{met, chosen: [{need, item, why}], unmet: [{need, next, reason}]}`. An unmet need makes the run
+"not tested", with its `next`.
+
+### The QA catalogue
+
+`harness/qa/catalog.json` (schema in `qaCatalog.ts`) lists the checks Vortex's own e2e suite
+lacks. `vortexE2e` records Vortex's spec files (`packages/e2e/src/tests/*.spec.ts`) and the
+commit they were read at. Each entry has `id`, `area`, `guards` (globs relative to the Vortex
+root: `**` spans folders, `*` stays in one), `why`, `run` (`{check, args}` naming a suite of
+`doodlebot test --list`, or `{scenario}` for the driver), `pass` (what passing means, or
+`"measured"`), `needs` (the needs above), `cost` (`<2m`, `<10m`, `long`), `account` (`false`,
+`true` or `"logout"`) and `network`. `docs/reference/qa-catalog.md` is generated from it.
+
+```powershell
+doodlebot qa list [--touching <paths...>] [--json]
+doodlebot qa check
+```
+
+- `qa list --touching` selects the entries whose guards match a touched path (relative to the
+  Vortex root; absolute paths under `.vortex-src` are made relative), prints the others with
+  their reason, and ends with `Files no entry guards: ...`. An `account: "logout"` entry is
+  never selected without the person's go-ahead. Without `--touching` it lists every entry. Each
+  selected entry shows its newest local report,
+  `harness/.artifacts/qa/<vortexVersion>/<entry id>/<time>/report.md`.
+- `qa check` (`pnpm run qa:check`, in `ci`) fails on an entry without guards, pass or needs, an
+  unknown need, a check that is not a suite, or a repeated id. With `.vortex-src` it also lists
+  specs added since the recorded commit and guards that match no tracked file at HEAD; those are
+  for the owner to act on and do not fail it.
+- `judgeResult(entry, {ran, ok, choice})` reports `pass`, `fail`, `measured` or `not tested`:
+  unmet needs or no run is "not tested", and a `"measured"` entry reports a measurement or a
+  failure, never a pass.
+- When Vortex adds a spec that covers an entry, the entry is deleted in the change that records
+  the new spec commit.
+
+### Disk use and clean
+
+Evidence folders hold reports, logs, JSON and screenshots. `placeEvidenceFile(file, dir)`
+(`diskUse.ts`) copies a file into an evidence folder, or, over 100 MB, writes
+`<name>.link.txt` with its path and leaves it where it is; use it for any file a run report did
+not write itself. Game copies, VM disks, packages and downloads belong in the cache or the copy
+folder.
+
+`doodlebot clean [--older-than <days>] [--dry-run] [--yes]` lists, and deletes only with
+`--yes` (ask the person first; `--dry-run` lists even with `--yes`):
+
+- in `runs/*`, `benchmarks/*` and `qa/<version>/<id>/<time>` under `harness/.artifacts` whose
+  newest file is older than the limit (default 30 days): every file of 1 MB or more except
+  `report.md`;
+- under `harness/.cache`: `snapshot-*` baselines not used for that long (the working profile's
+  baseline counts as used at the last launch, `last-build.json`), and nested caches (a folder
+  with `live`, `last-build.json` or baselines), all but their login;
+- releases in `~/.doodlebot/releases` that `content.json` does not name.
+
+It never deletes a registered game copy, any `oauth-*.json` or `login-*`, a pending restore's
+backup, or the running instance's cache (from the instance record), and rechecks each path
+before deleting it.
 
 ## Drive from any agent or shell
 

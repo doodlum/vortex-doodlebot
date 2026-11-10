@@ -48,8 +48,8 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
    pnpm run ci
    ```
 
-   It checks types, lint, formatting, documentation, unit tests and the extension build. It
-   does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
+   It checks types, lint, formatting, documentation, the QA catalogue (`doodlebot qa check`),
+   unit tests and the extension build. It does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
    to its design: the manifests and icon, every skill's frontmatter, and both agents running on
    Sonnet.
 
@@ -118,7 +118,8 @@ The site is built with MkDocs Material. Pages live in `docs/`, and the navigatio
    `docs:generate` refreshes the generated references: [Commands](reference/commands.md) from
    the plugin skills, the [doodlebot CLI](reference/cli.md) (the commands `cli.ts` dispatches,
    plus those the launcher handles itself, such as `update`) and the
-   [MCP tools](reference/mcp-tools.md). `docs:check` catches stale references and missing paired
+   [MCP tools](reference/mcp-tools.md) and the [QA catalogue](reference/qa-catalog.md), from
+   `harness/qa/catalog.json`. `docs:check` catches stale references and missing paired
    updates. `docs:test` tests the checks. `docs:build` runs a strict MkDocs build into `site/`.
    To use another Python, set `DOODLEBOT_DOCS_PYTHON` to its path.
 

@@ -1,0 +1,172 @@
+{
+  "vortexE2e": {
+    "commit": "acb3d86210",
+    "specs": [
+      "account-logout.spec.ts",
+      "account.spec.ts",
+      "dashboard.spec.ts",
+      "game-management.spec.ts",
+      "health-check-file-requirement.spec.ts",
+      "health-check-mod-requirement.spec.ts",
+      "health-check.spec.ts",
+      "login.spec.ts",
+      "mods-deploy.spec.ts",
+      "mods-disable.spec.ts",
+      "mods-manual.spec.ts",
+      "mods-uninstall.spec.ts",
+      "mods.spec.ts",
+      "profile.spec.ts",
+      "settings.spec.ts",
+      "smoke.spec.ts",
+      "upgrade-to-premium.spec.ts",
+      "view-profile-on-web.spec.ts"
+    ]
+  },
+  "entries": [
+    {
+      "id": "collections.scale",
+      "area": "collections",
+      "guards": [
+        "src/renderer/src/extensions/collections/**",
+        "src/renderer/src/extensions/mod_management/InstallManager.ts",
+        "src/renderer/src/extensions/mod_management/util/**"
+      ],
+      "why": "No Vortex e2e spec installs a collection, let alone one with thousands of members.",
+      "run": { "check": "collection-scale", "args": [] },
+      "pass": "No single main-thread freeze over 10 s in any phase of the install (and of the update with --update), and the review says complete.",
+      "needs": ["sandbox", "collection:offline"],
+      "cost": "<10m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "collections.download-retry",
+      "area": "collections",
+      "guards": [
+        "src/renderer/src/extensions/collections/**",
+        "src/renderer/src/extensions/download_management/**",
+        "src/main/src/downloading/**"
+      ],
+      "why": "No Vortex e2e spec installs a collection or fails a download.",
+      "run": { "check": "collection-download-retry", "args": [] },
+      "pass": "The first install does not claim complete while a member's downloads failed, and Resume installs that member.",
+      "needs": ["sandbox:fallout4", "collection:offline"],
+      "cost": "<2m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "collections.nexus",
+      "area": "collections",
+      "guards": [
+        "src/renderer/src/extensions/collections/**",
+        "src/renderer/src/extensions/nexus_integration/**",
+        "src/renderer/src/extensions/download_management/**"
+      ],
+      "why": "No Vortex e2e spec downloads and installs a real Nexus collection.",
+      "run": { "check": "nexus", "args": [] },
+      "pass": "Every required member of the collection installs, its deployed files match their SHA-256, and purge removes them.",
+      "needs": ["login"],
+      "cost": "<10m",
+      "account": true,
+      "network": true
+    },
+    {
+      "id": "downloads.churn",
+      "area": "downloads",
+      "guards": [
+        "src/renderer/src/extensions/download_management/**",
+        "src/main/src/downloading/**",
+        "src/main/src/store/**"
+      ],
+      "why": "No Vortex e2e spec measures what concurrent downloads cost persistence and the renderer.",
+      "run": { "check": "download-churn", "args": [] },
+      "pass": "measured",
+      "needs": ["game"],
+      "cost": "<2m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "mods.large-library",
+      "area": "mods",
+      "guards": [
+        "src/renderer/src/extensions/mod_management/**",
+        "src/renderer/src/controls/table/**",
+        "src/renderer/src/controls/Table.tsx",
+        "src/renderer/src/controls/VisibilityProxy.tsx"
+      ],
+      "why": "Vortex's mods specs use a handful of mods; none renders, filters or deploys a library of thousands.",
+      "run": { "check": "large-library", "args": [] },
+      "pass": "At most 200 Mods rows rendered, clearing a filter blocks under 2 s, no blank rows at any depth, no task over 1.5 s across 10 installs, and a modern-layout deploy within 1.6 times the classic one.",
+      "needs": ["sandbox"],
+      "cost": "<10m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "mods.scroll",
+      "area": "mods",
+      "guards": [
+        "src/renderer/src/extensions/mod_management/views/**",
+        "src/renderer/src/controls/table/**",
+        "src/renderer/src/controls/Table.tsx",
+        "src/renderer/src/controls/VisibilityProxy.tsx"
+      ],
+      "why": "No Vortex e2e spec scrolls the Mods table with real wheel input.",
+      "run": { "check": "mods-scroll", "args": [] },
+      "pass": "At most 200 rows on arrival, no wheel-flick frame gap over 300 ms, no blank rows 1 s after scrolling, edge dropdowns open inside the scroll area, and the Status column never narrows back.",
+      "needs": ["sandbox"],
+      "cost": "<10m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "plugins.page",
+      "area": "plugins",
+      "guards": [
+        "src/renderer/src/extensions/gamebryo_plugin_management/**",
+        "src/renderer/src/controls/table/**",
+        "src/renderer/src/controls/Table.tsx"
+      ],
+      "why": "No Vortex e2e spec opens the Plugins page; it needs a Bethesda game.",
+      "run": { "check": "plugins-page", "args": [] },
+      "pass": "At most 200 plugin rows rendered, no scroll, filter, clear or toggle blocks the renderer over 1.5 s, and every row follows its toggle.",
+      "needs": ["sandbox:fallout4"],
+      "cost": "<10m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "plugins.mod-link",
+      "area": "plugins",
+      "guards": [
+        "src/renderer/src/extensions/gamebryo_plugin_management/views/**",
+        "src/renderer/src/extensions/mod_management/views/**"
+      ],
+      "why": "No Vortex e2e spec follows a plugin's Mod link to the Mods page.",
+      "run": { "check": "plugins-mod-link", "args": [] },
+      "pass": "Clicking a plugin's Mod link opens the Mods page with that mod's row on screen, for the last-sorted mod and then the first.",
+      "needs": ["sandbox:fallout4"],
+      "cost": "<10m",
+      "account": false,
+      "network": false
+    },
+    {
+      "id": "bethesda.missing-masters",
+      "area": "health checks",
+      "guards": [
+        "src/renderer/src/extensions/health_check/**",
+        "src/renderer/src/extensions/gamebryo_plugin_management/**",
+        "src/renderer/src/extensions/collections/**"
+      ],
+      "why": "Vortex's health-check specs do not cover Missing Masters, a collection's check suppression or the game-version prompt.",
+      "run": { "check": "bethesda", "args": [] },
+      "pass": "Missing Masters flags a plugin whose master is absent (A), and again straight after an offline collection's review is closed with Done (B; B fails on Vortex <= 2.8, Nexus-Mods/Vortex#24282); the collection's postprocess fires and applies its plugin list; the game-version prompt appears and Continue completes the install (C).",
+      "needs": ["sandbox:fallout4", "collection:offline"],
+      "cost": "<10m",
+      "account": false,
+      "network": false
+    }
+  ]
+}

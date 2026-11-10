@@ -22,6 +22,7 @@ hard-won knowledge. Nothing here requires a patched or self-built Vortex.
 | `harness/AGENT-WORKFLOW.md`       | Canonical task routing, design-first rule, delegation, evidence and handoff policy                                   |
 | `harness/KNOWLEDGE-ROUTES.md`     | Shared knowledge index and specialist reading paths                                                                  |
 | `designs/`                        | Approved doodlebot designs, indexed in `designs/SITEMAP.md`                                                          |
+| `harness/qa/catalog.json`         | The QA catalogue: checks Vortex's own e2e suite lacks, with the Vortex files each guards                             |
 | `KNOWLEDGE.md`                    | Confirmed diagnostic traps; search the relevant area                                                                 |
 | `ARCHITECTURE.md`                 | Why the extension reflects Vortex's API instead of wrapping it; the one-instance model                               |
 | `docs/`                           | The documentation site for people: installing and using the companion, task by task                                  |
@@ -104,7 +105,8 @@ EGM artifact directory: harness/.artifacts/egm
 ## Verification
 
 - `pnpm run ci` is the gate: types (extension and harness), lint, format check, documentation
-  checks and their tests, unit tests and build. It needs no Vortex. `.github/workflows/ci.yml`
+  checks and their tests, the QA catalogue check (`qa:check`), unit tests and build. It needs no
+  Vortex. `.github/workflows/ci.yml`
   runs the same scripts in the same order (`harness/src/companion.test.ts` asserts it). The site
   also runs `pnpm run docs:build` with pinned Python packages for publication.
 - `doodlebot test core` runs the Playwright suite against a real Vortex, with a disposable test

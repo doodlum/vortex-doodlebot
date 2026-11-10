@@ -64,6 +64,9 @@ import { knowledgeCommand } from "./knowledgeCommand";
 import { logCommand, vortexLogFile } from "./logCommand";
 import { perfSummaryCommand } from "./perfSummary";
 import { gameCommand } from "./gameCommand";
+import { inventoryCommand } from "./inventory";
+import { qaCommand } from "./qaCatalog";
+import { cleanCommand } from "./diskUse";
 import { releaseCli, windowsProductVersion } from "./releaseFetch";
 import { assertNoHarnessVortex, runningVortex } from "./runningVortex";
 import { settlePendingRestores } from "./userFolders";
@@ -173,8 +176,9 @@ Instance lifecycle
   status                 Show endpoint and profile cache status
 
 Game copies and released builds (registered in ~/.doodlebot/content.json)
-  game copy <gameId> [--to <folder>]
-                         Copy the Steam install into <folder>/<gameId> and register it
+  game copy <gameId> [--to <folder>] [--new]
+                         Copy the Steam install into <folder>/<gameId> and register it;
+                         reuses a registered copy of the same version unless --new
   game register <gameId> <dir>
                          Register an existing copy (never a store install)
   game restore <gameId>  List the user-folder files changed since the last backup;
@@ -183,6 +187,15 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          extract it with 7-Zip into ~/.doodlebot/releases (never runs
                          the installer); use it with --release <version>
   release list [--json]  The registered releases
+  inventory [--json]     What doodlebot can test against (builds, games, snapshots,
+                         sandboxes, collections, login); each item not ready names the
+                         exact command that makes it ready. Reads only; never launches
+  clean [--older-than <days>] [--dry-run] [--yes]
+                         List what disk use to free (default 30 days): binaries in old
+                         run, QA and benchmark folders (each report.md and files under
+                         1 MB stay), unused baselines and caches, releases content.json
+                         no longer names; deletes only with --yes. Never touches game
+                         copies, the login, pending restores or the running instance
   source                 Find your fork, clone to .vortex-src and build Vortex
     --update             Fetch origin and upstream in an existing clone
     --no-build           Clone only
@@ -271,6 +284,13 @@ Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
                          the suite is the suite's (core: Playwright's)
   test --list            List the suites (also test --help or test -h)
+  qa list [--touching <paths...>] [--json]
+                         The QA catalogue (harness/qa/catalog.json): checks Vortex's own
+                         e2e suite lacks. With --touching (paths relative to the Vortex
+                         root), the entries whose guards match, the others with the
+                         reason, and the files no entry guards
+  qa check               Validate the catalogue; with .vortex-src, also list specs added
+                         since its recorded commit and guards that match no file
   perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
                          Medians, ranges and a verdict from performance-check evidence; one
                          side (no --b) has no verdict
@@ -474,6 +494,23 @@ async function main(): Promise<number> {
   if (command === "release") {
     log(await releaseCli(positional, flags));
     return 0;
+  }
+
+  if (command === "inventory") {
+    log(inventoryCommand(flags));
+    return 0;
+  }
+
+  if (command === "qa") {
+    const result = qaCommand(positional, flags, lists, { vortexDir: vortexSourceDir() });
+    log(result.text);
+    return result.code;
+  }
+
+  if (command === "clean") {
+    const result = cleanCommand(flags);
+    log(result.text);
+    return result.code;
   }
 
   const { config, targetError } = configFrom(flags, command);

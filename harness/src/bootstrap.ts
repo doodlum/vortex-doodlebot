@@ -64,7 +64,7 @@ import { missingBuildOutputs } from "./source";
  * seeding step, a new required piece of state). Cheaper and more reliable than
  * trying to detect staleness from the snapshot's contents.
  */
-const SNAPSHOT_SCHEMA_VERSION = 1;
+export const SNAPSHOT_SCHEMA_VERSION = 1;
 
 const MARKER_FILE = ".vortex-ai-snapshot.json";
 
@@ -87,6 +87,11 @@ export interface SnapshotMarker {
   /** Identifies the configuration this working directory was copied from. */
   snapshotKey?: string;
   gameSkipped?: boolean;
+  /**
+   * The build it was made with: the checkout of a source build or the executable of a released
+   * one (`buildOf`). Absent from markers written before it was recorded.
+   */
+  build?: string;
 }
 
 function fingerprint(value: string): string {
@@ -500,6 +505,7 @@ export async function captureLogin(
     loginCaptured: true,
     snapshotKey: path.basename(snapshot),
     gameSkipped: existing?.gameSkipped === true,
+    build: buildOf(config.target),
   };
   fs.writeFileSync(path.join(snapshot, MARKER_FILE), JSON.stringify(marker, null, 2));
   fs.writeFileSync(path.join(login, MARKER_FILE), JSON.stringify(marker, null, 2));
@@ -613,6 +619,7 @@ async function buildSnapshot(
     loginCaptured: hasLogin,
     snapshotKey: path.basename(snapshot),
     gameSkipped: options.skipGame === true,
+    build: buildOf(config.target),
   };
   fs.writeFileSync(path.join(snapshot, MARKER_FILE), JSON.stringify(marker, null, 2));
   report(`cold: snapshot cached at ${snapshot}`);

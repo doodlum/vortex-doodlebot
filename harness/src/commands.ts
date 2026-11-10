@@ -52,8 +52,11 @@ export const commands: CommandEntry[] = [
   // Content the kit may write to
   { name: "game", subcommands: ["copy", "register", "restore"] },
   { name: "release", subcommands: ["get", "list"] },
+  { name: "inventory" },
+  { name: "clean" },
   // Checks and evidence
   { name: "test" },
+  { name: "qa", subcommands: ["list", "check"] },
   { name: "responsive" },
   { name: "perf-summary" },
   { name: "evidence", subcommands: ["identity", "run", "runtime"] },

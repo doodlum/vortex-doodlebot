@@ -141,7 +141,7 @@ round and a new approval.
    `Vortex is up in`; a first start launches Vortex up to three times, so an answering Vortex
    alone does not mean the start has finished.
 5. The agent records its evidence and runs `doodlebot readiness`; see
-   [Evidence and readiness](../concepts/evidence.md).
+   [Evidence and the QA catalogue](../concepts/evidence.md).
 
 ## What's next
 

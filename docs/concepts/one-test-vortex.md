@@ -74,7 +74,8 @@ A record counts as running only while its process is alive and is `Vortex.exe`, 
 
 Nothing was started or changed. Run `/doodlebot:stop`, then repeat the command. Starting the
 same profile with the same build again is not refused: it restarts that profile. The first start
-with a different build on a profile starts fresh from its baseline.
+with a different build on a profile starts fresh from its baseline. Each baseline records the
+build it was made with, and `doodlebot inventory` lists the baselines with their build and game.
 
 ## How stopping works
 

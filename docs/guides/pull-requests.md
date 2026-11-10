@@ -68,4 +68,4 @@ exists, its check status.
 
 - Have the change checked independently with `/doodlebot:qa`; see
   [Drive Vortex and get a report](drive-vortex.md#check-a-change-independently).
-- [Evidence and readiness](../concepts/evidence.md).
+- [Evidence and the QA catalogue](../concepts/evidence.md).

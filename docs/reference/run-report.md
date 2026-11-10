@@ -43,4 +43,4 @@ The sections appear in this order.
 ## What's next
 
 - [Drive Vortex and get a report](../guides/drive-vortex.md).
-- [Evidence and readiness](../concepts/evidence.md).
+- [Evidence and the QA catalogue](../concepts/evidence.md).

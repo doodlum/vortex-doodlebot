@@ -72,14 +72,18 @@ a folder under `steamapps\common`, is never used: a start with it, or with `--ga
 
   The copy goes to `D:\GameCopies\fallout4`. Copies are listed in `~/.doodlebot/content.json`.
 
+- Doodlebot keeps one copy per game version. Running `game copy` again reuses the registered copy
+  of the same version, and says so. Pass `--new` to make a second copy anyway; it goes to
+  `D:\GameCopies\fallout4-2`. After a game update, `game copy` makes a copy of the new version.
 - Register a copy you already have with `doodlebot game register <gameId> <dir>`.
 
 Game support also writes the Windows account's Documents and AppData folders, for example a
-game's settings and plugin list (`Documents\My Games\<game>` and `%LOCALAPPDATA%\<game>`).
-Doodlebot protects them for every game it knows, and for the Bethesda sandbox, which uses your
-real Fallout 4 folders on any Vortex build:
+game's settings and plugin list (`Documents\My Games\<game>` and `%LOCALAPPDATA%\<game>`), and
+some games keep saves and settings in `%APPDATA%\<game>` (Stardew Valley uses
+`%APPDATA%\StardewValley`). Doodlebot protects them for every game it knows, and for the
+Bethesda sandbox, which uses your real Fallout 4 folders on any Vortex build:
 
-- Before Vortex starts, it backs both folders up into the profile cache. It refuses to start
+- Before Vortex starts, it backs these folders up into the profile cache. It refuses to start
   while the game itself runs, or when the backup cannot be made.
 - `doodlebot down` puts them back after Vortex has closed, and checks every restored file.
 - A file changed outside the run, such as a save you made meanwhile, stops the restore. Doodlebot
@@ -88,6 +92,51 @@ real Fallout 4 folders on any Vortex build:
   start is refused. Run `doodlebot game restore <gameId>` to see the changed files, then choose:
   `--all` restores them all, `--keep` keeps them all, and `--file <path>` restores the ones you
   name.
+
+### Put game copies on a Dev Drive
+
+A game copy is as large as the game. On Windows 11, a Dev Drive (formatted with ReFS) makes a
+copy share the unchanged files with the original, so a copy costs only the files that change.
+To use one:
+
+1. Create a Dev Drive in Windows Settings, under System, Storage, Disks and volumes. This is
+   your own disk setting; doodlebot does not create it.
+2. Make your copies there: `doodlebot game copy <gameId> --to <folder on the Dev Drive>`.
+
+## See what you can test against
+
+`doodlebot inventory` lists everything doodlebot can use on this computer, and whether each item
+is ready:
+
+- builds: registered releases, the installed Vortex and your source checkout;
+- games: registered copies, and Steam installs, which are listed as not usable until copied;
+- baselines in the profile cache, with the build and game they were made for;
+- the sandbox and the Bethesda sandbox, which are always ready;
+- collections: the offline ones doodlebot builds, and Nexus collections, which need a login;
+- the Nexus login.
+
+Every item that is not ready shows the command that makes it ready, for example
+`next: doodlebot game copy skyrimse`. Add `--json` for the full list in JSON. The command only
+reads; it never starts Vortex.
+
+## Free disk space
+
+Game copies, old runs and caches can take a lot of space. `doodlebot clean` lists what it would
+delete, and deletes it only when you add `--yes`:
+
+- in run, QA and benchmark folders older than 30 days, every file of 1 MB or more; each
+  `report.md` and the small files stay;
+- baselines and caches not used for 30 days;
+- releases that `~/.doodlebot/content.json` no longer names.
+
+Use `--older-than <days>` for another age, and `--dry-run` to list only. `clean` never deletes a
+registered game copy, the Nexus login, a backup waiting to be restored, or the cache of the test
+Vortex while it runs.
+
+```powershell
+doodlebot clean --older-than 14
+doodlebot clean --older-than 14 --yes
+```
 
 ## What's next
 

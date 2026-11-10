@@ -35,6 +35,8 @@ jobs:
 
       - run: pnpm run docs:test
 
+      - run: pnpm run qa:check
+
       - run: pnpm run test
 
       - run: pnpm run build

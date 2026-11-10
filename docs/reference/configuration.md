@@ -99,7 +99,16 @@ Both ports must be distinct integers between 1 and 65535.
 | `--headless`, `--production`                           | Hide the window; require production mode for a source build               |
 | `--fresh`, `--rebuild-snapshot`, `--rebuild-extension` | Reset the working profile, rebuild the baseline, or rebuild the extension |
 
-Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands.
+Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands. A few belong
+to one command:
+
+| Flag                    | Command                | Effect                                                           |
+| ----------------------- | ---------------------- | ---------------------------------------------------------------- |
+| `--new`                 | `game copy`            | Make another copy even when one of the same version exists       |
+| `--older-than <days>`   | `clean`                | What counts as old; default 30 days                              |
+| `--dry-run`, `--yes`    | `clean`                | List only; delete what is listed (without `--yes` it only lists) |
+| `--touching <paths...>` | `qa list`              | Vortex files a change touches, relative to the Vortex root       |
+| `--json`                | `inventory`, `qa list` | Print JSON                                                       |
 
 ## Files doodlebot keeps
 
@@ -110,6 +119,7 @@ Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands.
 | `~/.doodlebot/releases/`         | Official releases extracted by `release get`              |
 | `<workspace>/harness/.cache`     | Test profiles, baselines and saved logins                 |
 | `<workspace>/harness/.artifacts` | Run reports, benchmark reports, designs and other outputs |
+| `<workspace>/harness/qa/`        | The QA catalogue, checked in                              |
 | `<workspace>/harness/.env`       | Optional private local configuration                      |
 | `<workspace>/dist/`              | The built doodlebot extension                             |
 | `<workspace>/.vortex-src/`       | The managed Vortex source clone                           |

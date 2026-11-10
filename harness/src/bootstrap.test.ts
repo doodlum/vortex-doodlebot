@@ -61,7 +61,7 @@ vi.mock("./gameCommand", () => ({ assertGamePathAllowed: vi.fn() }));
 vi.mock("./userFolders", () => ({
   protectUserFolders: vi.fn(async () => undefined),
   settlePendingRestores: vi.fn(async () => undefined),
-  userFolderRoots: vi.fn(() => ({ documents: "", localAppData: "" })),
+  userFolderRoots: vi.fn(() => ({ documents: "", localAppData: "", roamingAppData: "" })),
   userFoldersOf: vi.fn(() => []),
 }));
 
@@ -240,6 +240,8 @@ describe("cold game management", () => {
     );
     expect(config.target.args).toEqual([]);
     expect(readMarker(snapshotDir(config, "test-key"))?.gameId).toBe("fallout4");
+    // The marker names the build it was made with, for the inventory.
+    expect(readMarker(snapshotDir(config, "test-key"))?.build).toBe("C:/Vortex/Vortex.exe");
     await result.instance.stop();
   });
 

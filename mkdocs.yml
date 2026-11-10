@@ -67,12 +67,13 @@ nav:
       - One test Vortex at a time: concepts/one-test-vortex.md
       - Design first: concepts/design-first.md
       - What doodlebot learns: concepts/knowledge.md
-      - Evidence and readiness: concepts/evidence.md
+      - Evidence and the QA catalogue: concepts/evidence.md
   - Reference:
       - Commands: reference/commands.md
       - doodlebot CLI: reference/cli.md
       - Configuration: reference/configuration.md
       - MCP tools: reference/mcp-tools.md
+      - QA catalogue: reference/qa-catalog.md
       - Run report: reference/run-report.md
       - Benchmark report: reference/benchmark-report.md
   - Help:

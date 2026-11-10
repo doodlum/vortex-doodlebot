@@ -2,9 +2,10 @@
  * A game's per-user folders, backed up before a launch and restored after it.
  *
  * Vortex writes outside the game folder: plugins.txt under `%LOCALAPPDATA%\<game>`, INI files and
- * their backups under `Documents\My Games\<game>`. A released Vortex cannot be redirected away from
- * them, so every launch that manages a game listed in `USER_FOLDERS` (gameSetup.ts) copies both
- * folders into the cache first, records each file's size, modification time and SHA-256, and
+ * their backups under `Documents\My Games\<game>`, and some games keep saves and settings under
+ * `%APPDATA%\<game>` (Roaming). A released Vortex cannot be redirected away from them, so every
+ * launch that manages a game listed in `USER_FOLDERS` (gameSetup.ts) copies its folders into the
+ * cache first, records each file's size, modification time and SHA-256, and
  * writes a pending restore to content.json. `down` puts them back once Vortex has exited.
  *
  * The restore decides by modification time whose a change is. After a clean stop the run lasted
@@ -34,6 +35,8 @@ export interface UserFolderRoots {
   /** The user's Documents folder (possibly moved, for example into OneDrive). */
   documents: string;
   localAppData: string;
+  /** `%APPDATA%` (Roaming). */
+  roamingAppData: string;
 }
 
 function expandVariables(value: string): string {
@@ -67,6 +70,7 @@ export function userFolderRoots(): UserFolderRoots {
   return {
     documents: documentsFolder(),
     localAppData: process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"),
+    roamingAppData: process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"),
   };
 }
 
@@ -79,6 +83,9 @@ export function userFoldersOf(gameId: string, roots: UserFolderRoots): string[] 
     ...(names.localAppData === undefined
       ? []
       : [path.join(roots.localAppData, names.localAppData)]),
+    ...(names.roamingAppData === undefined
+      ? []
+      : [path.join(roots.roamingAppData, names.roamingAppData)]),
   ];
 }
 

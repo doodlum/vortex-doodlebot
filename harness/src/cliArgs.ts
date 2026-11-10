@@ -49,6 +49,9 @@ export const BOOLEAN_FLAGS = new Set([
   "ready",
   "list",
   "all",
+  "new",
+  "dry-run",
+  "yes",
 ]);
 
 /**

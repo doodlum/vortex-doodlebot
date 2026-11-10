@@ -83,9 +83,39 @@ describe("game copies", () => {
     expect(readContent(deps.contentFile).games).toEqual([
       expect.objectContaining({ gameId: "fallout4", path: copy, sourcePath: store, sizeBytes: 21 }),
     ]);
+    // An unregistered folder in the way is never written over.
+    fs.rmSync(deps.contentFile);
     await expect(copyGame("fallout4", path.join(root, "copies"), deps)).rejects.toThrow(
       /already exists/,
     );
+  });
+
+  it("copy-reused: a second copy of the same version reuses the first; --new makes another", async () => {
+    const folder = path.join(root, "copies");
+    const first = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(first.text).toMatch(/^Copied and registered/);
+    const copy = path.join(folder, "fallout4");
+    fs.writeFileSync(path.join(copy, "Data", "marker.txt"), "the first copy");
+
+    const second = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(second.text).toMatch(/^Reused the registered fallout4 copy at /);
+    expect(second.text).toContain("version 1.10.984.0");
+    expect(readContent(deps.contentFile).games).toHaveLength(1);
+    expect(fs.existsSync(path.join(folder, "fallout4-2"))).toBe(false);
+
+    const fresh = await gameCommand(["copy", "fallout4"], { to: folder, new: true }, {}, deps);
+    expect(fresh.text).toMatch(/^Copied and registered/);
+    expect(fs.existsSync(path.join(folder, "fallout4-2", "Fallout4.exe"))).toBe(true);
+    expect(readContent(deps.contentFile).games.map((g) => g.path)).toEqual([
+      copy,
+      path.join(folder, "fallout4-2"),
+    ]);
+
+    // A store install of another version is copied again, beside the registered copies.
+    deps.fileVersion = () => "1.11.0.0";
+    const updated = await copyGame("fallout4", folder, deps);
+    expect(updated.reused).toBe(false);
+    expect(updated.copy.path).toBe(path.join(folder, "fallout4-3"));
   });
 
   it("a launch manages only a registered copy or the kit's own folders", () => {

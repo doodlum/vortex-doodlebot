@@ -97,13 +97,15 @@ export const KNOWN_GAMES: Record<string, GameDefinition> = {
 
 /**
  * The per-user folders a game (and Vortex managing it) writes outside the game folder:
- * `Documents\My Games\<myGames>` and `%LOCALAPPDATA%\<localAppData>`. A launch that manages a
- * game listed here backs both up and restores them at `down` (userFolders.ts). `{}` means the
- * game has none. A registered copy of a game missing from this table cannot be launched.
+ * `Documents\My Games\<myGames>`, `%LOCALAPPDATA%\<localAppData>` and
+ * `%APPDATA%\<roamingAppData>` (Roaming). A launch that manages a game listed here backs them up
+ * and restores them at `down` (userFolders.ts). `{}` means the game has none. A registered copy
+ * of a game missing from this table cannot be launched.
  */
 export interface UserFolderNames {
   myGames?: string;
   localAppData?: string;
+  roamingAppData?: string;
 }
 
 export const USER_FOLDERS: Record<string, UserFolderNames> = {
@@ -112,7 +114,8 @@ export const USER_FOLDERS: Record<string, UserFolderNames> = {
   falloutnv: { myGames: "FalloutNV", localAppData: "FalloutNV" },
   skyrimse: { myGames: "Skyrim Special Edition", localAppData: "Skyrim Special Edition" },
   starfield: { myGames: "Starfield", localAppData: "Starfield" },
-  stardewvalley: {},
+  // Saves and settings live in %APPDATA%\StardewValley (Roaming).
+  stardewvalley: { roamingAppData: "StardewValley" },
 };
 
 /** The executables that mean a game is running (its launcher-script loaders included). */

@@ -28,10 +28,11 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run docs:check && pnpm run docs:test && pnpm run test && pnpm run build",
+    "ci": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run docs:check && pnpm run docs:test && pnpm run qa:check && pnpm run test && pnpm run build",
     "docs:generate": "node scripts/docs.cjs --write",
     "docs:check": "node scripts/docs.cjs",
     "docs:test": "node --test scripts/docs.test.cjs",
+    "qa:check": "node bin/doodlebot.cjs qa check",
     "docs:build": "node scripts/docs-run.cjs build",
     "docs:serve": "node scripts/docs-run.cjs serve"
   },
