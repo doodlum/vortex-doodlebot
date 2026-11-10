@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types
 /**
  * `doodlebot` — the companion's command line, run through bin/doodlebot.cjs (the `doodlebot`
- * shim) by the doodlebot, vortex and benchmark plugins' commands.
+ * shim) by the doodlebot plugin's commands.
  *
  * An agent runs `up` to get a driven Vortex running, then drives that instance over MCP or
  * with the one-shot commands here (`snapshot`, `click`, `call`, ...), and comes back for what
@@ -63,6 +63,7 @@ import { versionCommand } from "./versionCommand";
 import { formatLink, link } from "./linkCommand";
 import { testCommand } from "./testCommand";
 import { fixtureCommand } from "./fixtureCommand";
+import { knowledgeCommand } from "./knowledgeCommand";
 import { logCommand, vortexLogFile } from "./logCommand";
 import { perfSummaryCommand } from "./perfSummary";
 import { waitForCollectionCompletion } from "./collectionCompletion";
@@ -133,9 +134,8 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
 
 const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot (setup, login, baseline, start, stop,
-status, update, source), vortex (design, fix, drive, qa, ui-test, pr) and benchmark
-(measure, compare) plugins, whose commands run these.
+Used from Claude Code or Codex through the doodlebot plugin, whose commands (/doodlebot:setup,
+drive, fix, design, compare and the others) run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
@@ -257,6 +257,14 @@ Driving a running instance
     --json               LogEntry[] with continuation lines in each message
   fixture mod --out <zip> [--name <text>]
                          A one-file mod archive (textures/<name>.txt) for install checks
+
+Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
+  knowledge search <words...> [--json]
+                         Local lessons and the workspace's KNOWLEDGE.md holding every word
+  knowledge add --title <t> --area <a> --symptom <s> --cause <c> --remedy <r>
+                --scope <s> --evidence <e> [--vortex <version>] [--json]
+                         Record a lesson whose cause you checked (never credentials)
+  knowledge list [--json] | knowledge remove <id> | knowledge path
 
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
@@ -476,6 +484,11 @@ async function main(): Promise<number> {
 
   if (command === "fixture") {
     log(fixtureCommand(positional, flags));
+    return 0;
+  }
+
+  if (command === "knowledge") {
+    log(knowledgeCommand(positional, flags));
     return 0;
   }
 

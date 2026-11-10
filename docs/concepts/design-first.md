@@ -22,7 +22,7 @@ to it.
 
 ## The Elephant and the Goldfish
 
-`/vortex:design` uses Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
+`/doodlebot:design` uses Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
 plugin (EGM). EGM uses two kinds of agent:
 
 - The **Elephant** is the agent session you are talking to. It keeps the whole context of the
@@ -31,7 +31,7 @@ plugin (EGM). EGM uses two kinds of agent:
   files it is given. Anything the design leaves unsaid is missing to the Goldfish, which is the
   point: whoever implements the design later will not have the conversation either.
 
-Doodlebot adds one Goldfish of its own, `vortex-runtime-goldfish`, from the `vortex` plugin. It
+Doodlebot adds one Goldfish of its own, `vortex-runtime-goldfish`, from the doodlebot plugin. It
 reviews against doodlebot's Vortex change standard and checks that every acceptance criterion can
 be proved on a real Vortex.
 

@@ -56,11 +56,11 @@ another branch as well.
 
 ## Features and refactors start with a design
 
-Before you write code for a new feature or a refactor, run [`/vortex:design`](design-a-feature.md).
-A bug fix needs no design; use [`/vortex:fix`](fix-a-bug.md).
+Before you write code for a new feature or a refactor, run [`/doodlebot:design`](design-a-feature.md).
+A bug fix needs no design; use [`/doodlebot:fix`](fix-a-bug.md).
 
 When someone else checks your change, stop your test Vortex first. They start with
-`/vortex:qa`, which begins from `doodlebot up --fresh` with the same target, so they do not
+`/doodlebot:qa`, which begins from `doodlebot up --fresh` with the same target, so they do not
 inherit your profile.
 
 ## What's next

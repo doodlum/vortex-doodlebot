@@ -104,7 +104,7 @@
       "name": "Design-first workflow",
       "sources": [
         "^harness/src/design(Command)?\\.ts$",
-        "^plugins/vortex/(resources|agents)/",
+        "^plugins/doodlebot/(resources|agents)/",
         "^designs/SITEMAP\\.md$"
       ],
       "human": ["docs/guides/design-a-feature.md", "docs/concepts/design-first.md"],

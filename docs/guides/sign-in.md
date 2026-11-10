@@ -50,6 +50,6 @@ only whether credentials are present, never the credentials themselves.
 
 ## What's next
 
-- [Install a Nexus collection](drive-vortex.md#install-a-nexus-collection) with `/vortex:drive`.
+- [Install a Nexus collection](drive-vortex.md#install-a-nexus-collection) with `/doodlebot:drive`.
 - [Use real games and baselines](games-and-baselines.md).
 - [Security and privacy](../security.md) explains where credentials are stored.

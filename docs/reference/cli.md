@@ -24,6 +24,7 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `fixture`
 - `help`
 - `install`
+- `knowledge`
 - `link`
 - `log`
 - `login-import`

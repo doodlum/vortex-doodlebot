@@ -12,26 +12,26 @@ checks, add tests and keep this documentation current.
 
 1. Start Claude Code in your checkout and trust the folder. The repository's project settings
    (`.claude/settings.json`) register the `doodlebot` marketplace from this folder and the EGM
-   marketplace pinned to `v0.1.1`, and enable `egm@egm`, `doodlebot@doodlebot`,
-   `vortex@doodlebot` and `benchmark@doodlebot`. You use the plugins you are editing.
+   marketplace pinned to `v0.1.1`, and enable `egm@egm` and `doodlebot@doodlebot`. You use the
+   plugin you are editing.
 2. Run `/doodlebot:setup` and name your checkout as the folder. Setup installs dependencies,
    builds the extension and links the shim to your checkout.
 3. After you edit a plugin, run `/plugin marketplace update doodlebot` so Claude Code reloads it.
 
-If the plugins do not appear after you trust the folder, run `/plugin marketplace add ./` from
+If the plugin does not appear after you trust the folder, run `/plugin marketplace add ./` from
 the checkout once.
 
 ## Where the code is
 
-| Path                 | What it is                                                                  |
-| -------------------- | --------------------------------------------------------------------------- |
-| `plugins/`           | The three plugins: their skills, the `vortex` plugin's agents and resources |
-| `bin/`               | The `doodlebot` entry point and the updater                                 |
-| `src/`               | The Vortex extension: the MCP server exposing Vortex's state and UI         |
-| `harness/src/`       | The CLI, launcher, fixtures and helpers                                     |
-| `harness/src/tests/` | Playwright tests and performance checks against a real Vortex               |
-| `docs/`              | This site                                                                   |
-| `designs/`           | Approved doodlebot designs, listed in `designs/SITEMAP.md`                  |
+| Path                 | What it is                                                          |
+| -------------------- | ------------------------------------------------------------------- |
+| `plugins/doodlebot/` | The plugin: its skills, agents, resources and icon                  |
+| `bin/`               | The `doodlebot` entry point and the updater                         |
+| `src/`               | The Vortex extension: the MCP server exposing Vortex's state and UI |
+| `harness/src/`       | The CLI, launcher, fixtures and helpers                             |
+| `harness/src/tests/` | Playwright tests and performance checks against a real Vortex       |
+| `docs/`              | This site                                                           |
+| `designs/`           | Approved doodlebot designs, listed in `designs/SITEMAP.md`          |
 
 The extension must keep working against a stock, released Vortex. Anything that needs Vortex's
 main process belongs in the harness, never in a patch to Vortex.

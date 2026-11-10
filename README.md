@@ -1,7 +1,9 @@
 # Doodlebot
 
+<img src="plugins/doodlebot/assets/icon.png" alt="" width="96" align="right">
+
 Doodlebot is an agent companion for [Vortex](https://github.com/Nexus-Mods/Vortex), the Nexus
-Mods mod manager. You install it as plugins in Claude Code or Codex and use it from the agent
+Mods mod manager. You install it as a plugin in Claude Code or Codex and use it from the agent
 window: the agent starts an isolated test copy of Vortex, drives it, and reports what happened.
 Use it to check Vortex flows, fix Vortex bugs, design features with Google's
 [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin, and measure
@@ -17,8 +19,6 @@ In Claude Code:
 ```text
 /plugin marketplace add doodlum/vortex-doodlebot
 /plugin install doodlebot@doodlebot
-/plugin install vortex@doodlebot
-/plugin install benchmark@doodlebot
 ```
 
 In Codex:
@@ -26,8 +26,6 @@ In Codex:
 ```powershell
 codex plugin marketplace add doodlum/vortex-doodlebot
 codex plugin add doodlebot@doodlebot
-codex plugin add vortex@doodlebot
-codex plugin add benchmark@doodlebot
 ```
 
 Then run `/doodlebot:setup` in your agent. It installs the doodlebot workspace and command, and

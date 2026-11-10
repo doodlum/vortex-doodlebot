@@ -19,7 +19,7 @@ lists the live tools and their schemas. See [README.md](README.md) for usage.
        one isolated test Vortex per machine (record: ~/.doodlebot/instance.json)
 ```
 
-The plugins (`plugins/<name>/`, listed by `.claude-plugin/marketplace.json` and
+The plugin (`plugins/doodlebot/`, listed by `.claude-plugin/marketplace.json` and
 `.agents/plugins/marketplace.json`) hold only procedures: skills, two Claude Code agents and the
 EGM resources. They run nothing themselves; every action is a `doodlebot` command, and
 `harness/src/commands.ts` is the one list of commands they may name. The runtime lives in a

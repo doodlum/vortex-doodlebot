@@ -2,11 +2,12 @@
   "name": "doodlebot",
   "displayName": "Doodlebot",
   "version": "2.0.0",
-  "description": "Set up doodlebot and run its isolated test copy of Vortex.",
+  "description": "The agent companion for Vortex: run a test Vortex, drive it, fix and design Vortex changes, and benchmark builds.",
   "author": {
     "name": "doodlum"
   },
   "homepage": "https://doodlum.github.io/vortex-doodlebot/",
   "repository": "https://github.com/doodlum/vortex-doodlebot",
-  "license": "GPL-3.0-only"
+  "license": "GPL-3.0-only",
+  "icon": "./assets/icon.png"
 }

@@ -34,9 +34,9 @@ Setup asks before it enables pnpm. If you agree, it runs `corepack enable`, then
 | Unattended collection downloads             | Nexus Mods Premium                                                                                                                         |
 | A real game                                 | The game installed; a test machine or QA-only Windows account is safest ([Use real games and baselines](../guides/games-and-baselines.md)) |
 | Changing Vortex itself                      | A GitHub fork of Vortex and Vortex's own build prerequisites ([Work on Vortex source](../guides/source-development.md))                    |
-| Designing features                          | The EGM plugin, `v0.1.1` ([Install the plugins](install.md))                                                                               |
+| Designing features                          | The EGM plugin, `v0.1.1` ([Install the plugin](install.md))                                                                                |
 | The Bethesda sandbox (`plugins-page` check) | A Vortex source build                                                                                                                      |
 
 ## What's next
 
-[Install the plugins](install.md).
+[Install the plugin](install.md).

@@ -1,7 +1,7 @@
 # Open a pull request
 
 This page shows how to have the agent check a Vortex branch and prepare its pull request with
-`/vortex:pr`.
+`/doodlebot:pr`.
 
 ## Before you begin
 
@@ -20,7 +20,7 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
 1. Run:
 
    ```text
-   /vortex:pr
+   /doodlebot:pr
    ```
 
 2. The agent runs `doodlebot pr-preflight` on the branch. It compares the committed branch with
@@ -66,6 +66,6 @@ exists, its check status.
 
 ## What's next
 
-- Have the change checked independently with `/vortex:qa`; see
+- Have the change checked independently with `/doodlebot:qa`; see
   [Drive Vortex and get a report](drive-vortex.md#check-a-change-independently).
 - [Evidence and readiness](../concepts/evidence.md).

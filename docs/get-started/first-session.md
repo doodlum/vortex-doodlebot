@@ -31,7 +31,7 @@ settings.
 1. Run:
 
    ```text
-   /vortex:drive install a small test mod, enable it, deploy, and report anything odd
+   /doodlebot:drive install a small test mod, enable it, deploy, and report anything odd
    ```
 
 2. The agent hands the scenario to the `vortex-driver` agent. In Claude Code, that agent runs on

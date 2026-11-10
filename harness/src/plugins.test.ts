@@ -22,49 +22,46 @@ interface PluginSpec {
   defaultPrompt: string[];
 }
 
-/** The three plugins, in marketplace order, with the values the design fixes. */
+/** The one plugin, with the values the design fixes. Its skills are every command. */
 const PLUGINS: Record<string, PluginSpec> = {
   doodlebot: {
     displayName: "Doodlebot",
-    description: "Set up doodlebot and run its isolated test copy of Vortex.",
-    skills: ["setup", "login", "baseline", "start", "stop", "status", "update", "source"],
-    shortDescription: "Set up and run a test copy of Vortex",
+    description:
+      "The agent companion for Vortex: run a test Vortex, drive it, fix and design Vortex changes, and benchmark builds.",
+    // Set up and run the test Vortex; work on Vortex; benchmark.
+    skills: [
+      "setup",
+      "login",
+      "baseline",
+      "start",
+      "stop",
+      "status",
+      "update",
+      "source",
+      "design",
+      "fix",
+      "drive",
+      "qa",
+      "ui-test",
+      "pr",
+      "measure",
+      "compare",
+    ],
+    shortDescription: "The agent companion for Vortex",
     capabilities: [
-      "Set up the companion",
-      "Sign in to Nexus Mods",
-      "Start and stop the test Vortex",
+      "Run a test copy of Vortex",
+      "Drive Vortex and report",
+      "Fix and design Vortex changes",
+      "Compare Vortex versions",
     ],
     defaultPrompt: [
       "Set up doodlebot on this machine.",
-      "Is doodlebot ready?",
-      "Start the test Vortex with the sandbox game.",
-    ],
-  },
-  vortex: {
-    displayName: "Vortex",
-    description: "Fix, design, drive and check Vortex changes with doodlebot.",
-    skills: ["design", "fix", "drive", "qa", "ui-test", "pr"],
-    shortDescription: "Fix, design and check Vortex changes",
-    capabilities: ["Reproduce and fix bugs", "Design features with EGM", "Drive Vortex and report"],
-    defaultPrompt: [
-      "Reproduce this Vortex bug.",
       "Check that installing a mod works and report.",
-      "Prepare a pull request for my Vortex branch.",
-    ],
-  },
-  benchmark: {
-    displayName: "Benchmark",
-    description: "Measure Vortex performance and compare two Vortex builds.",
-    skills: ["measure", "compare"],
-    shortDescription: "Measure and compare Vortex performance",
-    capabilities: ["Measure a flow", "Compare two Vortex versions", "Explain the difference"],
-    defaultPrompt: [
-      "How fast is the Mods table with 3,000 mods?",
       "Compare 2.8.0 with my branch.",
-      "Is my change slower?",
     ],
   },
 };
+const ICON = "./assets/icon.png";
 
 /** Skills that run only when the person asks (`disable-model-invocation: true`). */
 const PERSON_ONLY = new Set(["setup", "update", "stop", "baseline", "measure", "compare"]);
@@ -205,7 +202,7 @@ const skillFile = (plugin: string, skill: string): string =>
 const allSkills = Object.entries(PLUGINS).flatMap(([plugin, spec]) =>
   spec.skills.map((skill) => ({ plugin, skill, file: skillFile(plugin, skill) })),
 );
-const agentFiles = markdownFiles("plugins/vortex/agents");
+const agentFiles = markdownFiles("plugins/doodlebot/agents");
 
 /** Suite names from whatever list `testCommand.ts` exports (an array, object or map). */
 function suiteNames(module: Record<string, unknown>): string[] {
@@ -231,7 +228,7 @@ function suiteNames(module: Record<string, unknown>): string[] {
 }
 
 describe("marketplaces", () => {
-  it("lists the three plugins for Claude Code", () => {
+  it("lists the one plugin for Claude Code", () => {
     expect(json(".claude-plugin/marketplace.json")).toEqual({
       name: "doodlebot",
       owner: AUTHOR,
@@ -243,7 +240,7 @@ describe("marketplaces", () => {
     });
   });
 
-  it("lists the three plugins for Codex", () => {
+  it("lists the one plugin for Codex", () => {
     expect(json(".agents/plugins/marketplace.json")).toEqual({
       name: "doodlebot",
       interface: { displayName: "Doodlebot" },
@@ -276,6 +273,7 @@ describe("plugin manifests", () => {
         homepage: HOMEPAGE,
         repository: REPOSITORY,
         license: LICENSE,
+        icon: ICON,
       });
     });
 
@@ -297,8 +295,19 @@ describe("plugin manifests", () => {
           category: "Developer Tools",
           capabilities: spec.capabilities,
           defaultPrompt: spec.defaultPrompt,
+          brandColor: "#FF8B24",
+          composerIcon: ICON,
+          logo: ICON,
         },
       });
+    });
+
+    it(`${name}: ships its icon as a square PNG`, () => {
+      const png = fs.readFileSync(path.join(REPO_ROOT, `plugins/${name}`, ICON));
+      expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+      const width = png.readUInt32BE(16);
+      expect(width).toBe(png.readUInt32BE(20));
+      expect(width).toBeGreaterThanOrEqual(256);
     });
   }
 });
@@ -311,7 +320,7 @@ describe("skills", () => {
       );
   });
 
-  it("gives every skill a unique name across the plugins", () => {
+  it("gives every skill a unique name", () => {
     const names = allSkills.map(({ file }) => frontmatter(read(file)).name);
     expect(new Set(names).size).toBe(names.length);
   });
@@ -343,16 +352,16 @@ describe("skills", () => {
   });
 
   it("defines the run report in the drive skill", () => {
-    const drive = read(skillFile("vortex", "drive"));
+    const drive = read(skillFile("doodlebot", "drive"));
     for (const section of RUN_REPORT_SECTIONS) expect(drive).toContain(`\n## ${section}\n`);
-    expect(drive).toContain("vortex:vortex-driver");
-    expect(read(skillFile("vortex", "qa"))).toContain("vortex:vortex-driver");
+    expect(drive).toContain("doodlebot:vortex-driver");
+    expect(read(skillFile("doodlebot", "qa"))).toContain("doodlebot:vortex-driver");
   });
 
   it("defines the benchmark report in measure (no verdict) and compare", () => {
-    const compare = read(skillFile("benchmark", "compare"));
+    const compare = read(skillFile("doodlebot", "compare"));
     for (const section of BENCHMARK_REPORT_SECTIONS) expect(compare).toContain(`\n## ${section}\n`);
-    const measure = read(skillFile("benchmark", "measure"));
+    const measure = read(skillFile("doodlebot", "measure"));
     for (const section of BENCHMARK_REPORT_SECTIONS.filter((s) => s !== "Verdict"))
       expect(measure).toContain(`\n## ${section}\n`);
     expect(measure).not.toContain("\n## Verdict\n");
@@ -360,7 +369,7 @@ describe("skills", () => {
 
   for (const skill of ["measure", "compare"])
     it(`${skill} holds the per-run sequence and the run-outcome rules`, () => {
-      const text = read(skillFile("benchmark", skill));
+      const text = read(skillFile("doodlebot", skill));
       const run = text.slice(text.indexOf("Each run is"));
       const uses = commandUses(run).map((use) => use.text);
       let from = 0;
@@ -377,13 +386,13 @@ describe("skills", () => {
 describe("agents", () => {
   it("ships exactly the runtime Goldfish and the driver", () => {
     expect(agentFiles).toEqual([
-      "plugins/vortex/agents/vortex-driver.md",
-      "plugins/vortex/agents/vortex-runtime-goldfish.md",
+      "plugins/doodlebot/agents/vortex-driver.md",
+      "plugins/doodlebot/agents/vortex-runtime-goldfish.md",
     ]);
   });
 
   it("keeps the runtime Goldfish read-only and pointed at its persona and standard", () => {
-    const adapter = read("plugins/vortex/agents/vortex-runtime-goldfish.md");
+    const adapter = read("plugins/doodlebot/agents/vortex-runtime-goldfish.md");
     expect(frontmatter(adapter)).toMatchObject({
       name: "vortex-runtime-goldfish",
       tools: "Read, Grep, Glob",
@@ -392,13 +401,13 @@ describe("agents", () => {
     });
     expect(adapter).toContain("${CLAUDE_PLUGIN_ROOT}/resources/vortex_runtime.md");
     expect(adapter).toContain("${CLAUDE_PLUGIN_ROOT}/resources/vortex-change-standard.md");
-    expect(frontmatter(read("plugins/vortex/resources/vortex_runtime.md")).name).toBe(
+    expect(frontmatter(read("plugins/doodlebot/resources/vortex_runtime.md")).name).toBe(
       "vortex-runtime-goldfish",
     );
   });
 
   it("runs the driver on Sonnet with the CLI tools", () => {
-    expect(frontmatter(read("plugins/vortex/agents/vortex-driver.md"))).toMatchObject({
+    expect(frontmatter(read("plugins/doodlebot/agents/vortex-driver.md"))).toMatchObject({
       name: "vortex-driver",
       model: "sonnet",
       tools: "Bash, PowerShell, Read, Write, Grep, Glob",

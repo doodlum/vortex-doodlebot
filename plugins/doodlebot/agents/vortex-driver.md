@@ -1,6 +1,6 @@
 ---
 name: vortex-driver
-description: Carries out a Vortex scenario in doodlebot's isolated test Vortex using only the doodlebot CLI, answers the dialogs the scenario needs, and writes a run report. Dispatched by the vortex plugin's drive and qa commands with a complete brief.
+description: Carries out a Vortex scenario in doodlebot's isolated test Vortex using only the doodlebot CLI, answers the dialogs the scenario needs, and writes a run report. Dispatched by doodlebot's drive and qa commands with a complete brief.
 tools: Bash, PowerShell, Read, Write, Grep, Glob
 model: sonnet
 ---

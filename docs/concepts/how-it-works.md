@@ -59,10 +59,10 @@ changes.
 
 | Kind            | Command                                    | Agent during the run   | Result            |
 | --------------- | ------------------------------------------ | ---------------------- | ----------------- |
-| Regression test | `/vortex:ui-test`                          | None                   | Playwright report |
-| Driven run      | `/vortex:drive`, `/vortex:qa`              | `vortex-driver`        | Run report        |
-| Benchmark       | `/benchmark:measure`, `/benchmark:compare` | Orchestrates only      | Benchmark report  |
-| Design review   | `/vortex:design`                           | EGM and the Goldfishes | Approved design   |
+| Regression test | `/doodlebot:ui-test`                       | None                   | Playwright report |
+| Driven run      | `/doodlebot:drive`, `/doodlebot:qa`        | `vortex-driver`        | Run report        |
+| Benchmark       | `/doodlebot:measure`, `/doodlebot:compare` | Orchestrates only      | Benchmark report  |
+| Design review   | `/doodlebot:design`                        | EGM and the Goldfishes | Approved design   |
 
 In Claude Code, `vortex-driver` runs on Sonnet, a lower-cost model, and design reviewers run as
 read-only agents. In Codex, the plugins ship no agents: the driver's procedure runs in your

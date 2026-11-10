@@ -7,8 +7,6 @@
   },
   "enabledPlugins": {
     "egm@egm": true,
-    "doodlebot@doodlebot": true,
-    "vortex@doodlebot": true,
-    "benchmark@doodlebot": true
+    "doodlebot@doodlebot": true
   }
 }

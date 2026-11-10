@@ -48,6 +48,6 @@ searches the disk for another checkout. Every piece of work gets its own branch.
 ## Finish
 
 Tell the person the checkout path, the branch and whether the build succeeded. Explain the
-next steps: `/doodlebot:start source` starts it, `/vortex:fix` works on a bug in it, and
+next steps: `/doodlebot:start source` starts it, `/doodlebot:fix` works on a bug in it, and
 after a change `doodlebot build --checkout <workspace>/.vortex-src` rebuilds it (with the
 test Vortex stopped first).

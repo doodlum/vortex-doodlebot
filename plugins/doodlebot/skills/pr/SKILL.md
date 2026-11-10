@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Vortex: Prepare a Vortex pull request: run the preflight checks, write the description with the doodlebot footer and check the PR's CI; use when a fix or feature is verified and ready to submit."
+description: "Doodlebot: Prepare a Vortex pull request: run the preflight checks, write the description with the doodlebot footer and check the PR's CI; use when a fix or feature is verified and ready to submit."
 argument-hint: "[branch or checkout] [PR number, once it exists]"
 ---
 
@@ -22,8 +22,8 @@ asks for that step.
 3. Read `<workspace>/harness/PULL-REQUESTS.md` (titles, description template, footer,
    review lessons) and the Vortex checkout's `CONTRIBUTING.md`.
 4. Check the change was tested: the person's own reported scenario must have been run on the
-   base and on the fix (`/vortex:fix`), and a feature needs its approved design and
-   `/vortex:qa`. If not, say what is missing and stop; never open a PR, draft included,
+   base and on the fix (`/doodlebot:fix`), and a feature needs its approved design and
+   `/doodlebot:qa`. If not, say what is missing and stop; never open a PR, draft included,
    before that.
 
 ## Steps

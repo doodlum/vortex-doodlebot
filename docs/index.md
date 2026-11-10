@@ -1,7 +1,7 @@
 # Doodlebot
 
 Doodlebot is an agent companion for [Vortex](https://github.com/Nexus-Mods/Vortex), the Nexus Mods
-mod manager. You install it as plugins in Claude Code or Codex and use it from the agent window,
+mod manager. You install it as a plugin in Claude Code or Codex and use it from the agent window,
 through commands. The agent starts an isolated test copy of Vortex, drives it, checks what
 happened and reports back.
 
@@ -16,15 +16,16 @@ Use doodlebot to:
 Doodlebot works with a stock, released Vortex. You need a Vortex source checkout only to change
 Vortex itself.
 
-## The three plugins
+## The commands
 
-Doodlebot is a plugin marketplace named `doodlebot` with three plugins. Their commands never mix.
+Doodlebot is one plugin, `doodlebot`, from a marketplace of the same name. Its commands fall
+into three groups:
 
-| Plugin      | Commands                                                                                                                                                            | For                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `doodlebot` | `/doodlebot:setup`, `/doodlebot:login`, `/doodlebot:baseline`, `/doodlebot:start`, `/doodlebot:stop`, `/doodlebot:status`, `/doodlebot:update`, `/doodlebot:source` | Installing and running the companion and its test Vortex    |
-| `vortex`    | `/vortex:design`, `/vortex:fix`, `/vortex:drive`, `/vortex:qa`, `/vortex:ui-test`, `/vortex:pr`                                                                     | Working on Vortex: designs, bug fixes, driving the app, PRs |
-| `benchmark` | `/benchmark:measure`, `/benchmark:compare`                                                                                                                          | Measuring Vortex performance and comparing versions         |
+| Group                          | Commands                                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Set up and run the test Vortex | `/doodlebot:setup`, `/doodlebot:login`, `/doodlebot:baseline`, `/doodlebot:start`, `/doodlebot:stop`, `/doodlebot:status`, `/doodlebot:update`, `/doodlebot:source` |
+| Work on Vortex                 | `/doodlebot:design`, `/doodlebot:fix`, `/doodlebot:drive`, `/doodlebot:qa`, `/doodlebot:ui-test`, `/doodlebot:pr`                                                   |
+| Benchmark                      | `/doodlebot:measure`, `/doodlebot:compare`                                                                                                                          |
 
 The commands are shown in their Claude Code form. In Codex, the same commands are skills with the
 same names. [Commands](reference/commands.md) lists every command and its arguments.
@@ -33,17 +34,21 @@ Behind the commands is one command-line tool, `doodlebot`, which the agent runs 
 `/doodlebot:setup` installs it. [How doodlebot works](concepts/how-it-works.md) explains the
 parts.
 
+Doodlebot also learns. When a command confirms the cause of a problem that cost time, it
+records the lesson on your machine, and later commands check it before they act. See
+[What doodlebot learns](concepts/knowledge.md).
+
 ## Doodlebot and EGM
 
 Features and refactors in Vortex start with a design. Doodlebot uses Google's
 [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM) to
-write and review it: `/vortex:design` runs EGM's procedure with a Vortex-specific reviewer, and
+write and review it: `/doodlebot:design` runs EGM's procedure with a Vortex-specific reviewer, and
 you approve the final text. EGM is a separate plugin that you install alongside doodlebot. See
 [Design first](concepts/design-first.md).
 
 ## Get started
 
 1. Check the [requirements](get-started/requirements.md).
-2. [Install the plugins](get-started/install.md).
+2. [Install the plugin](get-started/install.md).
 3. [Set up doodlebot](get-started/set-up.md).
 4. Run [your first session](get-started/first-session.md).

@@ -24,6 +24,7 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `fixture`
 - `help`
 - `install`
+- `knowledge`
 - `link`
 - `log`
 - `login-import`
@@ -56,9 +57,8 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 ```text
 doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot (setup, login, baseline, start, stop,
-status, update, source), vortex (design, fix, drive, qa, ui-test, pr) and benchmark
-(measure, compare) plugins, whose commands run these.
+Used from Claude Code or Codex through the doodlebot plugin, whose commands (/doodlebot:setup,
+drive, fix, design, compare and the others) run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
@@ -180,6 +180,14 @@ Driving a running instance
     --json               LogEntry[] with continuation lines in each message
   fixture mod --out <zip> [--name <text>]
                          A one-file mod archive (textures/<name>.txt) for install checks
+
+Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
+  knowledge search <words...> [--json]
+                         Local lessons and the workspace's KNOWLEDGE.md holding every word
+  knowledge add --title <t> --area <a> --symptom <s> --cause <c> --remedy <r>
+                --scope <s> --evidence <e> [--vortex <version>] [--json]
+                         Record a lesson whose cause you checked (never credentials)
+  knowledge list [--json] | knowledge remove <id> | knowledge path
 
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after

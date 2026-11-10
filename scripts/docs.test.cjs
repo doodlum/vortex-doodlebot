@@ -203,14 +203,17 @@ test("the site navigation lists every documentation page", () => {
 test("a stale commands reference fails the check", () => {
   withFixture("doodlebot-docs-commands-", ({ fixture, changed }) => {
     const commands = fs.readFileSync(path.join(fixture, "docs/reference/commands.md"), "utf8");
-    assert.match(commands, /## doodlebot[\s\S]*## vortex[\s\S]*## benchmark/);
+    assert.match(
+      commands,
+      /## Set up and run the test Vortex[\s\S]*## Work on Vortex[\s\S]*## Benchmark/,
+    );
     assert.match(commands, /\| `\/doodlebot:setup` +\|/);
     assert.match(commands, /\| `\/doodlebot:stop` +\| [^|]+\| none +\|/);
     assert.ok(!/\| Doodlebot: /.test(commands), "the plugin prefix is removed");
 
-    const skill = "plugins/vortex/skills/fix/SKILL.md";
+    const skill = "plugins/doodlebot/skills/fix/SKILL.md";
     changed(skill, (body) =>
-      body.replace(/^description: "Vortex: /m, 'description: "Vortex: Synthetically '),
+      body.replace(/^description: "Doodlebot: /m, 'description: "Doodlebot: Synthetically '),
     );
     const stale = run(fixture);
     assert.equal(stale.status, 1);
@@ -219,19 +222,19 @@ test("a stale commands reference fails the check", () => {
     assert.equal(regenerated.status, 0, output(regenerated));
     assert.match(
       fs.readFileSync(path.join(fixture, "docs/reference/commands.md"), "utf8"),
-      /\| `\/vortex:fix` +\| Synthetically /,
+      /\| `\/doodlebot:fix` +\| Synthetically /,
     );
     git(fixture, ["restore", "."]);
 
-    // A skill missing from COMMAND_ORDER cannot be silently left out of the reference.
-    const extra = path.join(fixture, "plugins/vortex/skills/docs-control");
+    // A skill missing from COMMAND_GROUPS cannot be silently left out of the reference.
+    const extra = path.join(fixture, "plugins/doodlebot/skills/docs-control");
     fs.mkdirSync(extra);
     fs.writeFileSync(
       path.join(extra, "SKILL.md"),
-      '---\nname: docs-control\ndescription: "Vortex: Synthetic."\n---\n',
+      '---\nname: docs-control\ndescription: "Doodlebot: Synthetic."\n---\n',
     );
     const unordered = run(fixture);
     assert.notEqual(unordered.status, 0);
-    assert.match(output(unordered), /Skills of plugin vortex .* differ from COMMAND_ORDER/);
+    assert.match(output(unordered), /Skills of plugin doodlebot .* differ from COMMAND_GROUPS/);
   });
 });

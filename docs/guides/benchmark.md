@@ -1,7 +1,7 @@
 # Measure and compare performance
 
 This page shows how to have the agent measure a Vortex flow on one build with
-`/benchmark:measure`, or compare two builds with `/benchmark:compare`.
+`/doodlebot:measure`, or compare two builds with `/doodlebot:compare`.
 
 ## Before you begin
 
@@ -35,7 +35,7 @@ For example, "the Mods table with 3,000 mods" is `doodlebot test mods-scroll --m
 1. Run:
 
    ```text
-   /benchmark:measure the Mods table with 3,000 mods on the released Vortex
+   /doodlebot:measure the Mods table with 3,000 mods on the released Vortex
    ```
 
 2. The agent picks the check, states it, and runs it five times by default (three at least).
@@ -50,7 +50,7 @@ median, minimum, maximum and count. A measurement of one build has no verdict.
 1. Run:
 
    ```text
-   /benchmark:compare 2.8.0 against my branch on the Mods table with 3,000 mods
+   /doodlebot:compare 2.8.0 against my branch on the Mods table with 3,000 mods
    ```
 
    Name both builds: a path to an executable, a source checkout, or a branch of

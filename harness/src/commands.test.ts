@@ -49,7 +49,14 @@ describe("the command list", () => {
     expect(findCommand("evidence")?.subcommands).toEqual(["identity", "run", "runtime"]);
     expect(findCommand("design")?.subcommands).toEqual(["new", "check", "scope"]);
     expect(findCommand("fixture")?.subcommands).toEqual(["mod"]);
-    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(3);
+    expect(findCommand("knowledge")?.subcommands).toEqual([
+      "add",
+      "search",
+      "list",
+      "remove",
+      "path",
+    ]);
+    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(4);
     expect(findCommand("help")).toBeUndefined();
   });
 });

@@ -32,14 +32,12 @@ describe("EGM resources", () => {
       enabledPlugins: {
         "egm@egm": true,
         "doodlebot@doodlebot": true,
-        "vortex@doodlebot": true,
-        "benchmark@doodlebot": true,
       },
     });
   });
 
   it("gives the runtime Goldfish a read-only, instruction-free adapter with the persona's name", () => {
-    const adapter = "plugins/vortex/agents/vortex-runtime-goldfish.md";
+    const adapter = "plugins/doodlebot/agents/vortex-runtime-goldfish.md";
     expect(frontmatter(adapter)).toMatchObject({
       name: "vortex-runtime-goldfish",
       tools: "Read, Grep, Glob",
@@ -47,29 +45,29 @@ describe("EGM resources", () => {
       omitClaudeMd: "true",
     });
     expect(read(adapter)).toContain("${CLAUDE_PLUGIN_ROOT}/resources/vortex_runtime.md");
-    expect(frontmatter("plugins/vortex/resources/vortex_runtime.md").name).toBe(
+    expect(frontmatter("plugins/doodlebot/resources/vortex_runtime.md").name).toBe(
       "vortex-runtime-goldfish",
     );
   });
 
   it("names every required section in the Vortex change standard", () => {
-    const standard = read("plugins/vortex/resources/vortex-change-standard.md");
+    const standard = read("plugins/doodlebot/resources/vortex-change-standard.md");
     for (const section of requiredSections) expect(standard).toContain(section);
   });
 
   it("provides the Elephant procedure and points every agent at it", () => {
-    expect(frontmatter("plugins/vortex/skills/design/SKILL.md").name).toBe("design");
+    expect(frontmatter("plugins/doodlebot/skills/design/SKILL.md").name).toBe("design");
     const agents = read("AGENTS.md");
     expect(agents).toContain("EGM artifact directory: harness/.artifacts/egm");
-    expect(agents).toContain("plugins/vortex/skills/design/SKILL.md");
-    expect(agents).toContain("plugins/vortex/resources/vortex_runtime.md");
-    expect(agents).toContain("plugins/vortex/agents/vortex-runtime-goldfish.md");
+    expect(agents).toContain("plugins/doodlebot/skills/design/SKILL.md");
+    expect(agents).toContain("plugins/doodlebot/resources/vortex_runtime.md");
+    expect(agents).toContain("plugins/doodlebot/agents/vortex-runtime-goldfish.md");
     const workflow = read("harness/AGENT-WORKFLOW.md");
     for (const file of [
-      "plugins/vortex/resources/vortex-change-standard.md",
-      "plugins/vortex/resources/vortex_runtime.md",
-      "plugins/vortex/agents/vortex-runtime-goldfish.md",
-      "plugins/vortex/skills/design/SKILL.md",
+      "plugins/doodlebot/resources/vortex-change-standard.md",
+      "plugins/doodlebot/resources/vortex_runtime.md",
+      "plugins/doodlebot/agents/vortex-runtime-goldfish.md",
+      "plugins/doodlebot/skills/design/SKILL.md",
     ])
       expect(workflow).toContain(file);
   });

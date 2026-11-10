@@ -1,12 +1,12 @@
 ---
 name: fix
-description: "Vortex: Reproduce a Vortex bug on the base, fix it on a branch of the source checkout and verify the reported scenario with evidence; use for a bug report or broken Vortex behavior."
+description: "Doodlebot: Reproduce a Vortex bug on the base, fix it on a branch of the source checkout and verify the reported scenario with evidence; use for a bug report or broken Vortex behavior."
 argument-hint: "<bug report, issue link or symptom>"
 ---
 
 # Fix a Vortex bug
 
-Features and refactors are not fixes: they start with `/vortex:design`. A fix needs no
+Features and refactors are not fixes: they start with `/doodlebot:design`. A fix needs no
 design unless the person supplies or asks for one.
 
 ## Before you begin
@@ -23,8 +23,9 @@ design unless the person supplies or asks for one.
    edits, and a read-only source constraint also excludes temporary patches, revert controls
    and builds that rewrite the checkout. Report a missing permission when it blocks the fix.
 4. Read `<workspace>/harness/AGENT-WORKFLOW.md`, then the sources
-   `<workspace>/harness/KNOWLEDGE-ROUTES.md` names for the area. Search
-   `<workspace>/KNOWLEDGE.md` for the symptom and check any match against the current
+   `<workspace>/harness/KNOWLEDGE-ROUTES.md` names for the area. Search what doodlebot has
+   learned with `doodlebot knowledge search <symptom words>`, following
+   `${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`, and check any match against the current
    source; a familiar symptom is not proof of its old cause. In the Vortex checkout read its
    `AGENTS.md`, nested instructions, `CLAUDE.md` when present, `CONTRIBUTING.md` and
    `docs/README.md`: they govern the submission.
@@ -45,7 +46,7 @@ before building or changing the checkout.
    (or the base the report names). Build with `doodlebot build --checkout <checkout>`, start it with
    `doodlebot up --dev-dir <checkout> --sandbox` (or the fixture the report needs: a real
    game copy, `--bethesda-sandbox`, a collection), and carry out the person's own scenario
-   with `/vortex:drive`'s loop. Record the symptom you observe (screenshot, state, log
+   with `/doodlebot:drive`'s loop. Record the symptom you observe (screenshot, state, log
    lines). If it does not reproduce, say so with what you tried, and stop: a fix for an
    unreproduced bug is a guess. Then `doodlebot down`.
 3. **Branch.** `git -C <checkout> switch -c fix-<topic> upstream/master` (never `master`).
@@ -55,7 +56,7 @@ before building or changing the checkout.
    and `up`.
 5. **Test.** Add an assertion that fails without the fix: a Vortex unit test, run from its
    project folder (`pnpm exec vitest run <test-path>` in `<checkout>/src/renderer`), or a
-   doodlebot regression test (`/vortex:ui-test`). Prove it fails on the base, for example
+   doodlebot regression test (`/doodlebot:ui-test`). Prove it fails on the base, for example
    with `doodlebot pr-preflight --checkout <checkout> --base upstream/master --test <test> --revert <file>`;
    a reverted failure is inconclusive until you read its assertion. That control diffs the
    committed `HEAD` and refuses uncommitted changes, so it needs the fix and test committed:
@@ -80,7 +81,9 @@ before building or changing the checkout.
 
 Report: the symptom on the base, the cause, the change (files), the failing-then-passing
 test, the reported scenario's result on the fix, the gates and their results, and anything
-not verified, and whether you made the local commit on `fix-<topic>` for the control. Then
-offer `/vortex:pr`. Apart from that local commit, made only with the person's permission,
+not verified, and whether you made the local commit on `fix-<topic>` for the control. If
+the confirmed cause would have saved real time, record it with `doodlebot knowledge add` as
+`${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md` describes, and name its id. Then
+offer `/doodlebot:pr`. Apart from that local commit, made only with the person's permission,
 never commit, push or open a PR unless the person asks, and never open one before the
 person's own scenario passed on the fix.

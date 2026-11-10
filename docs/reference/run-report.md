@@ -1,6 +1,6 @@
 # Run report
 
-This page describes the report that `/vortex:drive` and `/vortex:qa` write after a driven
+This page describes the report that `/doodlebot:drive` and `/doodlebot:qa` write after a driven
 scenario.
 
 ## Where it is

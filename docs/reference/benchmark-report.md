@@ -1,6 +1,6 @@
 # Benchmark report
 
-This page describes the report that `/benchmark:measure` and `/benchmark:compare` write, and the
+This page describes the report that `/doodlebot:measure` and `/doodlebot:compare` write, and the
 metrics each performance check reports.
 
 ## Where it is
@@ -21,7 +21,7 @@ and summarized in the chat.
 | Evidence    | Every run's evidence file, and any budget failures                          | `doodlebot perf-summary` |
 | Caveats     | The chance of a verdict by chance, and that a verdict needs a quiet machine | Both                     |
 
-A report from `/benchmark:measure` has one build, no Verdict section and no difference column.
+A report from `/doodlebot:measure` has one build, no Verdict section and no difference column.
 
 ## Results
 

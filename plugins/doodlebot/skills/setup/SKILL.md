@@ -153,6 +153,6 @@ Tell the person, in a few lines:
 - that the sandbox baseline is ready and no test Vortex is running;
 - anything you skipped, left alone (such as the legacy lease store) or could not do.
 
-Then suggest what to try next: `/vortex:drive` to drive the test Vortex and get a report,
+Then suggest what to try next: `/doodlebot:drive` to drive the test Vortex and get a report,
 and `/doodlebot:login` only if they will work with Nexus collections (local checks need no
 account).

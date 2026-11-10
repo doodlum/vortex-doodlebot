@@ -176,8 +176,8 @@ doodlebot evidence run --checkout <qa-checkout> --base <base-sha> --out <new-evi
 doodlebot pr-preflight --checkout <qa-checkout> --base <base-sha>
 ```
 
-`/vortex:qa` runs this kind of review through the `vortex-driver` agent and returns a run
-report; `/vortex:pr` runs `pr-preflight`, prepares the description (above) and checks the PR
+`/doodlebot:qa` runs this kind of review through the `vortex-driver` agent and returns a run
+report; `/doodlebot:pr` runs `pr-preflight`, prepares the description (above) and checks the PR
 with `doodlebot pr-checks`, pushing or opening a PR only when asked.
 
 Resolve confirmed findings, identify the resulting revision and renew affected QA. Verify that

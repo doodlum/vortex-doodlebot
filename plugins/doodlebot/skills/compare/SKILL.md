@@ -1,15 +1,15 @@
 ---
-name: measure
-description: "Benchmark: Measure one Vortex build on one of doodlebot's performance checks, run several times, and report each metric's median and range; use for questions like how fast is the Mods table with 3,000 mods."
-argument-hint: "<what to measure> [on <build>]"
+name: compare
+description: "Doodlebot: Compare two Vortex builds on one of doodlebot's performance checks, run alternately five times each, and report medians, ranges and a rule-based verdict; use for questions like is my branch slower than 2.8.0."
+argument-hint: "<build A> <build B> <what to measure, e.g. the Mods table with 3,000 mods>"
 disable-model-invocation: true
 ---
 
-# Measure one Vortex build
+# Compare two Vortex builds
 
-You answer "how fast is X?" for one build with one of doodlebot's performance checks, run
-several times, and a deterministic summary. A measurement has one side and no verdict; to
-compare two builds use `/benchmark:compare`.
+You answer "is build B slower or faster than build A at X?" with one of doodlebot's
+performance checks, run on both builds alternately, and a deterministic summary. Nothing is
+downloaded or installed: the person names each build.
 
 ## Before you begin
 
@@ -26,7 +26,7 @@ compare two builds use `/benchmark:compare`.
    elsewhere `command -v doodlebot`.
 4. Run `doodlebot status`. If MCP is `answering`, ask whether to stop the test Vortex and
    run `doodlebot down` on a yes; otherwise stop. Ask the person to close heavy programs:
-   the numbers are only as good as the machine's quiet conditions.
+   the verdict is only as good as the machine's quiet conditions.
 
 ## 1. Pick the check
 
@@ -44,29 +44,38 @@ check, or decline.
 
 For example, "the Mods table with 3,000 mods" is `doodlebot test mods-scroll --mods 3000`.
 
-## 2. Fix the build
+## 2. Fix the builds
 
-The build is the one the person names; without one, the released Vortex (`--installed`).
+A build is the installed Vortex (`--installed`), an executable (`--exe <path>`) or a source
+checkout (`--dev-dir <path>`).
 
-- An executable: `--exe <path to Vortex.exe>`.
+- A release version, such as "2.8.0": the installed Vortex (`--installed`) when that is the
+  version installed, otherwise `--exe <path to that release's Vortex.exe>` (ask the person
+  where it is). After its first `up`, confirm `automation_status.vortexVersion` is that
+  version; if it is not, stop and tell the person.
+- An executable: use `--exe <path to Vortex.exe>`.
 - A source checkout: build it in production mode first with
   `doodlebot build --checkout <dir> --production` (stop the test Vortex first), and launch
   it with `--dev-dir <dir> --production`, so it runs like a release.
-- `plugins-page` needs a source build.
+- Two source branches need two checkouts, one per build, never one `<workspace>/.vortex-src` switched
+  between runs: a second clone, or `git -C <checkout> worktree add <dir> <branch>`. Build
+  each one.
+- `plugins-page` needs source builds on both sides.
 
-Give the build its own new cache folder, for example
-`<workspace>/harness/.cache/bench-<UTC time>-a`, and use it for every `up`, `call`, check,
-`status` and `down`. Agent shells do not keep environment variables from one call to the
-next, so set `VORTEX_AI_CACHE_DIR` (and the build's `VORTEX_AI_EXE`, `VORTEX_AI_INSTALLED` or
-`VORTEX_AI_DEV_DIR`, below) inside each invocation, for example
-`$env:VORTEX_AI_CACHE_DIR = '<cache>'; doodlebot test …` in one PowerShell call or
-`VORTEX_AI_CACHE_DIR=<cache> doodlebot test …` in Bash, or pass `--cache-dir <cache>` to
-`up`, `call`, `status` and `down`.
+Give each build its own new cache folder, `<cache A>` and `<cache B>`, for example
+`<workspace>/harness/.cache/bench-<UTC time>-a`, and use that build's cache for every `up`,
+`call`, check, `status` and `down` of that build. Baselines are keyed by target kind, so two
+builds of the same kind would otherwise share one. Agent shells do not keep environment
+variables from one call to the next, so set `VORTEX_AI_CACHE_DIR` (and the build's
+`VORTEX_AI_EXE`, `VORTEX_AI_INSTALLED` or `VORTEX_AI_DEV_DIR`, below) inside each
+invocation, for example `$env:VORTEX_AI_CACHE_DIR = '<cache A>'; doodlebot test …` in one
+PowerShell call or `VORTEX_AI_CACHE_DIR=<cache A> doodlebot test …` in Bash, or pass
+`--cache-dir <cache>` to `up`, `call`, `status` and `down`.
 
 Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/` now.
 
-**Tombstone the cache before its first `up`,** so the runs are anonymous and do not
-inherit the person's Nexus login. Write this script to the report folder as
+**Tombstone each cache before its first `up`,** so benchmark runs are anonymous and do not
+inherit the person's Nexus login. Write this script once to the report folder as
 `tombstone.mts`:
 
 ```ts
@@ -85,7 +94,7 @@ console.log(`target: ${config.target.kind}`);
 ```
 
 Then select the build through the environment, because `doodlebot script` passes only
-`--dev-dir`, `--cache-dir` and the port flags to the kit: for the released Vortex
+`--dev-dir`, `--cache-dir` and the port flags to the kit: for the installed Vortex
 (`--installed`) set only `VORTEX_AI_INSTALLED=1`; for an executable set
 `VORTEX_AI_EXE=<path>` and `VORTEX_AI_INSTALLED=1`; for a source checkout set
 `VORTEX_AI_DEV_DIR=<path>` and unset both. In the same invocation, with
@@ -93,12 +102,12 @@ Then select the build through the environment, because `doodlebot script` passes
 `doodlebot script <report folder>/tombstone.mts`. Check that the printed `cacheDir` is that
 cache and `target` is the build's kind, and keep the tombstone path for the report.
 
-## 3. Run
+## 3. Run alternately
 
-Run the check five times by default, and never fewer than three. Keep each run's logs in
-the report folder.
+Run A and B alternately (A, B, A, B, …), five times each by default and never fewer than
+three. Keep each run's logs in the report folder.
 
-Each run is these four steps, each with the build's cache (above):
+Each run is these four steps, each with that build's cache (above):
 
 1. `doodlebot up <build flags> <game flags> --fresh`, in the background with a log
    (`Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`
@@ -121,23 +130,25 @@ Run outcomes:
 
 ## 4. Summarize
 
-Run, with one evidence file per repeated `--a`:
+Run, with one evidence file per repeated `--a` or `--b`:
 
-`doodlebot perf-summary --check <check> --a <file> --a <file> --a <file> --out <report folder>/report.md`
+`doodlebot perf-summary --check <check> --a <file> --a <file> --a <file> --b <file> --b <file> --b <file> --out <report folder>/report.md`
 
-With one side it writes Results, Evidence and the statistical part of Caveats, with no
-difference column and no verdict, and prints one line per metric with its median. Then
-add the other sections to `report.md`, so it has, in this order:
+It writes Results, Verdict, Evidence and the statistical part of Caveats, and prints the
+overall verdict, then one line per metric with its verdict and medians. Then add the other
+sections to `report.md`, so it has, in this order:
 
 - **Question.** The person's question in their words.
-- **Builds:** the path, `vortexVersion` and mode (`nodeEnv`), and its cache and tombstone.
-- **Measurement:** the command and options, and the number of runs.
+- **Builds:** for A and B, the path, `vortexVersion` and mode (`nodeEnv`), and its cache and
+  tombstone.
+- **Measurement:** the command and options, and the number of runs per side.
 - **Conditions:** the machine, the date, and what else was running.
 - **Results:** a table per metric (from `perf-summary`).
+- **Verdict.** (from `perf-summary`)
 - **Evidence:** every run's JSON path, and any budget failures (from `perf-summary`, plus
   the runs that failed without evidence).
-- **Caveats.** `perf-summary`'s statistical caveat, and that the numbers are only as good
-  as the machine's quiet conditions.
+- **Caveats.** `perf-summary`'s statistical caveat, and that a verdict is only as good as
+  the machine's quiet conditions.
 
 The report's headings are:
 
@@ -152,15 +163,21 @@ The report's headings are:
 
 ## Results
 
+## Verdict
+
 ## Evidence
 
 ## Caveats
 ```
 
-A measurement has no Verdict section: there is nothing to compare with.
+**Rerun rule.** When a build compared with itself, or a surprising result, gives a verdict
+other than _No clear difference_, rerun the whole comparison once (new report folder, new
+caches and tombstones) and report both results. With five runs a side, two sets from the
+same distribution fail to overlap by chance in about 0.8% of cases per metric, about 4%
+across five metrics.
 
 ## Finish
 
-Tell the person a line per metric (median, minimum to maximum, and the number of counted
-runs), any failed runs, and the report's path. Leave no test Vortex running, and say the
-cache folder can be deleted.
+Tell the person the overall verdict, then a line per metric (median A, median B, the
+difference and its verdict), the number of counted runs per side, any failed runs, and the
+report's path. Leave no test Vortex running, and say the per-build caches can be deleted.

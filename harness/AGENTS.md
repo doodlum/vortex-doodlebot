@@ -3,7 +3,7 @@
 doodlebot is the agent companion for Vortex, the Nexus Mods mod manager. Its Vortex extension is
 an MCP server exposing Vortex's state and UI; the harness (this directory, CLI `doodlebot`)
 launches isolated profiles of an unmodified Vortex, drives them, captures evidence and runs
-Playwright checks. People use it from Claude Code or Codex through three plugins whose commands
+Playwright checks. People use it from Claude Code or Codex through one plugin whose commands
 call the CLI. A source checkout is optional.
 
 This is the AI operating manual: it documents internals for agents. The site
@@ -18,34 +18,39 @@ behavior changes, update both: `pnpm run docs:generate` refreshes the generated 
 - [PULL-REQUESTS.md](PULL-REQUESTS.md): Vortex PR titles, description template, reviews.
 - [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md): canonical task routing, delegation and handoff.
 - [TESTING.md](TESTING.md): kit gates, the core suite and opt-in checks.
-- `plugins/`: the `doodlebot`, `vortex` and `benchmark` plugins (below). Apply the relevant
-  skills; `plugins/vortex/skills/design/SKILL.md` (`/vortex:design`) is the design-first
+- `plugins/doodlebot/`: the plugin (below). Apply the relevant skills; `plugins/doodlebot/skills/design/SKILL.md` (`/doodlebot:design`) is the design-first
   procedure for features and refactors.
 - [ARCHITECTURE.md](../ARCHITECTURE.md): where a new capability belongs.
 
 When developing Vortex, **read and follow its own `AGENTS.md`, `CLAUDE.md` when present, its
 documentation index and task-specific AI guidance before editing its source**.
 
-## Plugins, the workspace and the `doodlebot` command
+## The plugin, the workspace and the `doodlebot` command
 
-This repository is a plugin marketplace named `doodlebot`. Claude Code reads
-`.claude-plugin/marketplace.json`, Codex `.agents/plugins/marketplace.json`; both list three
-plugins with `source` `./plugins/<name>`. Each plugin has a Claude manifest
-(`.claude-plugin/plugin.json`) and a Codex manifest (`.codex-plugin/plugin.json`,
-`"skills": "./skills/"`), and every manifest `version` equals `package.json`'s.
+This repository is a plugin marketplace named `doodlebot` with one plugin, `doodlebot`. Claude
+Code reads `.claude-plugin/marketplace.json`, Codex `.agents/plugins/marketplace.json`; both list
+it with `source` `./plugins/doodlebot`. It has a Claude manifest (`.claude-plugin/plugin.json`,
+with `icon`) and a Codex manifest (`.codex-plugin/plugin.json`, `"skills": "./skills/"`, with
+`brandColor`, `composerIcon` and `logo`); both manifest `version`s equal `package.json`'s. The
+icon is `plugins/doodlebot/assets/icon.png` (512×512, rendered from `icon.svg`). Claude Code
+ignores `icon` at load time; Codex shows it in its plugin picker.
 
-| Plugin      | Skills (`plugins/<plugin>/skills/<name>/SKILL.md`)                          | Agents (`plugins/vortex/agents/`)                |
-| ----------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
-| `doodlebot` | `setup`, `login`, `baseline`, `start`, `stop`, `status`, `update`, `source` |                                                  |
-| `vortex`    | `design`, `fix`, `drive`, `qa`, `ui-test`, `pr`                             | `vortex-runtime-goldfish.md`, `vortex-driver.md` |
-| `benchmark` | `measure`, `compare`                                                        |                                                  |
+| Group (`docs/reference/commands.md`) | Skills (`plugins/doodlebot/skills/<name>/SKILL.md`)                         |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| Set up and run the test Vortex       | `setup`, `login`, `baseline`, `start`, `stop`, `status`, `update`, `source` |
+| Work on Vortex                       | `design`, `fix`, `drive`, `qa`, `ui-test`, `pr`                             |
+| Benchmark                            | `measure`, `compare`                                                        |
 
-- Commands are `/<plugin>:<skill>` in Claude Code (`/vortex:drive`). Claude Code namespaces
-  plugin agents: skills dispatch `vortex:vortex-runtime-goldfish` and `vortex:vortex-driver`
+Agents: `plugins/doodlebot/agents/vortex-runtime-goldfish.md` and `vortex-driver.md`. The
+groups are `COMMAND_GROUPS` in `scripts/docs.cjs`; every skill must be in exactly one.
+
+- Commands are `/doodlebot:<skill>` in Claude Code (`/doodlebot:drive`). Claude Code namespaces
+  plugin agents: skills dispatch `doodlebot:vortex-runtime-goldfish` and `doodlebot:vortex-driver`
   (`model: sonnet`). Codex plugins ship no agents; there the skills run the procedure inline or
   give a general-purpose subagent the persona file.
-- `plugins/vortex/resources/` holds the EGM persona `vortex_runtime.md` and the document
-  standard `vortex-change-standard.md`. Skills and agents reach them through
+- `plugins/doodlebot/resources/` holds the EGM persona `vortex_runtime.md`, the document
+  standard `vortex-change-standard.md`, and `knowledge.md`, the procedure skills follow to search
+  and record lessons ("Knowledge" below). Skills and agents reach them through
   `${CLAUDE_PLUGIN_ROOT}/resources/…` (in Codex, the plugin root is three folders above a
   `SKILL.md`).
 - Every repository path in a skill or agent body is written `<workspace>/<path>` or
@@ -55,7 +60,7 @@ plugins with `source` `./plugins/<name>`. Each plugin has a Claude manifest
   `harness/src/commands.ts`. `harness/src/plugins.test.ts` asserts all of this, and
   `docs/reference/commands.md` is generated from the skills.
 - In this checkout `.claude/settings.json` registers the EGM marketplace (pinned to `v0.1.1`)
-  and this folder as the `doodlebot` marketplace, and enables `egm@egm` and the three plugins.
+  and this folder as the `doodlebot` marketplace, and enables `egm@egm` and `doodlebot@doodlebot`.
   After editing a plugin, run `/plugin marketplace update doodlebot`.
 
 A **workspace** is a clone of this repository with dependencies installed and the extension
@@ -81,6 +86,7 @@ from the workspace root.
 | `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`)                                                           |
 | `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`    |
 | `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                               |
+| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `path` ("Knowledge")       |
 
 - `link` writes no `.ps1` and spawns no `npm`. Without `--bin-dir` it takes the first of these
   that is on the PATH and writable: `npm_config_prefix` (its `bin` outside Windows); on Windows
@@ -321,12 +327,12 @@ doodlebot log --level warn [--tail <n>] [--since <ISO time>] [--json]
 `doodlebot log` reads `<userDataDir>/vortex.log` of the running instance (from
 `automation_status`). `--level` is a threshold (`debug`, `silly` and `verbose` count below
 `info`; an unrecognised level counts as `info`); each entry keeps its continuation lines, such as
-stack frames, and `--json` appends them to `message`. Driven runs (`/vortex:drive`,
-`/vortex:qa`) also read the renderer console from sequence 0 with
+stack frames, and `--json` appends them to `message`. Driven runs (`/doodlebot:drive`,
+`/doodlebot:qa`) also read the renderer console from sequence 0 with
 `doodlebot call ui_read_console`, and write a run report to
 `harness/.artifacts/runs/<UTC time>-<slug>/report.md` (sections Outcome, Scenario and target,
 Steps, Dialogs and prompts answered, Errors and warnings, Evidence, Not checked; defined in
-`plugins/vortex/skills/drive/SKILL.md`).
+`plugins/doodlebot/skills/drive/SKILL.md`).
 
 `--args-file` avoids shell quoting (a PowerShell BOM is fine); keep credential-bearing ones private.
 
@@ -487,8 +493,8 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 
 Features and refactors start with a design written and reviewed with Google's
 [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM,
-`v0.1.1`) before any implementation. Follow `plugins/vortex/skills/design/SKILL.md`
-(`/vortex:design`), which every agent reads (Codex included). Bug fixes, docs and test-only
+`v0.1.1`) before any implementation. Follow `plugins/doodlebot/skills/design/SKILL.md`
+(`/doodlebot:design`), which every agent reads (Codex included). Bug fixes, docs and test-only
 changes need no design unless the user supplies or asks for one. The approved designs defining
 this workflow are `designs/egm-workflow.md` and, for its plugin form, `designs/agent-companion.md`.
 
@@ -521,9 +527,9 @@ doodlebot design scope <file> --checkout <dir> --base <ref> [--json]
   counts as body. Never write an `Approved` line the person has not given.
 - The confirmation round (after the last edit, on a checkout without implementation changes)
   runs two fresh reviewers: EGM's `implementation_readiness` with its standard, and
-  `vortex-runtime-goldfish` (`plugins/vortex/agents/vortex-runtime-goldfish.md`, dispatched as
-  `vortex:vortex-runtime-goldfish`; persona `plugins/vortex/resources/vortex_runtime.md`) with
-  `plugins/vortex/resources/vortex-change-standard.md`.
+  `vortex-runtime-goldfish` (`plugins/doodlebot/agents/vortex-runtime-goldfish.md`, dispatched as
+  `doodlebot:vortex-runtime-goldfish`; persona `plugins/doodlebot/resources/vortex_runtime.md`) with
+  `plugins/doodlebot/resources/vortex-change-standard.md`.
 - After implementing, run `design scope`, then `down`; independent QA starts with `up --fresh`
   in a fresh context. Readiness binds the result to the approved design (next section).
 
@@ -672,7 +678,7 @@ A local-diff result cannot certify a later commit.
 - `doodlebot pr-checks <number-or-url> [--repo <owner/name>] [--json]`: the PR head's checks
   via `gh`, failed jobs expanded to failed steps (a test failure vs. a failed upload). Nonzero while
   any check is pending or failed.
-- `doodlebot pr-preflight` (`/vortex:pr` runs it) before pushing; put its report in the PR. It diffs
+- `doodlebot pr-preflight` (`/doodlebot:pr` runs it) before pushing; put its report in the PR. It diffs
   the committed `HEAD` of `--checkout` (default `.vortex-src`) against its merge-base with `--base`
   (default `upstream/master`), prints PASS/WARN/FAIL/SKIP per check with file:line, exits 1 on any
   FAIL or INCONCLUSIVE. `--json` lists every hit. The revert check refuses while the harness
@@ -900,9 +906,9 @@ machine while they measure.
   window size. The toggle is `[data-split-view-toggle]` (`aria-pressed`), the chooser
   `[data-panel-chooser="panel"]`; both panes stay at least 440 px.
 
-### Benchmarking: `perf-summary` and the benchmark plugin
+### Benchmarking: `perf-summary` and the benchmark commands
 
-`/benchmark:measure` and `/benchmark:compare` (`plugins/benchmark/skills/`) are agent procedures
+`/doodlebot:measure` and `/doodlebot:compare` (`plugins/doodlebot/skills/`) are agent procedures
 over the performance checks `mods-scroll`, `large-library`, `collection-scale` (sandbox),
 `download-churn` (any game) and `plugins-page` (`--bethesda-sandbox`, source builds only).
 Builds are given as `--exe <path>` or `--dev-dir <path>` (built with
@@ -933,6 +939,52 @@ doodlebot perf-summary --check mods-scroll --a <a1.json> --a <a2.json> --a <a3.j
 - Without `--b` there is no difference column, no Verdict section and no overall verdict.
 - Reports go to `harness/.artifacts/benchmarks/<UTC time>-<slug>/report.md`; the skill adds the
   question, builds, measurement, conditions and the machine-quiet caveat.
+
+## Knowledge
+
+Doodlebot learns from verified work. There are two stores, both searched by
+`doodlebot knowledge search <words...> [--json]`. Each word must appear (case-insensitive);
+local lessons are listed before shared sections.
+
+- **Shared:** `KNOWLEDGE.md` in the workspace, made of `## ` sections of reviewed lessons. Skills
+  never edit it: it changes through doodlebot pull requests, and an edit would make `update`
+  refuse.
+- **Local:** `~/.doodlebot/knowledge.md` (`KNOWLEDGE_FILE` in `knowledgeCommand.ts`), next to the
+  instance record. It survives `update` and re-setup and is shared by Claude Code, Codex and
+  every workspace. It is a Markdown file with one `## <title>` section per lesson, holding:
+  - `- **Id:** k-<yyyymmdd>-<6 hex>`;
+  - `- **<Field>:** <text>` lines for Area, Symptom, Cause, Remedy, Scope, Evidence, Vortex and
+    Seen.
+
+  It is rewritten through a temporary file and a rename.
+
+`doodlebot knowledge add`:
+
+- requires `--title`, `--area`, `--symptom`, `--cause`, `--remedy`, `--scope` and
+  `--evidence`, and takes `--vortex <version>` optionally;
+- sets `Seen` to today's date;
+- refuses a duplicate title (case-insensitive);
+- refuses any value that looks like a credential: a `Bearer` header, or an unbroken run of 32
+  or more base64-style characters mixing letters and digits that is not pure hex. Paths, slugs
+  and commit SHAs pass.
+
+The other sub-commands:
+
+- `list` prints the lessons with their ids;
+- `remove <id>` deletes one;
+- `path` prints the file's location;
+- `--json` gives JSON output from `add`, `list` and `search`.
+
+`plugins/doodlebot/resources/knowledge.md` is the procedure. Before acting, `fix`, `drive`,
+`design` and `ui-test` search for the symptom or area, and treat every match as a lead to
+recheck against the source. After acting, `fix`, `drive` and `qa` record a lesson only when:
+
+- the cause was confirmed;
+- the lesson would have saved real time;
+- neither store has it already.
+
+Guesses stay in the run report. A local lesson that keeps holding is shared as a doodlebot pull
+request to `KNOWLEDGE.md`, and only when the person asks.
 
 ## Configuration and recovery
 

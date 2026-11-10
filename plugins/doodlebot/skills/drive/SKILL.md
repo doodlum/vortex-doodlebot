@@ -1,6 +1,6 @@
 ---
 name: drive
-description: "Vortex: Drive the test Vortex through its UI (look, click, type, install, deploy, screenshot) and, for a scenario, return a run report; use to check a Vortex flow, reproduce a UI bug or demo a change."
+description: "Doodlebot: Drive the test Vortex through its UI (look, click, type, install, deploy, screenshot) and, for a scenario, return a run report; use to check a Vortex flow, reproduce a UI bug or demo a change."
 argument-hint: "<what to do in Vortex, e.g. install this mod, deploy, and report anything odd>"
 ---
 
@@ -22,9 +22,11 @@ tool of doodlebot's Vortex extension. You never touch the person's own Vortex.
 3. `<shim>` is the absolute path of the `doodlebot` command: on Windows the first line
    ending in `.cmd` that `where.exe doodlebot` prints (never PowerShell's `where`, which is
    `Where-Object`); elsewhere `command -v doodlebot`.
-4. For anything beyond a simple look, search `<workspace>/KNOWLEDGE.md` for the area and
-   check what you find against what you observe. `<workspace>/harness/AGENTS.md` is the full
-   manual.
+4. For anything beyond a simple look, run `doodlebot knowledge search <area words>`, which
+   searches both the shared `<workspace>/KNOWLEDGE.md` and the lessons learned on this
+   machine, and check what you find against what you observe
+   (`${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`). `<workspace>/harness/AGENTS.md` is the
+   full manual.
 
 ## Act directly, or delegate and report
 
@@ -32,7 +34,7 @@ tool of doodlebot's Vortex extension. You never touch the person's own Vortex.
   with the loop below and answer in chat.
 - **A scenario, or when the person asks for a report** ("install this mod, deploy, and
   report anything odd"): run the report procedure below.
-  - **Claude Code:** delegate it to the subagent `vortex:vortex-driver` (a low-cost model).
+  - **Claude Code:** delegate it to the subagent `doodlebot:vortex-driver` (a low-cost model).
     Give it a complete brief: the scenario in the person's words, the target and game flags,
     whether to reuse a running instance (the rule below), `<workspace>`, `<shim>`, the run
     folder, and what counts as done. Wait for it, then check its report exists and read it.
@@ -170,7 +172,9 @@ capture open, so the command never returns. So:
    - notifications: `doodlebot call vortex_query` with
      `{"path": ["session", "notifications", "notifications"]}`.
 6. **Write the report** with the template below, then summarize it in chat in a few lines
-   with its path.
+   with its path. If the run confirmed the cause of a trap that cost time (not a guess),
+   record it with `doodlebot knowledge add`
+   (`${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`) and list its id under Evidence.
 7. **Stop** with `doodlebot down` only if you started the instance.
 
 Outcomes: **Worked** (everything the scenario asked happened, nothing logged errors),

@@ -1,7 +1,7 @@
 # Drive Vortex and get a report
 
-This page shows how to have the agent operate the test Vortex for you, with `/vortex:drive`,
-and how to have a change checked independently, with `/vortex:qa`.
+This page shows how to have the agent operate the test Vortex for you, with `/doodlebot:drive`,
+and how to have a change checked independently, with `/doodlebot:qa`.
 
 ## Before you begin
 
@@ -16,7 +16,7 @@ and how to have a change checked independently, with `/vortex:qa`.
 For a quick look or a single action, ask directly:
 
 ```text
-/vortex:drive open the Mods page and tell me how many mods are listed
+/doodlebot:drive open the Mods page and tell me how many mods are listed
 ```
 
 The agent acts in your session. It starts the test Vortex if none is running, takes a snapshot
@@ -27,7 +27,7 @@ of the window, acts on what it sees, and answers in the chat. No report is writt
 1. Describe the scenario and ask for a report:
 
    ```text
-   /vortex:drive install this mod, deploy, and report anything odd
+   /doodlebot:drive install this mod, deploy, and report anything odd
    ```
 
    Name the archive, the game and the target Vortex when they matter, for example "with the
@@ -77,7 +77,7 @@ up after 300 seconds, so the dialog must be answered before then.
 2. Ask for the install, naming the collection's page and the game:
 
    ```text
-   /vortex:drive install the collection https://next.nexusmods.com/<game>/collections/<slug> and report anything odd
+   /doodlebot:drive install the collection https://next.nexusmods.com/<game>/collections/<slug> and report anything odd
    ```
 
 The agent runs `doodlebot collection <url>` in the background and follows the install with
@@ -86,14 +86,14 @@ of the game (see [Use real games and baselines](games-and-baselines.md)).
 
 ## Check a change independently
 
-Use `/vortex:qa` when a change is finished and you want it checked by someone who did not write
+Use `/doodlebot:qa` when a change is finished and you want it checked by someone who did not write
 it.
 
 1. Make sure the author has stopped its test Vortex: run `/doodlebot:stop`.
 2. In a fresh session, run:
 
    ```text
-   /vortex:qa <the change, its branch and its acceptance criteria>
+   /doodlebot:qa <the change, its branch and its acceptance criteria>
    ```
 
 3. The agent delegates to `vortex-driver`, which starts with `doodlebot up --fresh`, so it does

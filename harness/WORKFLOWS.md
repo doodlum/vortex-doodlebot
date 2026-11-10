@@ -35,9 +35,9 @@ criteria. Do not silently replace a supplied design with a generic layout.
 
 Features and refactors, for Vortex or for this kit, start with a design written and reviewed
 with Google's Elephant-Goldfish Model (EGM) plugin. Follow the `design` skill of the `vortex`
-plugin (`/vortex:design`, `plugins/vortex/skills/design/SKILL.md`; Codex agents read it at that
+plugin (`/doodlebot:design`, `plugins/doodlebot/skills/design/SKILL.md`; Codex agents read it at that
 path). The approved design `designs/egm-workflow.md` defines the procedure;
-`plugins/vortex/resources/vortex-change-standard.md` defines what a design must contain.
+`plugins/doodlebot/resources/vortex-change-standard.md` defines what a design must contain.
 
 When a design is required:
 
@@ -79,7 +79,7 @@ visual design is an input to the EGM design, not a replacement for it; see
 
 ## Reproduce, change, verify
 
-`/vortex:fix` follows this procedure for a bug report and `/vortex:drive` for a scenario; the
+`/doodlebot:fix` follows this procedure for a bug report and `/doodlebot:drive` for a scenario; the
 steps below are what they do.
 
 1. Identify the target: stock Vortex for an automation-tool issue; the source
@@ -117,7 +117,7 @@ harness renderer (see "Scratch scripts and renderer diagnostics" in AGENTS.md). 
 are leads; the check that settles a question is the one added to the kit.
 
 For an authorized A/B, use the same fixture and comparable build settings at base and head.
-For timings, `/benchmark:compare` runs a performance check alternately on both builds and
+For timings, `/doodlebot:compare` runs a performance check alternately on both builds and
 summarizes the evidence with `doodlebot perf-summary`. Run `doodlebot down` before switching the checkout or changing its build output, then
 build and `up` again; `build` refuses while a Vortex runs from that checkout. Do not switch a
 checkout the user is trying out; agree with them when their demo can go down. Do not
@@ -182,7 +182,7 @@ regressions, existing failures, skipped/missing tests, changed failure causes an
 conditions separately. Missing credentials and an all-skipped run cannot establish coverage.
 The kit's account-free core suite and upstream E2E prove different contracts.
 
-Use [PULL-REQUESTS.md](PULL-REQUESTS.md) (`/vortex:pr`) for the description and fresh-review brief. Each claim
+Use [PULL-REQUESTS.md](PULL-REQUESTS.md) (`/doodlebot:pr`) for the description and fresh-review brief. Each claim
 links to the corresponding evidence and revision. The prepared description ends with the
 doodlebot footer; `pr-preflight --pr <number>` checks an existing PR's metadata. New lessons
 follow the verification and promotion policy in AGENT-WORKFLOW.md.
@@ -249,7 +249,7 @@ let the user try a demo, and start QA only when the user says the design is sett
 has no design questions). For a feature or refactor, settled means the EGM design is approved.
 Stop a running reviewer as soon as the direction changes.
 
-Independent QA (`/vortex:qa`) starts after the author has run `doodlebot down`, in a fresh
+Independent QA (`/doodlebot:qa`) starts after the author has run `doodlebot down`, in a fresh
 context, and begins with `up --fresh` so it does not inherit the author's profile state.
 
 ### A reviewer runs only the head it reviews

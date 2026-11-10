@@ -1,7 +1,7 @@
 # Fix a Vortex bug
 
 This page shows how to have the agent reproduce a Vortex bug, fix it on a branch, and verify the
-fix in the scenario that was reported, with `/vortex:fix`.
+fix in the scenario that was reported, with `/doodlebot:fix`.
 
 ## Before you begin
 
@@ -18,7 +18,7 @@ A bug fix needs no design. If you supply one anyway, the agent holds the change 
 1. Run:
 
    ```text
-   /vortex:fix <the bug report or a link to it>
+   /doodlebot:fix <the bug report or a link to it>
    ```
 
 2. If the source clone is missing, the agent runs `doodlebot source`, which clones your fork into
@@ -36,7 +36,7 @@ A bug fix needs no design. If you supply one anyway, the agent holds the change 
 
 6. The agent records evidence: the commands it ran, their results and the files they wrote.
 
-7. The agent reports the cause, the fix, and the evidence, and offers `/vortex:pr`.
+7. The agent reports the cause, the fix, and the evidence, and offers `/doodlebot:pr`.
 
 The expected result: a branch with the fix, a before-and-after observation of the reported
 scenario, and the evidence paths.
@@ -56,5 +56,5 @@ what is missing instead.
 
 - [Add a regression test](regression-tests.md) for the fixed behavior.
 - [Open a pull request](pull-requests.md).
-- Have the fix checked independently with `/vortex:qa`; see
+- Have the fix checked independently with `/doodlebot:qa`; see
   [Drive Vortex and get a report](drive-vortex.md#check-a-change-independently).

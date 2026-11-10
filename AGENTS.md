@@ -12,10 +12,10 @@ hard-won knowledge. Nothing here requires a patched or self-built Vortex.
 | `src/`                            | The Vortex extension: an MCP server exposing Vortex's state **and** its UI                                           |
 | `harness/`                        | The `doodlebot` CLI and Playwright suite: launch, cache, drive, verify                                               |
 | `bin/doodlebot.cjs`               | The CLI entry point; `bin/update.cjs` is `doodlebot update`                                                          |
-| `plugins/`                        | The `doodlebot`, `vortex` and `benchmark` plugins: skills, agents and EGM resources                                  |
+| `plugins/`                        | The `doodlebot` plugin: skills, agents, EGM resources and its icon                                                   |
 | `.claude-plugin/marketplace.json` | The `doodlebot` marketplace for Claude Code; `.agents/plugins/marketplace.json` is Codex's                           |
-| `plugins/vortex/resources/`       | EGM resources: the Vortex change standard and the runtime Goldfish persona                                           |
-| `plugins/vortex/agents/`          | Claude Code subagents: `vortex-runtime-goldfish`, `vortex-driver`                                                    |
+| `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard and the runtime Goldfish persona                                           |
+| `plugins/doodlebot/agents/`       | Claude Code subagents: `vortex-runtime-goldfish`, `vortex-driver`                                                    |
 | `harness/AGENTS.md`               | **The operating manual.** Start here to use any of this                                                              |
 | `harness/WORKFLOWS.md`            | Bug fixes, design-first features, visual designs, state matrices, independent QA                                     |
 | `harness/PULL-REQUESTS.md`        | Vortex PR titles, description template, agent briefs, review lessons                                                 |
@@ -72,13 +72,13 @@ Elephant-Goldfish Model plugin (EGM, `v0.1.1`). Bug fixes, docs and test-only ch
 unless the user supplies or asks for one.
 
 - Every agent, whether Claude Code, Codex or another, follows
-  `plugins/vortex/skills/design/SKILL.md` (`/vortex:design`) as the Elephant procedure: brief,
+  `plugins/doodlebot/skills/design/SKILL.md` (`/doodlebot:design`) as the Elephant procedure: brief,
   draft, EGM review, confirmation round, human approval, implementation, `design scope`, `down`,
   independent QA, readiness.
-- The runtime Goldfish persona is `plugins/vortex/resources/vortex_runtime.md`, reviewing
-  against `plugins/vortex/resources/vortex-change-standard.md`. Its Claude Code adapter is
-  `plugins/vortex/agents/vortex-runtime-goldfish.md`, dispatched as
-  `vortex:vortex-runtime-goldfish`.
+- The runtime Goldfish persona is `plugins/doodlebot/resources/vortex_runtime.md`, reviewing
+  against `plugins/doodlebot/resources/vortex-change-standard.md`. Its Claude Code adapter is
+  `plugins/doodlebot/agents/vortex-runtime-goldfish.md`, dispatched as
+  `doodlebot:vortex-runtime-goldfish`.
 - Designs live at `designs/<topic>.md` for doodlebot (listed in `designs/SITEMAP.md`) and
   `harness/.artifacts/designs/<topic>.md` for Vortex; confirmation-round reports go to
   `harness/.artifacts/designs/<topic>.reviews/`.

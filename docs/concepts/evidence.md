@@ -13,8 +13,8 @@ A claim about a change is backed by something you or a reviewer can open:
 
 | Evidence          | Written by                                      | Shows                                                                        |
 | ----------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |
-| Run report        | `/vortex:drive`, `/vortex:qa`                   | What a driven scenario did, which dialogs were answered, errors and warnings |
-| Benchmark report  | `/benchmark:measure`, `/benchmark:compare`      | Timings per build, their spread and the verdict                              |
+| Run report        | `/doodlebot:drive`, `/doodlebot:qa`             | What a driven scenario did, which dialogs were answered, errors and warnings |
+| Benchmark report  | `/doodlebot:measure`, `/doodlebot:compare`      | Timings per build, their spread and the verdict                              |
 | Playwright report | `doodlebot test core`                           | Which regression tests passed                                                |
 | Command receipt   | `doodlebot evidence run`                        | A command, its exit code and output, and the source before and after it      |
 | Preflight report  | `doodlebot pr-preflight`                        | Callers, readers and the revert check for a Vortex branch                    |

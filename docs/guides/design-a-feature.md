@@ -1,7 +1,7 @@
 # Design a feature
 
 This page shows how to have the agent write and review a design for a Vortex or doodlebot
-feature with `/vortex:design`, and how you approve it before any code is written.
+feature with `/doodlebot:design`, and how you approve it before any code is written.
 
 ## Before you begin
 
@@ -17,7 +17,7 @@ feature with `/vortex:design`, and how you approve it before any code is written
 1. Run:
 
    ```text
-   /vortex:design <the feature request>
+   /doodlebot:design <the feature request>
    ```
 
 2. Answer the agent's questions about the idea. The agent, the **Elephant**, keeps the context
@@ -31,7 +31,7 @@ feature with `/vortex:design`, and how you approve it before any code is written
 
    - `implementation_readiness`, from EGM, checks that someone could build the design without
      asking questions;
-   - `vortex-runtime-goldfish`, from the `vortex` plugin, checks that every acceptance criterion
+   - `vortex-runtime-goldfish`, from the doodlebot plugin, checks that every acceptance criterion
      can be proved on a real Vortex: which app, which test game or collection, which command,
      and what will be observed.
 
@@ -136,7 +136,7 @@ round and a new approval.
    `IN SCOPE` or `outside: <file>` for each changed file the design does not list. A file outside
    the boundary is either reverted, or the design is amended and approved again.
 3. It stops its test Vortex with `doodlebot down`.
-4. A fresh session checks the change with `/vortex:qa`, starting from `doodlebot up --fresh`.
+4. A fresh session checks the change with `/doodlebot:qa`, starting from `doodlebot up --fresh`.
    Its `vortex-driver` starts checking only once that `up` has exited and its log shows
    `Vortex is up in`; a first start launches Vortex up to three times, so an answering Vortex
    alone does not mean the start has finished.

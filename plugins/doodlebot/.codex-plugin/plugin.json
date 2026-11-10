@@ -1,7 +1,7 @@
 {
   "name": "doodlebot",
   "version": "2.0.0",
-  "description": "Set up doodlebot and run its isolated test copy of Vortex.",
+  "description": "The agent companion for Vortex: run a test Vortex, drive it, fix and design Vortex changes, and benchmark builds.",
   "author": {
     "name": "doodlum"
   },
@@ -12,18 +12,22 @@
   "requires_local_executor": true,
   "interface": {
     "displayName": "Doodlebot",
-    "shortDescription": "Set up and run a test copy of Vortex",
+    "shortDescription": "The agent companion for Vortex",
     "developerName": "doodlum",
     "category": "Developer Tools",
     "capabilities": [
-      "Set up the companion",
-      "Sign in to Nexus Mods",
-      "Start and stop the test Vortex"
+      "Run a test copy of Vortex",
+      "Drive Vortex and report",
+      "Fix and design Vortex changes",
+      "Compare Vortex versions"
     ],
     "defaultPrompt": [
       "Set up doodlebot on this machine.",
-      "Is doodlebot ready?",
-      "Start the test Vortex with the sandbox game."
-    ]
+      "Check that installing a mod works and report.",
+      "Compare 2.8.0 with my branch."
+    ],
+    "brandColor": "#FF8B24",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
   }
 }

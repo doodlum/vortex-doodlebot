@@ -1,7 +1,7 @@
-# Install the plugins
+# Install the plugin
 
-This page shows how to add the doodlebot marketplace to Claude Code or Codex, install its three
-plugins, and install EGM for design review.
+This page shows how to add the doodlebot marketplace to Claude Code or Codex, install the
+doodlebot plugin, and install EGM for design review.
 
 ## Before you begin
 
@@ -19,17 +19,15 @@ the project instructions. To check your version, run `claude --version`.
    /plugin marketplace add doodlum/vortex-doodlebot
    ```
 
-2. Install the three plugins:
+2. Install the plugin:
 
    ```text
    /plugin install doodlebot@doodlebot
-   /plugin install vortex@doodlebot
-   /plugin install benchmark@doodlebot
    ```
 
-3. Run `/plugin` and check that `doodlebot`, `vortex` and `benchmark` are listed as enabled.
-4. Run `/agents` and check that `vortex:vortex-driver` and `vortex:vortex-runtime-goldfish` each
-   appear once.
+3. Run `/plugin` and check that `doodlebot` is listed as enabled.
+4. Run `/agents` and check that `doodlebot:vortex-driver` and
+   `doodlebot:vortex-runtime-goldfish` each appear once.
 
 The expected result: typing `/doodlebot:` in the prompt lists the doodlebot commands.
 
@@ -41,17 +39,15 @@ The expected result: typing `/doodlebot:` in the prompt lists the doodlebot comm
    codex plugin marketplace add doodlum/vortex-doodlebot
    ```
 
-2. Install the three plugins:
+2. Install the plugin:
 
    ```powershell
    codex plugin add doodlebot@doodlebot
-   codex plugin add vortex@doodlebot
-   codex plugin add benchmark@doodlebot
    ```
 
-3. Start Codex and open the skill picker. Check that the doodlebot skills are listed. Each
-   description starts with "Doodlebot:", "Vortex:" or "Benchmark:", so you can tell them apart
-   from skills of other plugins with the same name, such as `setup` or `status`.
+3. Start Codex and open the skill picker. Check that the doodlebot skills are listed, with the
+   doodlebot icon. Each description starts with "Doodlebot:", so you can tell them apart from
+   skills of other plugins with the same name, such as `setup` or `status`.
 
 In Codex, run a command by choosing its skill from the picker, or by asking for it by name, for
 example "use the doodlebot setup skill". Codex plugins ship no agents: where Claude Code hands a
@@ -60,7 +56,7 @@ as general-purpose subagents given the reviewer's instructions.
 
 ## Install EGM for design review
 
-`/vortex:design` needs Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
+`/doodlebot:design` needs Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
 plugin (EGM), release `v0.1.1`. EGM runs inside your coding agent, not inside doodlebot. You can
 skip this section if you will not design features. The
 [EGM announcement](https://opensource.googleblog.com/2026/10/introducing-elephant-goldfish-model-plugin.html)

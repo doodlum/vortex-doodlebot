@@ -1,7 +1,7 @@
 # Add a regression test
 
 This page shows how to have the agent write a Playwright test for a Vortex behavior and run it
-against a real Vortex, with `/vortex:ui-test`.
+against a real Vortex, with `/doodlebot:ui-test`.
 
 ## Before you begin
 
@@ -15,10 +15,10 @@ against a real Vortex, with `/vortex:ui-test`.
 1. Run:
 
    ```text
-   /vortex:ui-test <the behavior to test>
+   /doodlebot:ui-test <the behavior to test>
    ```
 
-   For example: `/vortex:ui-test the Mods page search filters the list to matching mods`.
+   For example: `/doodlebot:ui-test the Mods page search filters the list to matching mods`.
 
 2. The agent writes a spec in `<workspace>/harness/src/tests/`. The suite's fixtures give each
    test an isolated Vortex with a disposable sandbox game and no account:
@@ -54,10 +54,10 @@ report to `<workspace>/harness/playwright-report` and keeps traces of failures.
 
 | Kind            | Command                                    | Agent during the run   | Result            |
 | --------------- | ------------------------------------------ | ---------------------- | ----------------- |
-| Regression test | `/vortex:ui-test`                          | None                   | Playwright report |
-| Driven run      | `/vortex:drive`, `/vortex:qa`              | `vortex-driver`        | Run report        |
-| Benchmark       | `/benchmark:measure`, `/benchmark:compare` | Orchestrates only      | Benchmark report  |
-| Design review   | `/vortex:design`                           | EGM and the Goldfishes | Approved design   |
+| Regression test | `/doodlebot:ui-test`                       | None                   | Playwright report |
+| Driven run      | `/doodlebot:drive`, `/doodlebot:qa`        | `vortex-driver`        | Run report        |
+| Benchmark       | `/doodlebot:measure`, `/doodlebot:compare` | Orchestrates only      | Benchmark report  |
+| Design review   | `/doodlebot:design`                        | EGM and the Goldfishes | Approved design   |
 
 A regression test runs without an agent once it is written, so it is the cheapest way to keep a
 behavior from breaking again.

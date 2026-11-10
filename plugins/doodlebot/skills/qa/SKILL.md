@@ -1,6 +1,6 @@
 ---
 name: qa
-description: "Vortex: Run independent QA of a Vortex change from a fresh profile against its acceptance criteria and return a run report; use after the author has finished and stopped the test Vortex."
+description: "Doodlebot: Run independent QA of a Vortex change from a fresh profile against its acceptance criteria and return a run report; use after the author has finished and stopped the test Vortex."
 argument-hint: "<change, branch or design> [acceptance criteria]"
 ---
 
@@ -8,7 +8,7 @@ argument-hint: "<change, branch or design> [acceptance criteria]"
 
 Independent QA checks a change the way a new tester would: from a fresh profile, against
 the change's acceptance criteria, without the author's state or conclusions. It uses the
-run report defined in `/vortex:drive`.
+run report defined in `/doodlebot:drive`.
 
 ## Before you begin
 
@@ -36,15 +36,17 @@ run report defined in `/vortex:drive`.
 3. **Make sure the author's instance is gone.** Run `doodlebot status`; if MCP is
    `answering`, ask the person to confirm the author is done, then run `doodlebot down`.
    QA never reuses a running instance.
-4. **Delegate.** In Claude Code, dispatch a fresh `vortex:vortex-driver` with a brief that
+4. **Delegate.** In Claude Code, dispatch a fresh `doodlebot:vortex-driver` with a brief that
    holds only: the criteria as scenario steps, the target and game flags, "start with
    `doodlebot up --fresh` and these flags, in the background", `<workspace>`, `<shim>`, the
    run folder `<workspace>/harness/.artifacts/runs/<UTC time>-qa-<slug>/`, and "do not
    reuse an instance". Do not pass the author's reasoning or results. In Codex (no plugin
-   agents), run `/vortex:drive`'s report procedure inline, starting with
+   agents), run `/doodlebot:drive`'s report procedure inline, starting with
    `doodlebot up --fresh`.
 5. **Read the report** and check each criterion has an observation, not just a tool's
-   success. Re-run a check yourself only to confirm a surprising claim, and say so.
+   success. Re-run a check yourself only to confirm a surprising claim, and say so. If QA
+   confirmed the cause of a trap that cost time, record it with `doodlebot knowledge add`
+   (`${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`).
 6. **Stop.** The driver runs `doodlebot down`; confirm with `doodlebot status`.
 
 ## Finish

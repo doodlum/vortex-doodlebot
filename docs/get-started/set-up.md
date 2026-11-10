@@ -5,7 +5,7 @@ companion, without you typing a terminal command.
 
 ## Before you begin
 
-- [Install the plugins](install.md).
+- [Install the plugin](install.md).
 - Install a released Vortex. Setup checks for it but never installs it.
 - Close any test Vortex you started earlier with doodlebot. Your own Vortex can stay open.
 
@@ -72,7 +72,7 @@ folder. The agent uses that command for everything else.
 
 The agent reports what is ready: the workspace folder, the shim and whether it is on your PATH,
 the Vortex it found, and the sandbox baseline. It suggests `/doodlebot:login` and
-`/vortex:drive` as next steps.
+`/doodlebot:drive` as next steps.
 
 If you run `/doodlebot:setup` again on a set-up machine, the agent finds the dependencies, the
 built extension, a shim that reports the workspace, and the baseline (doctor shows
@@ -83,13 +83,12 @@ If setup stops with an error, see [Troubleshooting](../troubleshooting.md).
 
 ## Update doodlebot
 
-The plugins and the workspace update separately.
+The plugin and the workspace update separately.
 
-1. Update the plugins. In Claude Code, run `/plugin marketplace update doodlebot`, then restart
-   Claude Code. In Codex, refresh the
-   `doodlebot` marketplace with Codex's plugin marketplace command
-   (`codex plugin marketplace --help` lists it) and add the three plugins again with
-   `codex plugin add`.
+1. Update the plugin. In Claude Code, run `/plugin marketplace update doodlebot`, then restart
+   Claude Code. In Codex, refresh the `doodlebot` marketplace with Codex's plugin marketplace
+   command (`codex plugin marketplace --help` lists it) and add the plugin again with
+   `codex plugin add doodlebot@doodlebot`.
 2. Update the workspace to match. Run:
 
    ```text
@@ -101,29 +100,31 @@ The plugins and the workspace update separately.
    workspace has local changes, such as a regression test you added; commit or remove them
    first.
 
-The expected result: `/doodlebot:status` reports the same doodlebot version as your plugins.
+The expected result: `/doodlebot:status` reports the same doodlebot version as your plugin.
+Lessons doodlebot has learned on your machine are kept outside the workspace, so an update
+keeps them ([What doodlebot learns](../concepts/knowledge.md)).
 
 ## Remove doodlebot
 
 1. Run `/doodlebot:stop`, so no test Vortex is left running.
-2. Uninstall the plugins. In Claude Code:
+2. Uninstall the plugin. In Claude Code:
 
    ```text
    /plugin uninstall doodlebot@doodlebot
-   /plugin uninstall vortex@doodlebot
-   /plugin uninstall benchmark@doodlebot
    /plugin marketplace remove doodlebot
    ```
 
-   In Codex, remove the three plugins and the `doodlebot` marketplace with Codex's plugin
-   commands (`codex plugin --help` lists them).
+   In Codex, remove the plugin and the `doodlebot` marketplace with Codex's plugin commands
+   (`codex plugin --help` lists them).
 
 3. Delete the workspace folder (by default `%USERPROFILE%\doodlebot`). This also deletes its test
    profiles, saved Nexus logins, reports and any Vortex source clone in it, so copy anything you
    want to keep first.
 4. Delete the shim: `doodlebot.cmd` and `doodlebot` in the folder that `link` wrote them to
    (`where.exe doodlebot` shows it).
-5. Delete `%USERPROFILE%\.doodlebot` (`~/.doodlebot`), which holds the instance record.
+5. Delete `%USERPROFILE%\.doodlebot` (`~/.doodlebot`), which holds the instance record and the
+   lessons doodlebot learned on this machine (`knowledge.md`). Keep `knowledge.md` if you may
+   set doodlebot up again.
 
 Your own Vortex and its profile are not touched by any of these steps.
 

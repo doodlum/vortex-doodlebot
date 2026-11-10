@@ -59,7 +59,7 @@ plugin with [designs/agent-companion.md](../designs/agent-companion.md).
 - **Elephant**: the long-lived agent session that holds the task's context. It interviews the
   human, drafts the design, runs the reviews, resolves findings and, after approval,
   implements inside the design's file boundary. It follows
-  `plugins/vortex/skills/design/SKILL.md` (`/vortex:design`); every agent, including Codex,
+  `plugins/doodlebot/skills/design/SKILL.md` (`/doodlebot:design`); every agent, including Codex,
   uses that file as the procedure.
 - **Goldfish**: a reviewer subagent started without conversation history, reading only the
   design, a persona and a document standard. It stays read-only. The confirmation round uses
@@ -73,12 +73,12 @@ plugin with [designs/agent-companion.md](../designs/agent-companion.md).
 
 ### doodlebot's EGM files
 
-| File                                                 | What it is                                                                                                                          |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `plugins/vortex/resources/vortex-change-standard.md` | Document standard: the machine-checked design format and what each verification step names                                          |
-| `plugins/vortex/resources/vortex_runtime.md`         | Runtime Goldfish persona (`name: vortex-runtime-goldfish`), usable from `/egm:egm-review-loop`                                      |
-| `plugins/vortex/agents/vortex-runtime-goldfish.md`   | Claude Code agent for that persona, dispatched as `vortex:vortex-runtime-goldfish`: `tools: Read, Grep, Glob`, `omitClaudeMd: true` |
-| `plugins/vortex/skills/design/SKILL.md`              | The Elephant procedure (`/vortex:design`), with Claude Code and Codex steps                                                         |
+| File                                                    | What it is                                                                                                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugins/doodlebot/resources/vortex-change-standard.md` | Document standard: the machine-checked design format and what each verification step names                                             |
+| `plugins/doodlebot/resources/vortex_runtime.md`         | Runtime Goldfish persona (`name: vortex-runtime-goldfish`), usable from `/egm:egm-review-loop`                                         |
+| `plugins/doodlebot/agents/vortex-runtime-goldfish.md`   | Claude Code agent for that persona, dispatched as `doodlebot:vortex-runtime-goldfish`: `tools: Read, Grep, Glob`, `omitClaudeMd: true` |
+| `plugins/doodlebot/skills/design/SKILL.md`              | The Elephant procedure (`/doodlebot:design`), with Claude Code and Codex steps                                                         |
 
 Skills and the agent reach the resources through `${CLAUDE_PLUGIN_ROOT}/resources/…`; in Codex
 the plugin root is three folders above a `SKILL.md`, and Codex plugins ship no agents, so the
@@ -112,7 +112,7 @@ still reaches them. Tell them in the brief to stay read-only and to ignore workf
    `doodlebot design new <file> --title <t> --target vortex|doodlebot`. Add doodlebot's
    sections: header `**Target:**`, acceptance bullets ``- `id`: criterion``, Affected
    Contracts, and `### Target Scope & File Boundary` listing every file the change may write
-   by exact path. `plugins/vortex/resources/vortex-change-standard.md` defines the format.
+   by exact path. `plugins/doodlebot/resources/vortex-change-standard.md` defines the format.
 3. **EGM review.** `/egm:egm-review` in the consolidated report mode, then `/egm:egm-resolve`.
    A finding the Elephant contests goes, with its reason, into `contested.md`.
 4. **Confirmation round**, after the last edit:
@@ -125,7 +125,7 @@ still reaches them. Tell them in the brief to stay read-only and to ignore workf
       contain only the design and `designs/SITEMAP.md`.
    3. Start two fresh Goldfish reviewers on the whole design: `implementation_readiness` with
       its standard, and `vortex-runtime-goldfish` with
-      `plugins/vortex/resources/vortex-change-standard.md`.
+      `plugins/doodlebot/resources/vortex-change-standard.md`.
       Each brief carries D, the absolute subject checkout root and, for Vortex, that
       checkout's `AGENTS.md` and `docs/README.md`, and asks the report to begin with
       `Reviewed content sha256: D`.
@@ -181,7 +181,7 @@ said so in the task. It never writes an `Approved` line the human has not given.
 | Kit changes                         | One writer; read-only reviewers                                                     | `designs/<topic>.md` for features and refactors                 | Kit CI; released-app core for runtime contracts                               |
 | UI/design                           | One author while decisions evolve; QA after criteria settle                         | An EGM design when it adds a feature; supplied visuals as input | Relevant state/size matrix and visible evidence                               |
 | Independent QA                      | Fresh context and identified revision; after the author's `down`, from `up --fresh` | Reads the approved design and its boundary                      | Independent reproduction, boundary checks and findings                        |
-| Performance                         | Alternating base/head runs on an idle machine (`/benchmark:compare`)                | Per the change's kind                                           | Production mode, comparable fixtures, at least three runs per side and spread |
+| Performance                         | Alternating base/head runs on an idle machine (`/doodlebot:compare`)                | Per the change's kind                                           | Production mode, comparable fixtures, at least three runs per side and spread |
 
 One accountable owner integrates each issue, resolves findings, checks evidence and cleans up.
 Use the smallest arrangement that adds useful independent evidence. There is no fixed agent

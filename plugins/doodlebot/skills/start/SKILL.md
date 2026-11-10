@@ -78,4 +78,4 @@ on this profile.
 
 Tell the person the target and game that started, and the MCP endpoint from the `MCP:`
 line. Do not repeat the bearer token in chat; it is in the log if they need to connect
-another client. Suggest `/vortex:drive` to work in it and `/doodlebot:stop` when done.
+another client. Suggest `/doodlebot:drive` to work in it and `/doodlebot:stop` when done.

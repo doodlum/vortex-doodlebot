@@ -124,13 +124,28 @@ function cli() {
   return { help, commands };
 }
 
-// The plugin commands in the order the reference lists them. The skills on disk must match
-// this list exactly, so a new, renamed or removed skill fails generation until it is placed.
-const COMMAND_ORDER = {
-  doodlebot: ["setup", "login", "baseline", "start", "stop", "status", "update", "source"],
-  vortex: ["design", "fix", "drive", "qa", "ui-test", "pr"],
-  benchmark: ["measure", "compare"],
-};
+// The one plugin's commands, in the groups and order the reference lists them. The skills on
+// disk must match these lists exactly, so a new, renamed or removed skill fails generation
+// until it is placed.
+const PLUGIN = "doodlebot";
+const COMMAND_GROUPS = [
+  {
+    title: "Set up and run the test Vortex",
+    description:
+      "Install the companion, sign in, and start, stop or check the test copy of Vortex.",
+    commands: ["setup", "login", "baseline", "start", "stop", "status", "update", "source"],
+  },
+  {
+    title: "Work on Vortex",
+    description: "Fix, design, drive and check Vortex changes, and prepare their pull requests.",
+    commands: ["design", "fix", "drive", "qa", "ui-test", "pr"],
+  },
+  {
+    title: "Benchmark",
+    description: "Measure Vortex performance and compare two Vortex builds.",
+    commands: ["measure", "compare"],
+  },
+];
 
 function frontmatter(file) {
   const match = /^---\n([\s\S]*?)\n---\n/.exec(read(file));
@@ -148,44 +163,37 @@ function frontmatter(file) {
 function pluginCommands() {
   const marketplace = JSON.parse(read(".claude-plugin/marketplace.json"));
   const plugins = marketplace.plugins.map((plugin) => plugin.name);
-  if (plugins.join(",") !== Object.keys(COMMAND_ORDER).join(","))
+  if (plugins.join(",") !== PLUGIN)
+    throw new Error(`Marketplace plugins (${plugins.join(", ")}) differ from ${PLUGIN}`);
+  const skillsDir = path.join(root, "plugins", PLUGIN, "skills");
+  const onDisk = fs
+    .readdirSync(skillsDir, { withFileTypes: true })
+    .filter(
+      (entry) => entry.isDirectory() && fs.existsSync(path.join(skillsDir, entry.name, "SKILL.md")),
+    )
+    .map((entry) => entry.name)
+    .sort();
+  const expected = COMMAND_GROUPS.flatMap((group) => group.commands).sort();
+  if (onDisk.join(",") !== expected.join(","))
     throw new Error(
-      `Marketplace plugins (${plugins.join(", ")}) differ from COMMAND_ORDER (${Object.keys(COMMAND_ORDER).join(", ")})`,
+      `Skills of plugin ${PLUGIN} (${onDisk.join(", ")}) differ from COMMAND_GROUPS (${expected.join(", ")})`,
     );
-  return plugins.map((plugin) => {
-    const skillsDir = path.join(root, "plugins", plugin, "skills");
-    const onDisk = fs
-      .readdirSync(skillsDir, { withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isDirectory() && fs.existsSync(path.join(skillsDir, entry.name, "SKILL.md")),
-      )
-      .map((entry) => entry.name)
-      .sort();
-    const expected = [...COMMAND_ORDER[plugin]].sort();
-    if (onDisk.join(",") !== expected.join(","))
-      throw new Error(
-        `Skills of plugin ${plugin} (${onDisk.join(", ")}) differ from COMMAND_ORDER (${expected.join(", ")})`,
-      );
-    const commands = COMMAND_ORDER[plugin].map((name) => {
-      const file = `plugins/${plugin}/skills/${name}/SKILL.md`;
+  return COMMAND_GROUPS.map((group) => ({
+    title: group.title,
+    description: group.description,
+    commands: group.commands.map((name) => {
+      const file = `plugins/${PLUGIN}/skills/${name}/SKILL.md`;
       const fields = frontmatter(file);
       if (fields.name !== name) throw new Error(`${file} names itself ${fields.name}`);
       if (!fields.description) throw new Error(`${file} has no description`);
-      const prefix = new RegExp(`^${plugin}:\\s*`, "i");
       return {
-        command: `/${plugin}:${name}`,
-        description: fields.description.replace(prefix, ""),
+        command: `/${PLUGIN}:${name}`,
+        description: fields.description.replace(new RegExp(`^${PLUGIN}:\\s*`, "i"), ""),
         argumentHint: fields["argument-hint"],
         file,
       };
-    });
-    return {
-      plugin,
-      description: marketplace.plugins.find((p) => p.name === plugin).description,
-      commands,
-    };
-  });
+    }),
+  }));
 }
 
 function api() {
@@ -291,13 +299,13 @@ result(
   "docs/reference/commands.md",
   "# Commands\n\n" +
     banner(
-      "These are the commands the three doodlebot plugins add. In Claude Code, type the command followed by its arguments; in Codex, choose the skill of the same name from the skill picker. See [Install the plugins](../get-started/install.md). This page is generated from each command's skill file.",
+      "These are the commands the doodlebot plugin adds. In Claude Code, type the command followed by its arguments; in Codex, choose the skill of the same name from the skill picker. See [Install the plugin](../get-started/install.md). This page is generated from each command's skill file.",
     ) +
     inventory.plugins
       .map(
-        (plugin) =>
-          `## ${plugin.plugin}\n\n${plugin.description}\n\n| Command | What it does | Arguments |\n| --- | --- | --- |\n` +
-          plugin.commands
+        (group) =>
+          `## ${group.title}\n\n${group.description}\n\n| Command | What it does | Arguments |\n| --- | --- | --- |\n` +
+          group.commands
             .map(
               (command) =>
                 `| \`${command.command}\` | ${cell(command.description)} | ${command.argumentHint ? argument(command.argumentHint) : "none"} |`,

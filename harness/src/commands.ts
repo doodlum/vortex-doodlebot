@@ -48,6 +48,7 @@ export const commands: CommandEntry[] = [
   { name: "e2e" },
   { name: "log" },
   { name: "fixture", subcommands: ["mod"] },
+  { name: "knowledge", subcommands: ["add", "search", "list", "remove", "path"] },
   // Checks and evidence
   { name: "test" },
   { name: "responsive" },

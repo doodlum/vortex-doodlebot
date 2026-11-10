@@ -1,6 +1,6 @@
 ---
 name: ui-test
-description: "Vortex: Write or debug a Playwright regression test for Vortex's UI in the doodlebot workspace and run it with doodlebot test core; use to lock in a UI behavior or fix a failing spec."
+description: "Doodlebot: Write or debug a Playwright regression test for Vortex's UI in the doodlebot workspace and run it with doodlebot test core; use to lock in a UI behavior or fix a failing spec."
 argument-hint: "<UI behavior to test, or the failing spec>"
 ---
 
@@ -13,7 +13,7 @@ with the same tools would pass even if both were wrong together.
 The test lives in the doodlebot workspace, not in a Vortex pull request. It makes the
 workspace dirty, so `/doodlebot:update` refuses until the test is committed to a doodlebot
 branch or removed; say so when you finish. To guard a regression in Vortex itself, write a
-Vortex unit test in the Vortex checkout (`/vortex:fix`, step 5) or a spec in its
+Vortex unit test in the Vortex checkout (`/doodlebot:fix`, step 5) or a spec in its
 `packages/e2e` suite instead, so the test travels with the Vortex change.
 
 ## Before you begin
@@ -29,8 +29,10 @@ Vortex unit test in the Vortex checkout (`/vortex:fix`, step 5) or a spec in its
 3. `<shim>` is the absolute path of the `doodlebot` command: on Windows the first line
    ending in `.cmd` that `where.exe doodlebot` prints; elsewhere `command -v doodlebot`.
 4. Read `<workspace>/harness/AGENT-WORKFLOW.md`, `<workspace>/harness/TESTING.md` and the
-   test guidance `<workspace>/harness/KNOWLEDGE-ROUTES.md` names. Before changing Vortex,
-   follow its own `AGENTS.md`, docs index, and frontend and testing guidance.
+   test guidance `<workspace>/harness/KNOWLEDGE-ROUTES.md` names, and run
+   `doodlebot knowledge search <area words>` for known traps
+   (`${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`). Before changing Vortex, follow its own
+   `AGENTS.md`, docs index, and frontend and testing guidance.
 
 ## Steps
 

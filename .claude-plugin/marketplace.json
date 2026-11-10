@@ -7,17 +7,7 @@
     {
       "name": "doodlebot",
       "source": "./plugins/doodlebot",
-      "description": "Set up doodlebot and run its isolated test copy of Vortex."
-    },
-    {
-      "name": "vortex",
-      "source": "./plugins/vortex",
-      "description": "Fix, design, drive and check Vortex changes with doodlebot."
-    },
-    {
-      "name": "benchmark",
-      "source": "./plugins/benchmark",
-      "description": "Measure Vortex performance and compare two Vortex builds."
+      "description": "The agent companion for Vortex: run a test Vortex, drive it, fix and design Vortex changes, and benchmark builds."
     }
   ]
 }

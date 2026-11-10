@@ -1,6 +1,6 @@
 ---
 name: design
-description: "Vortex: Design a Vortex or doodlebot feature or refactor with the Elephant-Goldfish Model before any code is written; use when a task adds a feature, refactors code, or the person supplies or asks for a design."
+description: "Doodlebot: Design a Vortex or doodlebot feature or refactor with the Elephant-Goldfish Model before any code is written; use when a task adds a feature, refactors code, or the person supplies or asks for a design."
 argument-hint: "<feature or refactor request>"
 ---
 
@@ -9,7 +9,7 @@ argument-hint: "<feature or refactor request>"
 You are the Elephant: the session that holds this task's context. You write no
 implementation code until a person has approved the design's exact text. Bug fixes, docs
 and test-only changes need no design unless the person asks for one or supplies one (use
-`/vortex:fix` for a bug).
+`/doodlebot:fix` for a bug).
 
 This command needs the EGM plugin (`egm@egm`, v0.1.1). If `/egm:egm-brainstorm` is not
 available (Claude Code) or there is no `egm-brainstorm` skill (Codex), tell the person to
@@ -39,7 +39,9 @@ and `<workspace>/designs/agent-companion.md`.
 
 1. Establish scope, authorization and exclusions per `<workspace>/harness/AGENT-WORKFLOW.md`.
 2. Read `<workspace>/harness/KNOWLEDGE-ROUTES.md` and `<workspace>/ARCHITECTURE.md`, and
-   search `<workspace>/KNOWLEDGE.md` for the affected area. For a Vortex change also read
+   run `doodlebot knowledge search <area words>` for the affected area (it covers
+   `<workspace>/KNOWLEDGE.md` and this machine's lessons;
+   `${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`). For a Vortex change also read
    the checkout's `AGENTS.md`, `CLAUDE.md` when present, and `docs/README.md`.
 3. Pick the design path and target:
    - doodlebot: `<workspace>/designs/<topic>.md`, added to `<workspace>/designs/SITEMAP.md`;
@@ -100,7 +102,7 @@ person decides them at approval.
    Tell the loop to use direct dispatch (no synthesizer), to put D in each reviewer's
    brief, and to stop after this round so you can save the reports. Dispatching the same
    two reviewers yourself is equivalent: the subagent types
-   `egm:egm-implementation-readiness` and `vortex:vortex-runtime-goldfish`. Spawn each
+   `egm:egm-implementation-readiness` and `doodlebot:vortex-runtime-goldfish`. Spawn each
    fresh; never fork this conversation or resume an earlier reviewer.
    - Codex (plugins ship no agents there): general-purpose subagents with
      `fork_turns: "none"` (or `fork_context: false`), told to read EGM's
@@ -137,8 +139,8 @@ as body). Any later body edit voids the approval.
 1. Implement only inside the boundary. Check with
    `doodlebot design scope <absolute design path> --checkout <subject> --base <base sha>`,
    which must print `IN SCOPE`.
-2. Verify per the design's Verification Plan (`/vortex:fix` and `/vortex:drive` describe
-   the app steps). Run `doodlebot down` before independent QA, which is `/vortex:qa` in a
+2. Verify per the design's Verification Plan (`/doodlebot:fix` and `/doodlebot:drive` describe
+   the app steps). Run `doodlebot down` before independent QA, which is `/doodlebot:qa` in a
    fresh context and starts with `doodlebot up --fresh`.
 3. In the readiness manifest (schema 3), set `design` to the design's artifact reference and
    add one `design-review` entry: `subject` the identity from step 4.2, `artifacts` the two
