@@ -15,6 +15,13 @@ describe("parseArgs", () => {
     expect(parse(["source", "--build"]).flags.build).toBe(true);
   });
 
+  it("refuses an install path split at a space, naming the quoted path", () => {
+    expect(() => parse(["install", "C:\\Users\\Nexus", "Two\\probe.zip"])).toThrow(
+      'install takes one archive but got 2 arguments. Quote a path that has spaces: "C:\\Users\\Nexus Two\\probe.zip".',
+    );
+    expect(parse(["install", "probe.zip"]).positional).toEqual([at("probe.zip")]);
+  });
+
   it("drops a separator forwarded before the command", () => {
     expect(parse(["--", "snapshot", "x"])).toMatchObject({
       command: "snapshot",
