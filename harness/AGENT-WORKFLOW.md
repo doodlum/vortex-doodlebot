@@ -51,15 +51,16 @@ plugin (EGM, release `v0.1.1`). No implementation code is written until a human 
 the design's exact text. Bug fixes, documentation and test-only changes need no design unless
 the user supplies one or asks for one; a supplied design is enforced like any other.
 The approved design that defines this procedure is
-[designs/egm-workflow.md](../designs/egm-workflow.md).
+[designs/egm-workflow.md](../designs/egm-workflow.md); its resources moved into the `vortex`
+plugin with [designs/agent-companion.md](../designs/agent-companion.md).
 
 ### Roles
 
 - **Elephant**: the long-lived agent session that holds the task's context. It interviews the
   human, drafts the design, runs the reviews, resolves findings and, after approval,
   implements inside the design's file boundary. It follows
-  `.claude/skills/vortex-elephant/SKILL.md`; every agent, including Codex, uses that file as
-  the procedure.
+  `plugins/vortex/skills/design/SKILL.md` (`/vortex:design`); every agent, including Codex,
+  uses that file as the procedure.
 - **Goldfish**: a reviewer subagent started without conversation history, reading only the
   design, a persona and a document standard. It stays read-only. The confirmation round uses
   two: EGM's built-in `implementation_readiness` with its
@@ -72,16 +73,19 @@ The approved design that defines this procedure is
 
 ### doodlebot's EGM files
 
-| File                                        | What it is                                                                                     |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `harness/egm/vortex-change-standard.md`     | Document standard: the machine-checked design format and what each verification step names     |
-| `harness/egm/vortex_runtime.md`             | Runtime Goldfish persona (`name: vortex-runtime-goldfish`), usable from `/egm:egm-review-loop` |
-| `.claude/agents/vortex-runtime-goldfish.md` | Claude Code adapter for that persona: `tools: Read, Grep, Glob`, `omitClaudeMd: true`          |
-| `.claude/skills/vortex-elephant/SKILL.md`   | The Elephant procedure, with Claude Code and Codex steps                                       |
+| File                                                 | What it is                                                                                                                          |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `plugins/vortex/resources/vortex-change-standard.md` | Document standard: the machine-checked design format and what each verification step names                                          |
+| `plugins/vortex/resources/vortex_runtime.md`         | Runtime Goldfish persona (`name: vortex-runtime-goldfish`), usable from `/egm:egm-review-loop`                                      |
+| `plugins/vortex/agents/vortex-runtime-goldfish.md`   | Claude Code agent for that persona, dispatched as `vortex:vortex-runtime-goldfish`: `tools: Read, Grep, Glob`, `omitClaudeMd: true` |
+| `plugins/vortex/skills/design/SKILL.md`              | The Elephant procedure (`/vortex:design`), with Claude Code and Codex steps                                                         |
 
-Claude Code loads EGM from `.claude/settings.json`, which pins the `egm` marketplace to tag
-`v0.1.1` and enables `egm@egm` (Claude Code 2.1.271 or later isolates reviewers through
-`omitClaudeMd`). Codex installs it with `codex plugin marketplace add
+Skills and the agent reach the resources through `${CLAUDE_PLUGIN_ROOT}/resources/…`; in Codex
+the plugin root is three folders above a `SKILL.md`, and Codex plugins ship no agents, so the
+Goldfish runs as a general-purpose subagent given the persona file. Claude Code loads EGM from
+`.claude/settings.json` in this checkout, which pins the `egm` marketplace to tag `v0.1.1` and
+enables `egm@egm` (Claude Code 2.1.271 or later isolates reviewers through `omitClaudeMd`);
+elsewhere it is installed from `google/elephant-goldfish-model` like any plugin. Codex installs it with `codex plugin marketplace add
 google/elephant-goldfish-model` and `codex plugin add egm@egm`; that install is not pinned, so
 record the version in each report. Codex reviewers run as general-purpose subagents with
 `fork_turns: "none"` (or `fork_context: false`, depending on the Codex version); they are not
@@ -105,14 +109,14 @@ still reaches them. Tell them in the brief to stay read-only and to ignore workf
    runs a seven-lens Goldfish swarm and writes `concepts_brief.md`.
 2. **Draft.** `/egm:egm-draft` turns the brief into `design_draft.md` section by section.
    Copy it to the design path, or start there from
-   `pnpm run ai -- design new <file> --title <t> --target vortex|doodlebot`. Add doodlebot's
+   `doodlebot design new <file> --title <t> --target vortex|doodlebot`. Add doodlebot's
    sections: header `**Target:**`, acceptance bullets ``- `id`: criterion``, Affected
    Contracts, and `### Target Scope & File Boundary` listing every file the change may write
-   by exact path. `harness/egm/vortex-change-standard.md` defines the format.
+   by exact path. `plugins/vortex/resources/vortex-change-standard.md` defines the format.
 3. **EGM review.** `/egm:egm-review` in the consolidated report mode, then `/egm:egm-resolve`.
    A finding the Elephant contests goes, with its reason, into `contested.md`.
 4. **Confirmation round**, after the last edit:
-   1. `pnpm exec oxfmt <design>`, then `pnpm run ai -- design check <design> --ready --json`.
+   1. `pnpm exec oxfmt <design>`, then `doodlebot design check <design> --ready --json`.
       It must report no issues. Its `contentSha256` is the digest D.
    2. `evidence identity --checkout <subject> --base <fixed sha>`. The subject is the kit for
       a doodlebot design, `.vortex-src` or the `--dev-dir` checkout for a Vortex design. Use
@@ -120,7 +124,8 @@ still reaches them. Tell them in the brief to stay read-only and to ignore workf
       base, because a later base would hide committed implementation. Its `changedFiles` may
       contain only the design and `designs/SITEMAP.md`.
    3. Start two fresh Goldfish reviewers on the whole design: `implementation_readiness` with
-      its standard, and `vortex-runtime-goldfish` with `harness/egm/vortex-change-standard.md`.
+      its standard, and `vortex-runtime-goldfish` with
+      `plugins/vortex/resources/vortex-change-standard.md`.
       Each brief carries D, the absolute subject checkout root and, for Vortex, that
       checkout's `AGENTS.md` and `docs/README.md`, and asks the report to begin with
       `Reviewed content sha256: D`.
@@ -140,13 +145,13 @@ still reaches them. Tell them in the brief to stay read-only and to ignore workf
    edit changes it and voids the approval.
 6. **Implementation** inside the boundary only: kit changes in this repository, Vortex
    changes on a branch of `.vortex-src` or in a `--dev-dir` checkout.
-7. **Design scope.** `pnpm run ai -- design scope <design> --checkout <subject> --base <sha>`
+7. **Design scope.** `doodlebot design scope <design> --checkout <subject> --base <sha>`
    lists changed files outside the boundary and exits 1 if there are any. Revert the edit, or
    amend the design: an amendment voids the approval, its confirmation round runs on a clean
    detached checkout of a commit without the implementation
    (`git -C <subject> worktree add --detach <temp> <commit>`, removed afterward), and the
    human approves the new digest.
-8. **`down`.** Stop the Elephant's Vortex with `pnpm run ai -- down` before QA.
+8. **`down`.** Stop the Elephant's Vortex with `doodlebot down` before QA.
 9. **Independent QA** in a fresh context, starting with `up --fresh` so it does not inherit
    the author's profile.
 10. **Readiness 3.** Record receipts, then a schema-3 manifest with `design` set to the
@@ -176,7 +181,7 @@ said so in the task. It never writes an `Approved` line the human has not given.
 | Kit changes                         | One writer; read-only reviewers                                                     | `designs/<topic>.md` for features and refactors                 | Kit CI; released-app core for runtime contracts                               |
 | UI/design                           | One author while decisions evolve; QA after criteria settle                         | An EGM design when it adds a feature; supplied visuals as input | Relevant state/size matrix and visible evidence                               |
 | Independent QA                      | Fresh context and identified revision; after the author's `down`, from `up --fresh` | Reads the approved design and its boundary                      | Independent reproduction, boundary checks and findings                        |
-| Performance                         | Sequential base/head runs on an idle machine                                        | Per the change's kind                                           | Production mode, comparable fixtures, at least three runs per side and spread |
+| Performance                         | Alternating base/head runs on an idle machine (`/benchmark:compare`)                | Per the change's kind                                           | Production mode, comparable fixtures, at least three runs per side and spread |
 
 One accountable owner integrates each issue, resolves findings, checks evidence and cleans up.
 Use the smallest arrangement that adds useful independent evidence. There is no fixed agent
@@ -218,26 +223,30 @@ runtime and credential equivalence; never relabel an old run as rerun.
 
 ## Own resources: one instance at a time
 
-Only one doodlebot Vortex runs at a time, driven by one agent. That is a convention, backed by
-a few refusals for the cases where a second command would damage data. No command asks who you
-are.
+Only one doodlebot Vortex runs at a time on the machine, driven by one agent. That is a
+convention, backed by a few refusals for the cases where a second command would damage data. No
+command asks who you are.
 
-- Every doodlebot launcher (`up`, `setup`, `bootstrap`, the core suite's fixture, benchmark
-  sessions and setup, the signed-out zoom check) writes the instance record
-  `harness/.cache/instance.json` right after it starts Vortex: pid, start time, cache folder,
-  profile folder, MCP port and, for a source build, the checkout. The path is fixed whatever
-  `--cache-dir` says. The record is cleared after a confirmed exit. A record whose pid is dead
-  or is not a Vortex or Electron process is stale and is cleared when read.
-- A launcher refuses while the record names another running Vortex: "A harness Vortex is
-  running (pid N, cache C); run `pnpm run ai -- down` before <action>." `up` and `bootstrap`
-  first stop their own cache's leftover Vortex.
+- Every doodlebot launcher (`up`, `setup`, `bootstrap`, the core suite's fixture, the
+  signed-out zoom check) writes the instance record `~/.doodlebot/instance.json` right after it
+  starts Vortex: pid, start time, cache folder, profile folder, MCP port and, for a source
+  build, the checkout. The path is per user, whatever workspace or `--cache-dir` is used, so
+  the rule spans every workspace on the machine. The record is cleared after a confirmed exit.
+  A record whose pid is dead or is not a Vortex or Electron process is stale and is cleared
+  when read. The older `harness/.cache/instance.json` is deleted when found unless it names a
+  running Vortex, which refuses the launch ("A harness Vortex from an older doodlebot is
+  running (pid N); stop it before starting Vortex.").
+- A launcher refuses while the record names another running Vortex, including one started from
+  another workspace or cache: "A harness Vortex is running (pid N, cache C); run
+  `doodlebot down` before <action>." `up` and `bootstrap` first stop their own cache's
+  leftover Vortex; another cache's is never touched. `doodlebot update` refuses the same way.
 - Commands that rewrite or record a checkout (`build`, source install and build,
   `evidence run`, `pr-preflight`'s revert check, `vortex-e2e`'s patch) refuse while Vortex runs
-  from it: "A harness Vortex is running from <checkout> (pid N); run `pnpm run ai -- down`
-  before <action>." Benchmark game-settings reset refuses while Vortex runs.
+  from it: "A harness Vortex is running from <checkout> (pid N); run `doodlebot down`
+  before <action>."
 - `down` waits for a clean exit and clears the record. An instance that does not exit is
   reported and left intact, never killed. When a reused pid keeps a dead record looking alive,
-  delete `harness/.cache/instance.json` after checking that no harness Vortex is running.
+  delete `~/.doodlebot/instance.json` after checking that no harness Vortex is running.
 - `script` runs in the caller's directory against the running instance.
 - A Vortex started outside the kit's launchers (raw Playwright or Electron) writes no record
   and is invisible to these refusals. Do not start one beside a harness instance.
@@ -263,13 +272,14 @@ explicitly.
 
 ## Verify and hand off
 
-Human documentation is a completion requirement for a behavior or workflow change. Update
-the mapped `/docs` guide and machine-facing contract/manual together, regenerate references
-with `pnpm run docs:generate`, and run the paired documentation check. This site is human-only:
-explain the operation for readers instead of publishing agent instructions or redirecting
-them to AGENTS files. Keep code examples, test/benchmark prerequisites and expected results
-current. `scripts/documentation-map.json` supplies the pairing; reviewers still establish
-semantic accuracy and coverage. The README introduces human use cases and links into the site.
+Documentation is a completion requirement for a behavior or workflow change. The site
+documents setup and commands for people; the manuals document internals for agents. Update the
+mapped `/docs` page and the manual together, regenerate references with
+`pnpm run docs:generate`, and run `pnpm run docs:check`. Site pages are task-based setup and
+usage instructions that use the plugin commands; they do not publish agent instructions or
+redirect readers to AGENTS files. Keep commands, prerequisites and expected results current.
+`scripts/documentation-map.json` supplies the pairing; reviewers still establish semantic
+accuracy and coverage. The README introduces the companion, its install commands and the site.
 
 Select checks by target, task and affected contracts, then have QA inspect applicability
 against the actual diff. Documentation-only labels cannot waive changed executable behavior.

@@ -1,29 +1,69 @@
 # Work on Vortex source
 
-You do not need Vortex source to use Doodlebot, write a test, or benchmark a released installer. Start with [the TypeScript test guide](../getting-started/first-session.md) for those tasks.
+This page shows how to prepare a Vortex source clone with `/doodlebot:source`, work on a branch
+of it, and run your build in the test Vortex.
 
-If you are changing Vortex itself, Doodlebot can manage a clone of your Vortex fork under `.vortex-src/`. `pnpm run ai:source` obtains and builds that clone. Source development has additional Vortex build prerequisites and a longer first setup.
+## Before you begin
 
-Make each source change on its own branch of `.vortex-src`, for example `git -C .vortex-src switch -c fix-download-panel upstream/master`. To work in a different checkout, pass it to every command with `--dev-dir <path>`. Keep source-build tests separate from released-installer comparisons: development instrumentation and React mode can change timings.
+- [Set up doodlebot](../get-started/set-up.md).
+- Have a GitHub fork of Vortex, and Vortex's own build prerequisites. The first build takes
+  longer than doodlebot's setup.
+- Stop any running test Vortex with `/doodlebot:stop`.
 
-Only one Doodlebot Vortex runs at a time. While it runs from a checkout, `build`, `evidence run` and other commands that change or record that checkout refuse with a message like this:
+You do not need Vortex source to drive a released Vortex, add a regression test for doodlebot's
+suite, or measure a release.
+
+## Prepare the source clone
+
+1. Run:
+
+   ```text
+   /doodlebot:source
+   ```
+
+2. The agent runs `doodlebot source`, which finds your GitHub fork, clones it into
+   `<workspace>/.vortex-src` and builds it.
+
+3. The agent makes a branch of `.vortex-src` for your work, for example
+   `git -C <workspace>/.vortex-src switch -c fix-download-panel upstream/master`.
+
+The expected result: a built clone in `<workspace>/.vortex-src`, on a new branch.
+
+To work in a different checkout instead, name it; the agent passes it to every command with
+`--dev-dir <path>`.
+
+## Run your build
+
+- `/doodlebot:start with my source build and the sandbox game` starts the build with
+  `doodlebot up --dev-dir <workspace>/.vortex-src --sandbox`.
+- A source build runs in development mode, with React's slower development build. For timings
+  that reflect users, the agent builds with `doodlebot build --checkout <dir> --production` and
+  starts with `--production`. It then confirms that Vortex reports production mode.
+- Keep source-build checks apart from released-build checks: development instrumentation and
+  React's mode change timings.
+
+## One running Vortex per checkout
+
+While the test Vortex runs from a checkout, commands that would change or record that checkout
+refuse:
 
 ```text
-A harness Vortex is running from C:\dev\doodlebot\.vortex-src (pid 1234); run `pnpm run ai -- down` before building it.
+A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
 ```
 
-Run `pnpm run ai -- down`, wait for it to report a clean exit, then repeat the command. Before you switch `.vortex-src` to another branch, run `down` as well.
+Run `/doodlebot:stop`, then repeat the command. Stop it before you switch `.vortex-src` to
+another branch as well.
 
 ## Features and refactors start with a design
 
-Before you write code for a new feature or a refactor, write a design and have it reviewed and approved. [Review and approve a design](design-review.md) explains what a design contains, how the reviews work, and how to approve it. After approval, `pnpm run ai -- design scope <design> --checkout .vortex-src --base <sha>` lists any changed file outside the files the design approved, and exits 1 when there is one. A bug fix with an obvious cause does not need a design.
+Before you write code for a new feature or a refactor, run [`/vortex:design`](design-a-feature.md).
+A bug fix needs no design; use [`/vortex:fix`](fix-a-bug.md).
 
-## Test the reported scenario
+When someone else checks your change, stop your test Vortex first. They start with
+`/vortex:qa`, which begins from `doodlebot up --fresh` with the same target, so they do not
+inherit your profile.
 
-Test a fix the way the bug was reported before you open a pull request for it, even a draft. If a user reported a problem with their collection, mod or steps, use that collection, mod or those steps. First reproduce the problem on the unchanged build, then confirm it is gone on yours. Unit tests, a hand-built fixture or reading the uploaded data can help you find the cause. They are not the test. If you can't run the reported scenario, for example because you lack access or the step would upload something real, don't open a pull request. Report what is missing instead.
+## What's next
 
-When someone else checks your change, run `pnpm run ai -- down` first. They start with `pnpm run ai -- up --fresh` and the same target flags, so they do not inherit the state of your profile.
-
-## Source apps and the benchmark API
-
-The benchmark API deliberately targets released Vortex. Use the lower-level harness when you need a source app. [App sessions](../reference/sessions.md#attach-to-an-existing-app) explains manual session management, and the [CLI reference](../reference/cli.md) lists target options.
+- [Fix a Vortex bug](fix-a-bug.md).
+- [Measure and compare performance](benchmark.md) between a release and your branch.

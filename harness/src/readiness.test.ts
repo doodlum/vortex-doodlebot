@@ -5,10 +5,59 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   evaluateReadiness,
+  isCompleteCoreCommand,
   requiredEvidence,
   type ReadinessManifest,
   type EvidenceRole,
 } from "./readiness";
+
+describe("kit-core command", () => {
+  it("accepts the core suite through the doodlebot entry point, and Playwright directly", () => {
+    expect(isCompleteCoreCommand(["node", "bin/doodlebot.cjs", "test", "core"])).toBe(true);
+    expect(
+      isCompleteCoreCommand(["node", "bin/doodlebot.cjs", "test", "core", "--reporter=json"]),
+    ).toBe(true);
+    expect(
+      isCompleteCoreCommand([
+        "node",
+        "bin/doodlebot.cjs",
+        "test",
+        "core",
+        "--",
+        "--reporter",
+        "json",
+      ]),
+    ).toBe(true);
+    expect(
+      isCompleteCoreCommand([
+        "pnpm",
+        "exec",
+        "playwright",
+        "test",
+        "--config",
+        "harness/playwright.config.ts",
+        "--reporter=json",
+      ]),
+    ).toBe(true);
+  });
+
+  it("refuses the removed ai:test:core script", () => {
+    expect(isCompleteCoreCommand(["pnpm", "run", "ai:test:core"])).toBe(false);
+    expect(isCompleteCoreCommand(["pnpm", "run", "ai:test:core", "--reporter=json"])).toBe(false);
+    expect(isCompleteCoreCommand(["node", "bin/doodlebot.cjs", "test", "oauth"])).toBe(false);
+  });
+
+  it("refuses a filtered tail", () => {
+    for (const tail of [
+      ["--grep", "boot"],
+      ["harness/src/tests/local-mod.spec.ts"],
+      ["--project=x"],
+    ])
+      expect(isCompleteCoreCommand(["node", "bin/doodlebot.cjs", "test", "core", ...tail])).toBe(
+        false,
+      );
+  });
+});
 import {
   captureCheckoutIdentity,
   collectCommandEvidence,

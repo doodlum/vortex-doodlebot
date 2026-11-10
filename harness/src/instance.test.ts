@@ -19,7 +19,7 @@ import {
   stopStaleInstance,
 } from "./instance";
 import { VortexMcpClient } from "./mcpClient";
-import { DEFAULT_CACHE_DIR } from "./paths";
+import { DEFAULT_CACHE_DIR, USER_STATE_DIR } from "./paths";
 import { processAlive } from "./processes";
 import {
   INSTANCE_RECORD,
@@ -28,7 +28,8 @@ import {
   type InstanceRecord,
 } from "./runningVortex";
 
-// The one instance record lives in the default cache; keep it in a temporary folder.
+// The one instance record lives in ~/.doodlebot, and an older kit's in the default cache: keep
+// both in temporary folders.
 vi.mock("./paths", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./paths")>();
   const nodeFs = await import("node:fs");
@@ -36,7 +37,8 @@ vi.mock("./paths", async (importOriginal) => {
   const nodePath = await import("node:path");
   return {
     ...actual,
-    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "doodlebot-record-")),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "doodlebot-record-")),
+    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "doodlebot-cache-")),
   };
 });
 // Node children stand in for Vortex, so they must pass the image check.
@@ -64,12 +66,17 @@ afterEach(async () => {
     }
   }
   fs.rmSync(INSTANCE_RECORD, { recursive: true, force: true });
+  fs.rmSync(LEGACY_RECORD, { force: true });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 afterAll(() => {
+  fs.rmSync(USER_STATE_DIR, { recursive: true, force: true });
   fs.rmSync(DEFAULT_CACHE_DIR, { recursive: true, force: true });
 });
+
+/** Where the one record lived before it moved to ~/.doodlebot. */
+const LEGACY_RECORD = path.join(DEFAULT_CACHE_DIR, "instance.json");
 
 function devConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfig {
   return loadConfig({
@@ -256,7 +263,7 @@ describe("the instance record at launch", () => {
     const config = await nodeLaunchConfig(path.join(dir, "child.pid"));
     const userDataDir = path.join(config.cacheDir, "live");
     await expect(launchVortex({ userDataDir, config })).rejects.toThrow(
-      `A harness Vortex is running (pid ${String(process.pid)}, cache ${path.join(dir, "other-cache")}); run \`pnpm run ai -- down\` before starting Vortex.`,
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${path.join(dir, "other-cache")}); run \`doodlebot down\` before starting Vortex.`,
     );
     expect(fs.existsSync(stdioLogFile(userDataDir))).toBe(false);
     expect(readInstanceRecord()?.pid).toBe(process.pid);
@@ -386,12 +393,47 @@ describe("stopping", () => {
     expect(fs.existsSync(legacyPid)).toBe(false);
     expect(fs.existsSync(legacyRecord)).toBe(false);
 
-    // In the default cache the old file is where the one record lives; an old-format one goes.
-    fs.writeFileSync(INSTANCE_RECORD, JSON.stringify({ pid: 2 ** 30, leases: [] }));
+    // The default cache's instance.json was the one record of an older kit; an old-format one goes.
+    fs.writeFileSync(LEGACY_RECORD, JSON.stringify({ pid: 2 ** 30, leases: [] }));
     await stopStaleInstance(
       installedConfig({ cacheDir: DEFAULT_CACHE_DIR, mcpPort: config.mcpPort }),
     );
-    expect(fs.existsSync(INSTANCE_RECORD)).toBe(false);
+    expect(fs.existsSync(LEGACY_RECORD)).toBe(false);
+  });
+});
+
+describe("the record of an older doodlebot in the default cache", () => {
+  it("is the per-user record's predecessor, not the record itself", () => {
+    expect(INSTANCE_RECORD).toBe(path.join(USER_STATE_DIR, "instance.json"));
+    expect(LEGACY_RECORD).not.toBe(INSTANCE_RECORD);
+  });
+
+  it("is deleted when stale (stopStaleInstance, as up and bootstrap call it)", async () => {
+    const config = installedConfig({ mcpPort: await freePort() });
+    fs.writeFileSync(LEGACY_RECORD, JSON.stringify(record(2 ** 30, DEFAULT_CACHE_DIR)));
+    await expect(stopStaleInstance(config)).resolves.toBe(false);
+    expect(fs.existsSync(LEGACY_RECORD)).toBe(false);
+  });
+
+  it("refuses a launch while it names a running Vortex (launchVortex)", async () => {
+    fs.writeFileSync(LEGACY_RECORD, JSON.stringify(record(process.pid, DEFAULT_CACHE_DIR)));
+    const config = await nodeLaunchConfig(path.join(dir, "child.pid"));
+    const userDataDir = path.join(config.cacheDir, "live");
+    await expect(launchVortex({ userDataDir, config })).rejects.toThrow(
+      `A harness Vortex from an older doodlebot is running (pid ${String(process.pid)}); stop it before starting Vortex.`,
+    );
+    expect(fs.existsSync(stdioLogFile(userDataDir))).toBe(false);
+    expect(fs.existsSync(LEGACY_RECORD)).toBe(true);
+    expect(readInstanceRecord()).toBeUndefined();
+  });
+
+  it("refuses down while it names a running Vortex (stopRunningInstance)", async () => {
+    fs.writeFileSync(LEGACY_RECORD, JSON.stringify(record(process.pid, DEFAULT_CACHE_DIR)));
+    const config = installedConfig({ mcpPort: await freePort() });
+    await expect(stopRunningInstance(config, () => undefined)).rejects.toThrow(
+      `A harness Vortex from an older doodlebot is running (pid ${String(process.pid)}); stop it before stopping Vortex.`,
+    );
+    expect(fs.existsSync(LEGACY_RECORD)).toBe(true);
   });
 });
 

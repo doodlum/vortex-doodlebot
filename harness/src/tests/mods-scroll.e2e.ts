@@ -1,6 +1,6 @@
 /**
  * Opt-in check of the Mods table while scrolling, against a running sandbox instance:
- * pnpm run ai:test:mods-scroll.
+ * doodlebot test mods-scroll.
  *
  * Seeds a large library (largeLibrary.ts) and measures, with real wheel input over CDP:
  *

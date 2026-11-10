@@ -78,7 +78,7 @@ export async function attachToRenderer(config: HarnessConfig): Promise<RendererH
  * source text, so in the page that helper is a free variable and the call throws
  * "ReferenceError: __name is not defined". `attachToRenderer` runs this on attach and on every
  * later navigation of that connection, so `page.evaluate(() => { const f = () => …; })` works
- * from `doodlebot script` and the `ai:test:*` checks. It only sets a function's `name`, which is
+ * from `doodlebot script` and the `doodlebot test` checks. It only sets a function's `name`, which is
  * what esbuild's own helper does.
  */
 export const NAME_SHIM = `(() => {

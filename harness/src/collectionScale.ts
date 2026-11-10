@@ -1,5 +1,5 @@
 /**
- * Large offline collections for `ai:test:collection-scale`: members that are already
+ * Large offline collections for `doodlebot test collection-scale`: members that are already
  * installed (a seeded library), with the shapes real collections have and that stress
  * different code paths in Vortex's collection install and update:
  *

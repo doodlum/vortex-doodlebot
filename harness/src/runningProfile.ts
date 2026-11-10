@@ -52,7 +52,7 @@ export async function requireRunning(
   } catch (cause) {
     if (cause instanceof ProfileMismatchError) throw cause;
     throw new ConfigError(
-      `No matching Vortex instance is answering on ${mcp.url}. Start it with the same target/cache flags (pnpm run ai:up), or run doodlebot doctor.`,
+      `No matching Vortex instance is answering on ${mcp.url}. Start it with the same target/cache flags (doodlebot up), or run doodlebot doctor.`,
       { cause },
     );
   }

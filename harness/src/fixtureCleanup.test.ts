@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 
-// The instance record lives in DEFAULT_CACHE_DIR; keep it in a temporary folder.
+// The instance record lives in USER_STATE_DIR (~/.doodlebot); keep it in a temporary folder.
 vi.mock("./paths", async (importOriginal) => {
   const original = await importOriginal<typeof import("./paths")>();
   const { mkdtempSync } = await import("node:fs");
@@ -12,18 +12,18 @@ vi.mock("./paths", async (importOriginal) => {
   const { join } = await import("node:path");
   return {
     ...original,
-    DEFAULT_CACHE_DIR: mkdtempSync(join(tmpdir(), "fixture-cleanup-cache-")),
+    USER_STATE_DIR: mkdtempSync(join(tmpdir(), "fixture-cleanup-state-")),
   };
 });
 
-import { DEFAULT_CACHE_DIR } from "./paths";
+import { USER_STATE_DIR } from "./paths";
 import { FixtureCleanup, closeFixtureApp } from "./tests/fixtureCleanup";
 import { INSTANCE_RECORD, readInstanceRecord, writeInstanceRecord } from "./runningVortex";
 
-const defaultCache = DEFAULT_CACHE_DIR;
-// Never touch the operator's harness/.cache if the mock did not apply.
-if (!path.basename(defaultCache).startsWith("fixture-cleanup-cache-"))
-  throw new Error(`DEFAULT_CACHE_DIR was not mocked: ${defaultCache}`);
+const stateDir = USER_STATE_DIR;
+// Never touch the operator's ~/.doodlebot if the mock did not apply.
+if (!path.basename(stateDir).startsWith("fixture-cleanup-state-"))
+  throw new Error(`USER_STATE_DIR was not mocked: ${stateDir}`);
 
 let root: string;
 let profile: string;
@@ -53,7 +53,7 @@ afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
   fs.rmSync(INSTANCE_RECORD, { force: true });
 });
-afterAll(() => fs.rmSync(defaultCache, { recursive: true, force: true }));
+afterAll(() => fs.rmSync(stateDir, { recursive: true, force: true }));
 
 const app = (close: () => Promise<void>, child: { pid?: number } = { pid }) => ({
   close,
@@ -66,7 +66,7 @@ function expectRetained() {
   expect(fs.readFileSync(sentinel, "utf8")).toBe("retained profile");
 }
 it("records the fixture app under the fixed instance record", () => {
-  expect(INSTANCE_RECORD).toBe(path.join(defaultCache, "instance.json"));
+  expect(INSTANCE_RECORD).toBe(path.join(stateDir, "instance.json"));
   expect(readInstanceRecord()).toMatchObject({ pid, userDataDir: profile });
 });
 it("reports a failed app.close and preserves the record, profile and parent cache", async () => {

@@ -16,14 +16,14 @@ import { runPreflight } from "./prPreflight";
 import { REPO_ROOT } from "./paths";
 import { clearInstanceRecord, INSTANCE_RECORD, writeInstanceRecord } from "./runningVortex";
 
-// The instance record lives in a private cache, and this process counts as a running Vortex.
+// The instance record lives in a private state folder, and this process counts as a running Vortex.
 vi.mock("./paths", async (original) => {
   const nodeFs = await import("node:fs");
   const nodeOs = await import("node:os");
   const nodePath = await import("node:path");
   return {
     ...(await original<typeof import("./paths")>()),
-    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "evidence-cache-")),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "evidence-cache-")),
   };
 });
 vi.mock("./processes", async (original) => ({
@@ -164,7 +164,7 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     };
     runningFrom(repo);
     await expect(runPreflight(options)).rejects.toThrow(
-      `A harness Vortex is running from ${path.resolve(repo)} (pid ${process.pid}); run \`pnpm run ai -- down\` before reverting it.`,
+      `A harness Vortex is running from ${path.resolve(repo)} (pid ${process.pid}); run \`doodlebot down\` before reverting it.`,
     );
     // Without the revert check nothing is changed, so nothing is refused.
     await expect(runPreflight({ ...options, skipRevert: true })).resolves.toBeDefined();
@@ -181,7 +181,7 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
         out,
       }),
     ).rejects.toThrow(
-      `A harness Vortex is running from ${repo} (pid ${process.pid}); run \`pnpm run ai -- down\` before recording evidence in it.`,
+      `A harness Vortex is running from ${repo} (pid ${process.pid}); run \`doodlebot down\` before recording evidence in it.`,
     );
     expect(fs.readFileSync(path.join(repo, "value.ts"), "utf8")).toBe("export const value = 2;\n");
     expect(fs.existsSync(out)).toBe(false);

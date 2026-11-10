@@ -3,11 +3,17 @@
  * use it without import cycles.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 export const HARNESS_ROOT = path.resolve(import.meta.dirname, "..");
 /** The doodlebot checkout — this repo. */
 export const REPO_ROOT = path.resolve(HARNESS_ROOT, "..");
+/**
+ * Per-user doodlebot state shared by every workspace on the machine: the one instance record
+ * lives here, so the "one doodlebot Vortex" guard spans all of them.
+ */
+export const USER_STATE_DIR = path.join(os.homedir(), ".doodlebot");
 /** Profiles and login cache of the one instance a bare `doodlebot up` runs. */
 export const DEFAULT_CACHE_DIR = path.join(HARNESS_ROOT, ".cache");
 export const DEFAULT_ARTIFACT_DIR = path.join(HARNESS_ROOT, ".artifacts");

@@ -146,7 +146,13 @@ function installedVortexCandidates(): string[] {
  * somewhere" is not something it can reason about, build from, or push to.
  */
 function managedSourceDir(): string | undefined {
-  const dir = process.env.VORTEX_AI_SOURCE_DIR ?? path.join(REPO_ROOT, ".vortex-src");
+  const variable = process.env.VORTEX_AI_SOURCE_DIR;
+  if (variable === "") return undefined;
+  // A relative variable is the workspace's, explicitly: createRequire rejects a relative path.
+  const dir =
+    variable === undefined
+      ? path.join(REPO_ROOT, ".vortex-src")
+      : path.resolve(REPO_ROOT, variable);
   return fs.existsSync(path.join(dir, "src", "main", "package.json")) ? dir : undefined;
 }
 
@@ -172,17 +178,37 @@ export function resolveTarget(
   // puts the released build back in front.
   const installed = overrides.preferInstalled === true || envFlag("VORTEX_AI_INSTALLED");
   const managed = installed || overrides.exe !== undefined ? undefined : managedSourceDir();
-  const devDir =
-    overrides.devDir ??
-    (installed || overrides.exe !== undefined
+  const explicit = overrides.devDir !== undefined && overrides.devDir !== "";
+  const variable = process.env.VORTEX_AI_DEV_DIR;
+  // An explicit --dev-dir is resolved against this process's directory (the CLI has already
+  // resolved it against the caller's); a relative VORTEX_AI_DEV_DIR is the workspace's. Either
+  // way createRequire, which rejects a relative path, only ever sees an absolute one.
+  const devDir = explicit
+    ? path.resolve(overrides.devDir!)
+    : overrides.devDir !== undefined || installed || overrides.exe !== undefined
       ? undefined
-      : (process.env.VORTEX_AI_DEV_DIR ?? managed));
+      : variable !== undefined && variable !== ""
+        ? path.resolve(REPO_ROOT, variable)
+        : managed;
   if (devDir !== undefined && devDir !== "") {
     const mainDir = path.join(devDir, "src", "main");
     const resolved = fs.existsSync(mainDir) ? mainDir : devDir;
+    let executable: string;
+    try {
+      executable = peekDevElectron(resolved);
+    } catch (error) {
+      // The first line: Node appends the require stack to a missing module's message.
+      const reason = (error instanceof Error ? error.message : String(error)).split(/\r?\n/)[0];
+      throw new ConfigError(
+        explicit
+          ? `--dev-dir ${devDir} is not a built Vortex checkout: ${reason}`
+          : `${devDir} is not a built Vortex checkout: ${reason}`,
+        { cause: error },
+      );
+    }
     return {
       kind: "dev",
-      executable: peekDevElectron(resolved),
+      executable,
       args: [resolved],
       appName: "@vortex/main",
       sourceDir: path.resolve(resolved, "..", ".."),
@@ -193,7 +219,7 @@ export function resolveTarget(
   if (exe === undefined) {
     throw new ConfigError(`No Vortex to drive.
 
-  Work on Vortex itself:     pnpm run ai:source
+  Work on Vortex itself:     doodlebot source
      (finds your GitHub fork, clones it into .vortex-src here, and builds it)
 
   Or drive a released build:  install it from
@@ -207,14 +233,18 @@ export function resolveTarget(
 /**
  * Config loading must not throw just because Vortex is missing — `doctor` exists
  * precisely to report that, and it can report nothing if building the config
- * blew up first.
+ * blew up first. An explicit `--dev-dir` that is not a built checkout is the
+ * exception: falling back to another Vortex would silently drive the wrong one,
+ * so its error is rethrown (the CLI hands it to `doctor` as its target error).
  */
 export function resolveTargetSafely(
   overrides: Parameters<typeof resolveTarget>[0] = {},
 ): VortexTarget {
   try {
     return resolveTarget(overrides);
-  } catch {
+  } catch (error) {
+    if (overrides.devDir !== undefined && overrides.devDir !== "" && error instanceof ConfigError)
+      throw error;
     return { kind: "installed", executable: "", args: [], appName: "Vortex" };
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Opt-in check of Vortex's Bethesda-game health checks against the fake Fallout 4:
- * pnpm run ai:test:bethesda (instance started with `up --dev-dir <checkout> --bethesda-sandbox`).
+ * doodlebot test bethesda (instance started with `up --dev-dir <checkout> --bethesda-sandbox`).
  *
  * Missing Masters is the warning that tells a player their load order will crash the
  * game. It can fail silently: its check simply stops being run. This drives the two

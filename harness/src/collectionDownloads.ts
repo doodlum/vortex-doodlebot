@@ -30,7 +30,7 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export interface CollectionDownloadControlOptions {
   gameId: string;
   collectionModId: string;
-  /** This operation controls the whole download queue. Use an exclusively owned benchmark profile. */
+  /** This operation controls the whole download queue. Use an exclusively owned test profile. */
   exclusiveProfile: true;
   timeoutMs?: number;
 }
@@ -46,7 +46,7 @@ async function assertCollection(
   options: CollectionDownloadControlOptions,
 ): Promise<void> {
   if (options.exclusiveProfile !== true)
-    throw new Error("Download control requires an exclusively owned benchmark profile");
+    throw new Error("Download control requires an exclusively owned test profile");
   const active = await mcp.call<string | null>("vortex_query", { selector: "activeGameId" });
   const mod = await mcp.call<{ type?: string } | null>("vortex_query", {
     path: ["persistent", "mods", options.gameId, options.collectionModId],

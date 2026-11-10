@@ -4,6 +4,7 @@ const vm = require("node:vm");
 const cp = require("node:child_process");
 const ts = require("typescript");
 const { z } = require("zod");
+const { dispatchedCommands } = require("./cli-commands.cjs");
 
 const repository = path.resolve(__dirname, "..");
 // Synthetic repositories exercise the real checker without touching a user's checkout.
@@ -104,25 +105,77 @@ function tools() {
 function cli() {
   const sf = source("harness/src/cli.ts");
   let help;
-  const names = new Set();
   visit(sf, (node) => {
     if (ts.isVariableDeclaration(node) && node.name.getText(sf) === "HELP")
       help = evaluate(node.initializer, sf, {});
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
-      node.left.getText(sf) === "command" &&
-      ts.isStringLiteral(node.right)
-    )
-      names.add(node.right.text);
-    if (ts.isCaseClause(node) && ts.isStringLiteral(node.expression)) {
-      let parent = node.parent;
-      while (parent && !ts.isSwitchStatement(parent)) parent = parent.parent;
-      if (parent?.expression.getText(sf) === "command") names.add(node.expression.text);
-    }
   });
-  if (!help || names.size === 0) throw new Error("CLI inventory is empty");
-  return { help, commands: [...names].sort() };
+  const commands = dispatchedCommands(sf);
+  if (!help || commands.length === 0) throw new Error("CLI inventory is empty");
+  return { help, commands };
+}
+
+// The plugin commands in the order the reference lists them. The skills on disk must match
+// this list exactly, so a new, renamed or removed skill fails generation until it is placed.
+const COMMAND_ORDER = {
+  doodlebot: ["setup", "login", "baseline", "start", "stop", "status", "update", "source"],
+  vortex: ["design", "fix", "drive", "qa", "ui-test", "pr"],
+  benchmark: ["measure", "compare"],
+};
+
+function frontmatter(file) {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(read(file));
+  if (!match) throw new Error(`${file} has no frontmatter`);
+  const fields = {};
+  for (const line of match[1].split("\n")) {
+    const field = /^([\w-]+):\s*(.*)$/.exec(line);
+    if (!field) continue;
+    const value = field[2].trim();
+    fields[field[1]] = value.startsWith('"') ? JSON.parse(value) : value;
+  }
+  return fields;
+}
+
+function pluginCommands() {
+  const marketplace = JSON.parse(read(".claude-plugin/marketplace.json"));
+  const plugins = marketplace.plugins.map((plugin) => plugin.name);
+  if (plugins.join(",") !== Object.keys(COMMAND_ORDER).join(","))
+    throw new Error(
+      `Marketplace plugins (${plugins.join(", ")}) differ from COMMAND_ORDER (${Object.keys(COMMAND_ORDER).join(", ")})`,
+    );
+  return plugins.map((plugin) => {
+    const skillsDir = path.join(root, "plugins", plugin, "skills");
+    const onDisk = fs
+      .readdirSync(skillsDir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() && fs.existsSync(path.join(skillsDir, entry.name, "SKILL.md")),
+      )
+      .map((entry) => entry.name)
+      .sort();
+    const expected = [...COMMAND_ORDER[plugin]].sort();
+    if (onDisk.join(",") !== expected.join(","))
+      throw new Error(
+        `Skills of plugin ${plugin} (${onDisk.join(", ")}) differ from COMMAND_ORDER (${expected.join(", ")})`,
+      );
+    const commands = COMMAND_ORDER[plugin].map((name) => {
+      const file = `plugins/${plugin}/skills/${name}/SKILL.md`;
+      const fields = frontmatter(file);
+      if (fields.name !== name) throw new Error(`${file} names itself ${fields.name}`);
+      if (!fields.description) throw new Error(`${file} has no description`);
+      const prefix = new RegExp(`^${plugin}:\\s*`, "i");
+      return {
+        command: `/${plugin}:${name}`,
+        description: fields.description.replace(prefix, ""),
+        argumentHint: fields["argument-hint"],
+        file,
+      };
+    });
+    return {
+      plugin,
+      description: marketplace.plugins.find((p) => p.name === plugin).description,
+      commands,
+    };
+  });
 }
 
 function api() {
@@ -133,21 +186,7 @@ function api() {
     ["cdp", "cdp.ts"],
     ["instance", "instance.ts"],
     ["jsonFile", "jsonFile.ts"],
-    ["benchmarks.types", "../benchmarks/types.ts"],
-    ["benchmarks.runner", "../benchmarks/runner.ts"],
-    ["benchmarks.session", "../benchmarks/session.ts"],
-    ["benchmarks.gameFixtures", "../benchmarks/gameFixtures.ts"],
-    ["benchmarks.gameSettings", "../benchmarks/gameSettings.ts"],
-    ["benchmarks.collectionCompletion", "../benchmarks/collectionCompletion.ts"],
-    ["benchmarks.skyrimEdition", "../benchmarks/skyrimEdition.ts"],
-    ["benchmarks.tables", "../benchmarks/tables.ts"],
-    ["proposal.types", "../../benchmarks/types.ts"],
-    ["proposal.config", "../../benchmarks/config.ts"],
-    ["proposal.collections", "../../benchmarks/collections.ts"],
-    ["proposal.catalog", "../../benchmarks/catalog.ts"],
-    ["proposal.workloads", "../../benchmarks/workloads.ts"],
-    ["proposal.runner", "../../benchmarks/runner.ts"],
-    ["proposal.setup", "../../benchmarks/setup.ts"],
+    ["collectionCompletion", "collectionCompletion.ts"],
   ]);
   for (const statement of entry.statements) {
     if (
@@ -226,9 +265,40 @@ function result(file, expected) {
     errors.push(`${file} is stale; run pnpm run docs:generate and review the result.`);
 }
 
-const inventory = { tools: tools(), cli: cli(), api: api() };
+const inventory = { tools: tools(), cli: cli(), api: api(), plugins: pluginCommands() };
+const cell = (value) => value.replace(/\|/g, "\\|").replace(/</g, "&lt;").replace(/\n/g, " ");
+// An HTML code element with entities, not a Markdown code span: GitHub splits a table cell
+// at a bare `|` even inside backticks, while MkDocs would print an escaping backslash there.
+const argument = (value) =>
+  "<code>" +
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\|/g, "&#124;") +
+  "</code>";
+result(
+  "docs/reference/commands.md",
+  "# Commands\n\n" +
+    banner(
+      "These are the commands the three doodlebot plugins add. In Claude Code, type the command followed by its arguments; in Codex, choose the skill of the same name from the skill picker. See [Install the plugins](../get-started/install.md). This page is generated from each command's skill file.",
+    ) +
+    inventory.plugins
+      .map(
+        (plugin) =>
+          `## ${plugin.plugin}\n\n${plugin.description}\n\n| Command | What it does | Arguments |\n| --- | --- | --- |\n` +
+          plugin.commands
+            .map(
+              (command) =>
+                `| \`${command.command}\` | ${cell(command.description)} | ${command.argumentHint ? argument(command.argumentHint) : "none"} |`,
+            )
+            .join("\n") +
+          "\n",
+      )
+      .join("\n"),
+);
 const mcpBody =
-  `Discover the tools in your running instance with \`pnpm run ai -- tools --json\`. Runtime availability depends on Vortex and bearer-token configuration. This reference covers all **${inventory.tools.length}** registrations in the current source.\n\nA token unlocks the token-required tools and makes **every request** require its bearer header. A diagnostic tool can still contact external services: \`check_nexus_mod_updates\` consumes Nexus API quota.\n\n` +
+  `Discover the tools in your running instance with \`doodlebot tools --json\`. Runtime availability depends on Vortex and bearer-token configuration. This reference covers all **${inventory.tools.length}** registrations in the current source.\n\nA token unlocks the token-required tools and makes **every request** require its bearer header. A diagnostic tool can still contact external services: \`check_nexus_mod_updates\` consumes Nexus API quota.\n\n` +
   inventory.tools
     .map(
       (tool) =>
@@ -239,7 +309,7 @@ result(
   "docs/reference/mcp-tools.md",
   "# MCP tool reference\n\n" +
     banner(
-      "Use these contracts when calling tools directly or configuring an assistant. See [calling tools](../guides/calling-tools.md) for JSON files, results, errors and state checks.",
+      "Use these contracts when calling tools directly or configuring an assistant. See [Drive Vortex and get a report](../guides/drive-vortex.md) for JSON files, results, errors and state checks.",
     ) +
     mcpBody,
 );
@@ -257,7 +327,7 @@ result(
   "docs/reference/cli.md",
   "# CLI reference\n\n" +
     banner(
-      "Use [Get started](../getting-started/first-session.md) for your first test and [Run a collection](../getting-started/setup.md) for game snapshots and login. This inventory is generated from the CLI’s help and dispatch branches. Run lower-level commands from the repository root with `pnpm run ai -- <command>`; `pnpm run ai -- help` shows their current syntax and flags. See [configuration](configuration.md) for environment options.",
+      "Use [Your first session](../get-started/first-session.md) for your first test and [Set up doodlebot](../get-started/set-up.md) for the workspace, baselines and login. This inventory is generated from the CLI’s help and dispatch branches. Run lower-level commands with `doodlebot <command>`; `doodlebot help` shows their current syntax and flags. See [configuration](configuration.md) for environment options.",
     ) +
     cliInventory,
 );
@@ -272,7 +342,7 @@ result(
 const apiBody = inventory.api
   .map(
     (module) =>
-      `## ${module.name}\n\n[Source](${link(module.file)}). ${module.name === "instance" ? "Nothing from this module is re-exported by the scratch-script kit; its symbols require a direct repository import." : ""}\n\n` +
+      `## ${module.name}\n\n[Source](${link(module.file)}). ${["instance", "collectionCompletion"].includes(module.name) ? "Nothing from this module is re-exported by the scratch-script kit; its symbols require a direct repository import." : ""}\n\n` +
       module.symbols
         .map(
           (symbol) =>
@@ -285,52 +355,6 @@ const apiBody = inventory.api
         .join("\n"),
   )
   .join("\n");
-// Human pages own the procedure and semantics. Only their explicitly selected
-// signatures are generated; the exhaustive specialist inventory stays separate.
-for (const file of [
-  "docs/reference/sessions.md",
-  "docs/reference/runner.md",
-  "docs/reference/tables.md",
-  "docs/reference/collections.md",
-  "docs/reference/results.md",
-]) {
-  const body = read(file);
-  let count = 0;
-  const expected = body.replace(
-    /<!-- contract:([\w.]+):([\w.]+) -->\n[\s\S]*?<!-- \/contract -->/g,
-    (_block, moduleName, name) => {
-      count++;
-      const module = inventory.api.find((item) => item.name === moduleName);
-      if (!module) throw new Error(`Unknown contract module ${moduleName}`);
-      const [symbolName, memberName] = name.split(".");
-      const symbol = module.symbols.find((item) => item.name === symbolName);
-      if (!symbol) throw new Error(`Unknown contract symbol ${moduleName}.${symbolName}`);
-      let signature = symbol.signature;
-      if (memberName) {
-        const sf = source(module.file);
-        const declaration = sf.statements.find(
-          (node) => ts.isClassDeclaration(node) && node.name?.text === symbolName,
-        );
-        const member = declaration?.members.find(
-          (node) =>
-            node.name?.getText(sf) === memberName &&
-            !node.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.PrivateKeyword),
-        );
-        if (!member || ts.isConstructorDeclaration(member))
-          throw new Error(`Unknown public contract member ${name}`);
-        signature =
-          member
-            .getText(sf)
-            .slice(0, member.body ? member.body.pos - member.getStart() : undefined)
-            .trim()
-            .replace(/^async\s+/, "") + (member.body ? ";" : "");
-      }
-      return `<!-- contract:${moduleName}:${name} -->\n\n\`\`\`typescript\n${signature}\n\`\`\`\n\n<!-- /contract -->`;
-    },
-  );
-  if (!count) throw new Error(`${file} has no checked API signatures`);
-  result(file, expected);
-}
 result(
   "harness/reference/script-api.md",
   "# Script contracts\n\n" +
@@ -338,30 +362,6 @@ result(
       "Generated interface reference for specialists. Current human usage and runnable examples belong to /docs.",
     ) +
     apiBody,
-);
-const packageJson = JSON.parse(read("package.json"));
-const scriptsBody = Object.entries(packageJson.scripts)
-  .map(([name, command]) => `| \`${name}\` | \`${command.replace(/\|/g, "\\|")}\` |`)
-  .join("\n");
-result(
-  "docs/reference/package-scripts.md",
-  "# Package scripts\n\n" +
-    banner(
-      "Run these from the repository root with `pnpm run <name>`. Test selection, accounts and runtime requirements are explained in [running checks](../testing/running.md) and [benchmarks](../testing/benchmarks.md). A named opt-in script can change its disposable fixture and does not necessarily stop the operator’s already-running app.",
-    ) +
-    "| Script | Command |\n| --- | --- |\n" +
-    scriptsBody +
-    "\n",
-);
-result(
-  "harness/reference/package-scripts.md",
-  "# Package script contracts\n\n" +
-    banner(
-      "Source-generated script inventory. Use TESTING.md to determine applicability and update the paired human instructions with behavior changes.",
-    ) +
-    "| Script | Command |\n| --- | --- |\n" +
-    scriptsBody +
-    "\n",
 );
 
 if (process.argv.includes("--inventory")) {
@@ -435,5 +435,5 @@ if (errors.length) {
   process.exitCode = 1;
 } else
   console.log(
-    `${write ? "Generated" : "Checked"} paired documentation: ${inventory.tools.length} MCP tools, ${inventory.cli.commands.length} CLI commands and ${inventory.api.length} helper modules.`,
+    `${write ? "Generated" : "Checked"} paired documentation: ${inventory.plugins.reduce((sum, plugin) => sum + plugin.commands.length, 0)} plugin commands, ${inventory.tools.length} MCP tools, ${inventory.cli.commands.length} CLI commands and ${inventory.api.length} helper modules.`,
   );

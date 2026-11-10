@@ -2,13 +2,32 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { bootstrap, captureLogin, liveDir, loginDir, readMarker, snapshotDir } from "./bootstrap";
 import type { HarnessConfig } from "./config";
 import { requireOAuth } from "./auth";
 import { authCacheFile, launchVortex, stopStaleInstance } from "./instance";
 import { ensureGameManaged, waitForGameStartup } from "./gameSetup";
+import { USER_STATE_DIR } from "./paths";
+import { INSTANCE_RECORD, readInstanceRecord, writeInstanceRecord } from "./runningVortex";
+
+// The one instance record lives in ~/.doodlebot; keep it in a temporary folder, and let this
+// process stand in for a running Vortex.
+vi.mock("./paths", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./paths")>();
+  const nodeFs = await import("node:fs");
+  const nodeOs = await import("node:os");
+  const nodePath = await import("node:path");
+  return {
+    ...actual,
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "bootstrap-state-")),
+  };
+});
+vi.mock("./processes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./processes")>()),
+  processImageName: vi.fn(() => "electron.exe"),
+}));
 
 vi.mock("./gameSetup", () => ({
   ensureGameManaged: vi.fn(
@@ -66,7 +85,44 @@ function fakeConfig(): HarnessConfig {
 
 afterEach(() => {
   vi.clearAllMocks();
+  fs.rmSync(INSTANCE_RECORD, { force: true });
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+afterAll(() => fs.rmSync(USER_STATE_DIR, { recursive: true, force: true }));
+
+function liveRecord(cacheDir: string) {
+  return {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    cacheDir,
+    userDataDir: path.join(cacheDir, "live"),
+    mcpPort: 3701,
+  };
+}
+
+describe("one harness Vortex per machine", () => {
+  it("refuses while another cache's Vortex runs, before stopping or launching anything", async () => {
+    const config = fakeConfig();
+    const otherCache = path.join(os.tmpdir(), "another-workspace", "harness", ".cache");
+    const other = liveRecord(otherCache);
+    writeInstanceRecord(other);
+    await expect(bootstrap(config, { fresh: true })).rejects.toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${otherCache}); run \`doodlebot down\` before starting Vortex.`,
+    );
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(launchVortex).not.toHaveBeenCalled();
+    expect(readInstanceRecord()).toEqual(other);
+  });
+
+  it("restarts this cache's own running Vortex as before", async () => {
+    const config = fakeConfig();
+    // The same cache spelled differently still counts as the same.
+    writeInstanceRecord(liveRecord(`${config.cacheDir}${path.sep}`));
+    const result = await bootstrap(config, { fresh: true });
+    expect(stopStaleInstance).toHaveBeenCalledWith(config);
+    expect(launchVortex).toHaveBeenCalled();
+    await result.instance.stop();
+  });
 });
 
 describe("cold game management", () => {

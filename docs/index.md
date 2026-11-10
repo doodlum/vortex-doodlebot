@@ -1,17 +1,49 @@
-# Test Vortex with TypeScript
+# Doodlebot
 
-Doodlebot starts a separate Vortex profile, lets your TypeScript tests operate the app, and closes it afterward. Use it to reproduce a UI problem, check mod installation and deployment, or compare performance between Vortex releases. No LLM is required.
+Doodlebot is an agent companion for [Vortex](https://github.com/Nexus-Mods/Vortex), the Nexus Mods
+mod manager. You install it as plugins in Claude Code or Codex and use it from the agent window,
+through commands. The agent starts an isolated test copy of Vortex, drives it, checks what
+happened and reports back.
 
-Start with [Get started](getting-started/first-session.md). It takes you from installation to a working local test, without a Nexus account or commercial game.
+Use doodlebot to:
 
-| What you want to do                        | Guide                                               |
-| ------------------------------------------ | --------------------------------------------------- |
-| Install a pinned Nexus collection          | [Run a collection](getting-started/setup.md)        |
-| Run the supplied performance cases         | [Run benchmarks](testing/benchmarks.md)             |
-| Add your own timed test                    | [Write a benchmark](testing/adding-benchmarks.md)   |
-| Check a UI action                          | [Drive the UI](guides/ui-automation.md)             |
-| Check a mod's deployed files               | [Install and deploy a mod](guides/mod-workflows.md) |
-| Understand a failed run or compare timings | [Read results](testing/results.md)                  |
-| Review a change before it is coded         | [Approve a design](guides/design-review.md)         |
+- check a Vortex flow, such as installing and deploying a mod, and get a report of what worked,
+  what logged errors and which dialogs were answered;
+- reproduce and fix a Vortex bug, and prepare the pull request;
+- design a Vortex feature before it is coded, with a review you approve;
+- measure how fast a Vortex flow is, or compare two Vortex versions.
 
-The [reference](reference/index.md) explains methods and options. The [performance plan](testing/proposal.md) defines required coverage and the difference between generated data, genuine downloads and cached real files.
+Doodlebot works with a stock, released Vortex. You need a Vortex source checkout only to change
+Vortex itself.
+
+## The three plugins
+
+Doodlebot is a plugin marketplace named `doodlebot` with three plugins. Their commands never mix.
+
+| Plugin      | Commands                                                                                                                                                            | For                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `doodlebot` | `/doodlebot:setup`, `/doodlebot:login`, `/doodlebot:baseline`, `/doodlebot:start`, `/doodlebot:stop`, `/doodlebot:status`, `/doodlebot:update`, `/doodlebot:source` | Installing and running the companion and its test Vortex    |
+| `vortex`    | `/vortex:design`, `/vortex:fix`, `/vortex:drive`, `/vortex:qa`, `/vortex:ui-test`, `/vortex:pr`                                                                     | Working on Vortex: designs, bug fixes, driving the app, PRs |
+| `benchmark` | `/benchmark:measure`, `/benchmark:compare`                                                                                                                          | Measuring Vortex performance and comparing versions         |
+
+The commands are shown in their Claude Code form. In Codex, the same commands are skills with the
+same names. [Commands](reference/commands.md) lists every command and its arguments.
+
+Behind the commands is one command-line tool, `doodlebot`, which the agent runs for you.
+`/doodlebot:setup` installs it. [How doodlebot works](concepts/how-it-works.md) explains the
+parts.
+
+## Doodlebot and EGM
+
+Features and refactors in Vortex start with a design. Doodlebot uses Google's
+[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM) to
+write and review it: `/vortex:design` runs EGM's procedure with a Vortex-specific reviewer, and
+you approve the final text. EGM is a separate plugin that you install alongside doodlebot. See
+[Design first](concepts/design-first.md).
+
+## Get started
+
+1. Check the [requirements](get-started/requirements.md).
+2. [Install the plugins](get-started/install.md).
+3. [Set up doodlebot](get-started/set-up.md).
+4. Run [your first session](get-started/first-session.md).

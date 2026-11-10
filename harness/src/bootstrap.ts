@@ -41,7 +41,8 @@ import { requireOAuth } from "./auth";
 import { bethesdaSandboxPaths } from "./bethesdaSandbox";
 import { resetDisposableGameData } from "./sandbox";
 import { importLogin } from "./loginImport";
-import { DEFAULT_CACHE_DIR } from "./paths";
+import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
+import { assertNoHarnessVortex, runningVortex } from "./runningVortex";
 import { missingBuildOutputs } from "./source";
 
 /**
@@ -112,8 +113,13 @@ export function loginDir(config: HarnessConfig): string {
   );
 }
 
+/** The marker file a usable baseline snapshot (or profile) carries. */
+export function markerFile(dir: string): string {
+  return path.join(dir, MARKER_FILE);
+}
+
 export function readMarker(dir: string): SnapshotMarker | undefined {
-  const file = path.join(dir, MARKER_FILE);
+  const file = markerFile(dir);
   if (!fs.existsSync(file)) return undefined;
   try {
     return readJsonFile<SnapshotMarker>(file);
@@ -226,6 +232,13 @@ export async function bootstrap(
   const seeded = seedLoginFromDefaultCache(config);
   if (seeded !== undefined) report(`copied the saved login from ${seeded}`);
 
+  // One harness Vortex per machine: a running one of another cache (another workspace, a test
+  // cache) is refused here with the documented message, never restarted or left to fail on a
+  // port. A restart of this cache's own instance goes on below.
+  const running = runningVortex();
+  if (running !== undefined && normalizedPath(running.cacheDir) !== normalizedPath(config.cacheDir))
+    assertNoHarnessVortex("starting Vortex");
+
   // An instance left over from an earlier run holds both the MCP port and the
   // working directory; every later step would fail on that rather than on
   // anything to do with what was asked for.
@@ -332,7 +345,7 @@ export async function bootstrap(
   if (!auth.oauthPresent) {
     report(
       "no Nexus login captured yet — collections will not install. Log in through " +
-        "`pnpm run ai -- setup --oauth` during initial setup if you need collections.",
+        "`doodlebot setup --oauth` during initial setup if you need collections.",
     );
   }
 

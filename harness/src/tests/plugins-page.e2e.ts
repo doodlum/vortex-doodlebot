@@ -1,6 +1,6 @@
 /**
  * Opt-in responsiveness check of the Plugins page with a large load order:
- * pnpm run ai:test:plugins-page (fake Fallout 4: `up --dev-dir <checkout> --bethesda-sandbox`).
+ * doodlebot test plugins-page (fake Fallout 4: `up --dev-dir <checkout> --bethesda-sandbox`).
  *
  * Users with large collections on 2.7 reported "constantly freezes scrolling through mods or
  * plugins". The plugin list's own table is virtualised; this measures what the page costs

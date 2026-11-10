@@ -29,14 +29,14 @@ import {
   type VortexE2eReport,
 } from "./vortexE2e";
 
-// The instance record lives in a private cache, and this process counts as a running Vortex.
+// The instance record lives in a private state folder, and this process counts as a running Vortex.
 vi.mock("./paths", async (original) => {
   const nodeFs = await import("node:fs");
   const nodeOs = await import("node:os");
   const nodePath = await import("node:path");
   return {
     ...(await original<typeof import("./paths")>()),
-    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "vortex-e2e-cache-")),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "vortex-e2e-cache-")),
   };
 });
 vi.mock("./processes", async (original) => ({
@@ -792,7 +792,7 @@ describe("runVortexE2e", { timeout: 30_000 }, () => {
         handleSignals: false,
       }),
     ).rejects.toThrow(
-      `A harness Vortex is running from ${path.resolve(checkout)} (pid ${String(process.pid)}); run \`pnpm run ai -- down\` before patching it.`,
+      `A harness Vortex is running from ${path.resolve(checkout)} (pid ${String(process.pid)}); run \`doodlebot down\` before patching it.`,
     );
     expect(fs.readFileSync(path.join(checkout, FIXTURE), "utf8")).toBe(FIXTURE_BEFORE);
     expect(fs.existsSync(artifactDir)).toBe(false);

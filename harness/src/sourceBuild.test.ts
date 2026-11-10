@@ -19,14 +19,14 @@ vi.mock("node:child_process", async (original) => {
     }),
   };
 });
-// The instance record lives in a private cache, and this process counts as a running Vortex.
+// The instance record lives in a private state folder, and this process counts as a running Vortex.
 vi.mock("./paths", async (original) => {
   const nodeFs = await import("node:fs");
   const nodeOs = await import("node:os");
   const nodePath = await import("node:path");
   return {
     ...(await original<typeof import("./paths")>()),
-    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "source-build-cache-")),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "source-build-cache-")),
   };
 });
 vi.mock("./processes", async (original) => ({
@@ -99,7 +99,7 @@ it("refuses to install or build while the harness Vortex runs from the checkout"
   };
   writeInstanceRecord({ ...record, sourceDir: root });
   await expect(buildVortexSource({ dir: root })).rejects.toThrow(
-    `A harness Vortex is running from ${root} (pid ${process.pid}); run \`pnpm run ai -- down\` before building it.`,
+    `A harness Vortex is running from ${root} (pid ${process.pid}); run \`doodlebot down\` before building it.`,
   );
   await expect(buildVortexSource({ dir: root, installOnly: true })).rejects.toThrow(
     /before installing it/,

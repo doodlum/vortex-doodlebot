@@ -9,9 +9,10 @@
  * prerequisite is actually missing and the exact command that fixes it.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-import { ANONYMOUS, loginDir, readMarker, snapshotDir, liveDir } from "./bootstrap";
+import { ANONYMOUS, loginDir, markerFile, readMarker, snapshotDir, liveDir } from "./bootstrap";
 import { extensionRoot, findInstalledVortex, type HarnessConfig } from "./config";
 import { KNOWN_GAMES, findGamePath, steamLibraryRoots } from "./gameSetup";
 import { VortexMcpClient } from "./mcpClient";
@@ -31,24 +32,81 @@ export interface Check {
 export interface DoctorReport {
   ok: boolean;
   checks: Check[];
+  /** Why the requested Vortex target could not be resolved (an explicit --dev-dir). */
+  targetError?: string;
+}
+
+export interface DoctorOptions {
+  skipGame?: boolean;
+  /** A target the CLI could not resolve; reported as the failing `Vortex` check. */
+  targetError?: string;
+  /** The home folder holding the legacy lease store (default: the user's). */
+  homeDir?: string;
 }
 
 export async function runDoctor(
   config: HarnessConfig,
-  options: { skipGame?: boolean } = {},
+  options: DoctorOptions = {},
 ): Promise<DoctorReport> {
   const checks: Check[] = [];
 
   checks.push(checkApiKey(config));
   checks.push(await checkSource());
-  checks.push(checkVortex(config));
+  checks.push(
+    options.targetError === undefined ? checkVortex(config) : targetFailure(options.targetError),
+  );
   checks.push(checkExtension());
   if (!options.skipGame) checks.push(checkGame(config));
   checks.push(checkCache(config));
+  checks.push(checkSandboxBaseline(config));
   checks.push(checkCapturedLogin(config));
+  const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
+  if (lease !== undefined) checks.push(lease);
   checks.push(await checkRunning(config));
 
-  return { ok: checks.every((c) => c.ok || c.advisory === true), checks };
+  return {
+    ok: checks.every((c) => c.ok || c.advisory === true),
+    checks,
+    ...(options.targetError === undefined ? {} : { targetError: options.targetError }),
+  };
+}
+
+function targetFailure(message: string): Check {
+  return {
+    name: "Vortex",
+    ok: false,
+    detail: message,
+    fix: "Pass a built Vortex checkout to --dev-dir (doodlebot build --checkout <dir>), or use --installed.",
+  };
+}
+
+/**
+ * The baseline a start reseeds from, for these flags (`--sandbox` gives the sandbox's). Advisory:
+ * the next `up` builds it. The same test `checkCache` and `status` use.
+ */
+function checkSandboxBaseline(config: HarnessConfig): Check {
+  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS);
+  const present = readMarker(snapshot) !== undefined;
+  return {
+    name: "Sandbox baseline",
+    ok: present,
+    advisory: true,
+    detail: present ? `present: ${markerFile(snapshot)}` : "missing",
+    fix: "doodlebot up --sandbox (the first start builds it), then doodlebot down",
+  };
+}
+
+/** The lease store of the removed multi-instance kit; reported only when it is still there. */
+function checkLegacyLeaseStore(homeDir: string): Check | undefined {
+  const store = path.join(homeDir, ".vortex-ai", "leases");
+  if (!fs.existsSync(store)) return undefined;
+  return {
+    name: "Legacy lease store",
+    ok: false,
+    advisory: true,
+    detail: store,
+    fix: `delete ${store}; nothing reads it any more`,
+  };
 }
 
 function checkCapturedLogin(config: HarnessConfig): Check {
@@ -67,7 +125,7 @@ function checkCapturedLogin(config: HarnessConfig): Check {
     detail: captured
       ? "cache recorded — auth-status checks live credentials; this marker does not prove server validity"
       : "not captured — collections will fail; an API key alone does not cover them",
-    fix: "pnpm run ai -- setup --oauth (complete browser login once; caches automatically)",
+    fix: "doodlebot setup --oauth (complete browser login once; caches automatically)",
   };
 }
 
@@ -112,7 +170,7 @@ async function checkSource(): Promise<Check> {
     ok: false,
     advisory: true,
     detail: "not cloned; optional unless developing Vortex itself",
-    fix: "pnpm run ai:source",
+    fix: "doodlebot source",
   };
 }
 
@@ -138,7 +196,7 @@ function checkVortex(config: HarnessConfig): Check {
       detail: built
         ? `source build at ${target.sourceDir ?? "?"}`
         : `source checkout at ${target.sourceDir ?? "?"} is not built`,
-      fix: "pnpm run ai:source   (installs and builds the clone)",
+      fix: "doodlebot source   (installs and builds the clone)",
     };
   }
 
@@ -215,7 +273,7 @@ async function checkRunning(config: HarnessConfig): Promise<Check> {
       ok: false,
       advisory: true,
       detail: `nothing answering on ${mcp.url}`,
-      fix: "pnpm run ai:up",
+      fix: "doodlebot up",
     };
   }
 
@@ -244,7 +302,7 @@ export function formatDoctorReport(report: DoctorReport): string {
   lines.push("");
   lines.push(
     report.ok
-      ? "Ready. Start an instance with: pnpm run ai:up"
+      ? "Ready. Start an instance with: doodlebot up"
       : "Not ready — fix the FAIL items above.",
   );
   return lines.join("\n");

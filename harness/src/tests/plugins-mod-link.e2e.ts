@@ -1,6 +1,6 @@
 /**
  * Opt-in check of the Plugins page's Mod column link against the fake Fallout 4:
- * pnpm run ai:test:plugins-mod-link (instance started with
+ * doodlebot test plugins-mod-link (instance started with
  * `up --dev-dir <checkout> --bethesda-sandbox`).
  *
  * Clicking a plugin's mod name opens the Mods page scrolled to that mod, with it

@@ -1,5 +1,5 @@
 /**
- * Opt-in performance check of a large collection install: pnpm run ai:test:collection-scale.
+ * Opt-in performance check of a large collection install: doodlebot test collection-scale.
  *
  * Installs an offline collection of N members that are all already installed, so nothing
  * downloads or installs. Everything between Install Now and the review screen is Vortex

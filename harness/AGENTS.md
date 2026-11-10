@@ -1,14 +1,15 @@
 # doodlebot operating manual
 
-doodlebot is an agentic development and testing tool for Vortex, the Nexus Mods mod manager. Its
-Vortex extension is an MCP server exposing Vortex's state and UI; the harness (this directory,
-CLI `doodlebot`, run as `pnpm run ai -- <command>`) launches isolated profiles of an unmodified
-Vortex, drives them, captures evidence and runs Playwright checks. A source checkout is optional.
+doodlebot is the agent companion for Vortex, the Nexus Mods mod manager. Its Vortex extension is
+an MCP server exposing Vortex's state and UI; the harness (this directory, CLI `doodlebot`)
+launches isolated profiles of an unmodified Vortex, drives them, captures evidence and runs
+Playwright checks. People use it from Claude Code or Codex through three plugins whose commands
+call the CLI. A source checkout is optional.
 
-This is the AI operating manual. Human setup, tool use, LLM workflows, tests and benchmarks
-are documented separately in [the human site](../docs/index.md). Update both audiences when
-their shared behavior changes; `pnpm run docs:generate` refreshes their contract references,
-and `pnpm run docs:check` enforces the mapping in `scripts/documentation-map.json`.
+This is the AI operating manual: it documents internals for agents. The site
+([docs/index.md](../docs/index.md)) documents setup and commands for people. When shared
+behavior changes, update both: `pnpm run docs:generate` refreshes the generated references, and
+`pnpm run docs:check` enforces the mapping in `scripts/documentation-map.json`.
 
 - [KNOWLEDGE-ROUTES.md](KNOWLEDGE-ROUTES.md): shared specialist reading paths and evidence rules.
 - [KNOWLEDGE.md](../KNOWLEDGE.md): confirmed pitfalls; search the affected area and recheck its scope.
@@ -16,24 +17,107 @@ and `pnpm run docs:check` enforces the mapping in `scripts/documentation-map.jso
   designs, state and window-size matrices.
 - [PULL-REQUESTS.md](PULL-REQUESTS.md): Vortex PR titles, description template, reviews.
 - [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md): canonical task routing, delegation and handoff.
-- `.claude/skills/`: `drive-vortex`, `vortex-dev`, `vortex-elephant`, `vortex-ui-test`. Apply the
-  relevant ones; `vortex-elephant` is the design-first procedure for features and refactors.
+- [TESTING.md](TESTING.md): kit gates, the core suite and opt-in checks.
+- `plugins/`: the `doodlebot`, `vortex` and `benchmark` plugins (below). Apply the relevant
+  skills; `plugins/vortex/skills/design/SKILL.md` (`/vortex:design`) is the design-first
+  procedure for features and refactors.
 - [ARCHITECTURE.md](../ARCHITECTURE.md): where a new capability belongs.
 
 When developing Vortex, **read and follow its own `AGENTS.md`, `CLAUDE.md` when present, its
 documentation index and task-specific AI guidance before editing its source**.
 
+## Plugins, the workspace and the `doodlebot` command
+
+This repository is a plugin marketplace named `doodlebot`. Claude Code reads
+`.claude-plugin/marketplace.json`, Codex `.agents/plugins/marketplace.json`; both list three
+plugins with `source` `./plugins/<name>`. Each plugin has a Claude manifest
+(`.claude-plugin/plugin.json`) and a Codex manifest (`.codex-plugin/plugin.json`,
+`"skills": "./skills/"`), and every manifest `version` equals `package.json`'s.
+
+| Plugin      | Skills (`plugins/<plugin>/skills/<name>/SKILL.md`)                          | Agents (`plugins/vortex/agents/`)                |
+| ----------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
+| `doodlebot` | `setup`, `login`, `baseline`, `start`, `stop`, `status`, `update`, `source` |                                                  |
+| `vortex`    | `design`, `fix`, `drive`, `qa`, `ui-test`, `pr`                             | `vortex-runtime-goldfish.md`, `vortex-driver.md` |
+| `benchmark` | `measure`, `compare`                                                        |                                                  |
+
+- Commands are `/<plugin>:<skill>` in Claude Code (`/vortex:drive`). Claude Code namespaces
+  plugin agents: skills dispatch `vortex:vortex-runtime-goldfish` and `vortex:vortex-driver`
+  (`model: sonnet`). Codex plugins ship no agents; there the skills run the procedure inline or
+  give a general-purpose subagent the persona file.
+- `plugins/vortex/resources/` holds the EGM persona `vortex_runtime.md` and the document
+  standard `vortex-change-standard.md`. Skills and agents reach them through
+  `${CLAUDE_PLUGIN_ROOT}/resources/…` (in Codex, the plugin root is three folders above a
+  `SKILL.md`).
+- Every repository path in a skill or agent body is written `<workspace>/<path>` or
+  `${CLAUDE_PLUGIN_ROOT}/<path>`; every skill except `setup` starts with
+  `doodlebot version --json`, takes `<workspace>` from it, and suggests `/doodlebot:update`
+  when its version differs from the plugin's. Skills may name only commands in
+  `harness/src/commands.ts`. `harness/src/plugins.test.ts` asserts all of this, and
+  `docs/reference/commands.md` is generated from the skills.
+- In this checkout `.claude/settings.json` registers the EGM marketplace (pinned to `v0.1.1`)
+  and this folder as the `doodlebot` marketplace, and enables `egm@egm` and the three plugins.
+  After editing a plugin, run `/plugin marketplace update doodlebot`.
+
+A **workspace** is a clone of this repository with dependencies installed and the extension
+built; `/doodlebot:setup` creates one (default `%USERPROFILE%\doodlebot`), and a doodlebot
+developer may use their own checkout. Caches, profiles, artifacts and `.vortex-src` live in the
+workspace, relative to its root.
+
+`bin/doodlebot.cjs` is the CLI entry point. It finds the workspace from its own location and runs
+`harness/src/cli.ts` with the workspace's tsx, with the workspace root as the working directory,
+`INIT_CWD` set to the caller's directory, inherited stdio, and the CLI's exit code (or
+`128 + n` after a signal). Paths you type in flags and positional files resolve against the
+caller's directory; kit defaults resolve against the workspace root. Everything after
+`doodlebot test <suite>` passes through verbatim and resolves against the workspace root. Where
+the shim may not exist (CI, evidence receipts, a fresh clone), run `node bin/doodlebot.cjs …`
+from the workspace root.
+
+| Command                           | What it does                                                                                                                                               |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                         |
+| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`           |
+| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build` |
+| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                         |
+| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`)                                                           |
+| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`    |
+| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                               |
+
+- `link` writes no `.ps1` and spawns no `npm`. Without `--bin-dir` it takes the first of these
+  that is on the PATH and writable: `npm_config_prefix` (its `bin` outside Windows); on Windows
+  `%APPDATA%\npm`, then Node's own folder (nvm-windows); elsewhere `<dirname(dirname(node))>/bin`.
+  Otherwise it fails with
+  `No writable folder on the PATH for the doodlebot shim; pass --bin-dir <folder>.` On Windows,
+  look the shim up with the first `.cmd` line of `where.exe doodlebot`; PowerShell's `where` is
+  `Where-Object`.
+- `update` needs `--ref <tag or branch>` (`^[A-Za-z0-9._/-]+$`). It refuses while
+  `~/.doodlebot/instance.json` (or the older `harness/.cache/instance.json`) names a running
+  Vortex (`A harness Vortex is running; run doodlebot down before updating.`) and when
+  `git status --porcelain` is not empty
+  (`The workspace has local changes; commit or remove them before updating.`). A tag is checked
+  out with `--detach refs/tags/<ref>`, a branch with `--detach FETCH_HEAD`; neither gives
+  `No tag or branch <ref> on origin.`
+- `up`, `setup`, `test` and `install` can outlive an agent's tool timeout or wait on a dialog,
+  and on Windows a captured `up` may never return (KNOWLEDGE.md). Run them in the background
+  with output to a log in `harness/.artifacts/runs/`, and poll `doodlebot status` until MCP is
+  answering or the command exits. For a command that may raise a dialog, poll
+  `doodlebot call ui_active_dialogs`, take `doodlebot snapshot` for the button's ref and answer
+  with `doodlebot click --ref <ref>` (`install` times out after 300 s).
+
 ## Initial setup
 
 Windows, a Node version compatible with package.json, the pinned pnpm (`pnpm@9.15.0`), Git and an
-installed Vortex. No game or Nexus account is needed for sandbox tests.
+installed Vortex. No game or Nexus account is needed for sandbox tests. `/doodlebot:setup` does
+all of this; by hand, from the workspace root:
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm run ai -- setup --installed --sandbox
-pnpm run ai -- doctor --installed --sandbox
-pnpm run ai -- snapshot
-pnpm run ai:test
+pnpm run build
+node bin/doodlebot.cjs link                    # puts doodlebot on the PATH
+doodlebot doctor --installed --sandbox
+doodlebot setup --installed --sandbox          # in the background, with a log
+doodlebot snapshot
+doodlebot down
+doodlebot test core
 ```
 
 - `setup` builds the extension when missing and starts an isolated Vortex. `--sandbox` is a
@@ -58,12 +142,14 @@ Local automation needs no account. Collections need OAuth: an API key alone can 
 true while collection downloads fail. Don't ask for an API key for local tests or builds.
 
 ```powershell
-pnpm run ai -- setup --oauth --installed     # waits up to 10 min; --no-wait returns at once
-pnpm run ai -- save-login --installed        # after a timeout or --no-wait, once logged in
-pnpm run ai -- auth-status                   # presence booleans, never secrets
-pnpm run ai -- login-import --cache-dir D:\other-cache [--from D:\bench-cache] [--force]
+doodlebot setup --oauth --installed     # waits up to 10 min; --no-wait returns at once
+doodlebot save-login --installed        # after a timeout or --no-wait, once logged in
+doodlebot auth-status                   # presence booleans, never secrets
+doodlebot login-import --cache-dir D:\other-cache [--from D:\old-cache] [--force]
 ```
 
+- From an agent (`/doodlebot:login`): run `doodlebot setup --oauth --installed --no-wait`, ask
+  the person to log in, poll `doodlebot auth-status`, then run `doodlebot save-login --installed`.
 - setup clears any seeded API key in its isolated profile so Log in appears. **The account owner**
   clicks Log in and completes the browser flow (password, MFA, captcha); agents do the rest. It
   caches access and refresh credentials and checks a fresh restore still has them.
@@ -94,35 +180,24 @@ Do not replace it with a synthetic profile dispatch. Conflicting target `--game`
 arguments fail before launch. `--no-game` retains its single cold launch. Setup and shutdown
 failures remain separate causes when both occur.
 
-Real benchmark native lifecycle: `harness/benchmarks/index.ts` exports `createGameSnapshot`,
-`verifyGameSnapshot`, `resetGameSettings`, and `restartCollectionBenchmark`. Restart requires a
-versioned SHA256 snapshot, uses a fresh private profile/game/archive cache, backs up and resets
-supported account settings, and configures maximum download threads before the cold install.
-`runBenchmarks({cleanStart:true,...})` applies the same reset to real repeats. The `previous`
-session option is only for settled benchmark work and preserves the prior workspace.
-`BenchmarkSession.pauseDownloads()` verifies no active or growing transfer; `resumeDownloads()`
-resumes the collection driver. These controls do not alter timing exclusions or installation timeouts.
-`downloadProgress()` exposes actual queue counts and received bytes without archive URLs; finished
-archives alone do not prove that collection installation/deployment completed.
-Real `BenchmarkSession.addCollection()` additionally verifies the selected collection's stock
-install driver reaches review with post-processing finished and its visible progress panel gone.
-The collection coordinator keeps dialog/FOMOD automation alive through this boundary. A finished
-driver with a persistent progress panel fails with retained UI evidence; an unobservable driver
-blocks. Do not resume skipped optional members, hide the UI, or patch Vortex to obtain a pass.
-The selected page must be visible and driver fields readable. Completed-driver render settling
-has a 30-second grace inside the overall installation timeout; each add attempt resets verification.
-The read-only `inspectCollectionCompletion` helper records driver state and panel counts.
-`createSkyrimSnapshot({source,destination,edition})` prepares base or paid-AE snapshots from one clean Steam source, excludes paid files only from the base copy and refuses incomplete paid inventory before an AE copy. Steam is untouched.
-GTS qdurkx revision 118 has two configurations: C2/base skips optional rules and rejects paid
-Creation files; C2-AE/anniversary installs optionals and requires all 74 stock Creation plugins
-and their main BSA archives. `gtsCollection(edition,paths)` selects the matching policy.
-`skyrimEdition` and `optionalMods` must agree before launch. Both variants require a verified
-clean snapshot, UI completion and deployed bytes; selected optionals must be installed and enabled.
-The coordinator persists optional rules with stock `addModRule` before starting the driver,
-reapplies the choice if released Vortex regenerates that exact pinned manifest's rules, and
-keeps its finish-dialog policy consistent through both passes. `collection_status.optionalSelected`
-counts explicit `ignored:false` rules; absent flags do not prove the AE choice. Never ignore
-required members; changed member counts or collection identity fail the run.
+Native `collection` (`installCollection` in `collections.ts`, with the stock completion-view
+verifier `waitForCollectionCompletion` from `collectionCompletion.ts`) verifies that the selected
+collection's stock install driver reaches review with post-processing finished and its visible
+progress panel gone. The coordinator keeps dialog/FOMOD automation alive through this boundary.
+A finished driver with a persistent progress panel fails with retained UI evidence; an
+unobservable driver fails with `CompletionUnobservable`. Do not resume skipped optional members,
+hide the UI, or patch Vortex to obtain a pass. The selected page must be visible and driver
+fields readable. Completed-driver render settling has a 30-second grace inside the overall
+installation timeout. The read-only `inspectCollectionCompletion` helper records driver state and
+panel counts. `downloadProgress()` (`collectionDownloads.ts`) exposes actual queue counts and
+received bytes without archive URLs; finished archives alone do not prove that collection
+installation/deployment completed.
+With `optionalMods: "install"` the coordinator persists optional rules with stock `addModRule`
+before starting the driver, reapplies the choice if released Vortex regenerates that exact
+manifest's rules, and keeps its finish-dialog policy consistent through both passes.
+`collection_status.optionalSelected` counts explicit `ignored:false` rules; absent flags do not
+prove the choice. Never ignore required members; changed member counts or collection identity
+fail the run.
 Collection startup validates the exact driver, reads active dialog text, and clicks Install Now
 through scoped dialog snapshots. Count outer dialog containers: stock react-overlays wraps
 Bootstrap's modal in another dialog-role element, which is still one physical dialog.
@@ -138,25 +213,12 @@ Full-page trees can truncate before the footer on large Mods
 pages. Missing/ambiguous collection-added dialogs and failed clicks fail the attempt; no action
 retry or driver recovery is performed. `collectionStartup.test.ts` exercises this wiring with the
 real UI helpers, including a stacked unrelated dialog and a truncated root snapshot.
-Collection timing uses `watch_state_changes` scalar deltas, not whole state snapshots. It preserves
-all changed member IDs, ignores byte-progress churn, drains up to four pages of 128 entries per
-listener each cycle and drains remaining pages at stop. Sequence gaps, subscription failures and
-projection errors invalidate timings without aborting install verification. No invalid/partial
-phase timings are published; the benchmark is blocked unless an install error makes it failed.
-
-`resetGameSettings` refuses with `Cannot reset game settings while Vortex is running` while its
-`isRunning` option reports a running Vortex. The benchmark session passes "any child it spawned
-is alive, or the instance record names a running Vortex"; the default checks the instance
-record only. A benchmark session and benchmark setup also refuse to start while a harness
-Vortex runs. Human procedure and recovery: [clean restart](../docs/testing/benchmarks.md#restart-a-real-collection-from-scratch).
-Snapshots establish file integrity, not arbitrary source provenance. Supply a known clean game,
-close the game first, preserve saves/purchased catalogs, and never reset the Steam installation.
 
 ```powershell
-pnpm run ai -- up --installed --sandbox
-pnpm run ai -- down
-pnpm run ai -- up --installed --sandbox --fresh
-pnpm run ai -- up --installed --sandbox --rebuild-snapshot
+doodlebot up --installed --sandbox
+doodlebot down
+doodlebot up --installed --sandbox --fresh
+doodlebot up --installed --sandbox --rebuild-snapshot
 ```
 
 | Start                | Behavior                                                                    |
@@ -176,38 +238,48 @@ pnpm run ai -- up --installed --sandbox --rebuild-snapshot
 - `down` waits for a clean shutdown. An unresponsive instance is reported and left intact, never
   killed and certified; close that window and retry. A server of another cache is never stopped
   for holding the same port.
-
-Human benchmark preparation is available through `pnpm run setup` (`benchmarks/setup-cli.mts`). It creates a local example or prepares a pinned collection, discovers Steam games, reuses a saved kit login when unambiguous, and tracks verified game snapshots in gitignored `harness/.cache/benchmark-setup.json`. `--status` is read-only/offline; cached credentials and dated Premium observations do not prove current refresh/download access. `--status --verify` checks all tracked bytes. Constellations still requires a separately prepared downgrade. Guided real setup requires explicit clean-source and QA-only Windows/test-machine acknowledgements. The catalog loads these local choices; `--exploratory` supplies observed host facts without approving budgets, and `--timeout-minutes` gives a deliberate operation timeout. Setup starts no collection downloads and retains incomplete copies. Normal automation still performs no retries or recovery.
+- `/doodlebot:baseline` creates or refreshes a baseline (`up … --rebuild-snapshot`, then `down`);
+  `doodlebot doctor` reports it as the advisory check `Sandbox baseline` (`present: <marker>` or
+  `missing`), and lists `Legacy lease store` when `~/.vortex-ai/leases` from an older kit
+  exists. Advisory checks never make `doctor` exit 1.
 
 ### One instance
 
-Only one doodlebot Vortex runs at a time, driven by one agent. That is a convention: nothing
-serializes two commands. Run `down` before starting another profile, the core suite or
-independent QA. A few refusals stop the cases where two would damage data.
+Only one doodlebot Vortex runs at a time **per machine**, driven by one agent. That is a
+convention: nothing serializes two commands. Run `down` before starting another profile, the core
+suite or independent QA. A few refusals stop the cases where two would damage data.
 
-- **The instance record** is always `harness/.cache/instance.json`, whatever `--cache-dir` says:
+- **The instance record** is `~/.doodlebot/instance.json` (`USER_STATE_DIR` in `paths.ts`), one
+  per user whatever workspace or `--cache-dir` a command uses:
   `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir?}` (`runningVortex.ts`). Every kit
   launcher writes it right after spawn, before readiness: `up`, `setup`, `bootstrap`, the core
-  fixture, a benchmark session, `pnpm run setup` and `ai:test:zoom -- --signed-out`. A failed
-  write stops the child and fails the launch. Per-cache `instance.pid` and `<cache>/instance.json`
-  files from older kits are deleted when found.
+  fixture and `doodlebot test zoom --signed-out`. A failed write stops the child and fails the
+  launch. Per-cache `instance.pid` and `<cache>/instance.json` files from older kits are deleted
+  when found.
+- The older record `harness/.cache/instance.json` is read first and deleted unless it names a
+  running Vortex; then a launch refuses with
+  `A harness Vortex from an older doodlebot is running (pid <pid>); stop it before starting Vortex.`
+  and `down` with the same text ending `before stopping Vortex.` Close that Vortex, then retry.
+- **A second workspace or cache is refused.** Before stopping its own cache's leftover,
+  `bootstrap` checks the record: a running Vortex of another cache (another workspace, a test
+  cache) refuses the launch with the message below and is left untouched. A restart of the same
+  cache is unchanged.
 - A record is **running** only while its pid is alive and that process is `Vortex.exe`,
   `electron.exe`, `vortex` or `electron`. Otherwise it is stale (dead pid, or a pid reused after a
   crash) and is cleared when read.
-- A launch while another harness Vortex runs, the core suite (`ai:test:core` / `ai:test`, through
-  Playwright's global setup), a benchmark session, benchmark setup and the signed-out zoom check
-  refuse with
-  ``A harness Vortex is running (pid <pid>, cache <cacheDir>); run `pnpm run ai -- down` before <action>.``
-  Actions: `starting Vortex`, `the core suite`, `a benchmark session`, `benchmark setup`,
-  `the signed-out zoom check`. `up` and `bootstrap` first stop their own cache's leftover, so a
-  repeated `up` on the same profile restarts it.
+- A launch while another harness Vortex runs, the core suite (`doodlebot test core`, through
+  Playwright's global setup) and the signed-out zoom check refuse with
+  ``A harness Vortex is running (pid <pid>, cache <cacheDir>); run `doodlebot down` before <action>.``
+  Actions: `starting Vortex`, `the core suite`, `the signed-out zoom check`. `up` and `bootstrap`
+  first stop their own cache's leftover, so a repeated `up` on the same profile restarts it.
+- `doodlebot update` refuses while either record names a running Vortex (above).
 - `build`, source installs and builds, `evidence run`, `pr-preflight`'s revert check and
   `vortex-e2e` refuse when the record's `sourceDir` is the checkout they would change:
-  ``A harness Vortex is running from <checkout> (pid <pid>); run `pnpm run ai -- down` before <action>.``
+  ``A harness Vortex is running from <checkout> (pid <pid>); run `doodlebot down` before <action>.``
   Actions: `building it`, `installing it`, `recording evidence in it`, `reverting it`,
   `patching it`.
 - `down` follows the record (`stopRunningInstance`): it stops the running harness Vortex using
-  the record's cache and MCP port, so one left in a benchmark or test cache, or started with
+  the record's cache and MCP port, so one left in a test cache or another workspace, or started with
   another `--port`, needs no repeated options; for another cache it first prints
   `Stopping the harness Vortex of cache <cacheDir> (MCP port <mcpPort>).`. It asks Vortex to quit
   over MCP (`vortex_quit`) after the profile check, waits up to 30 s for a clean exit (MCP silent
@@ -216,7 +288,7 @@ independent QA. A few refusals stop the cases where two would damage data.
   instance that does not exit is reported and left intact. `up` and `bootstrap` stop only their
   own cache's leftover, never another cache's instance.
 - A pid reused by another Electron app still looks running: `down` waits 30 s and reports it.
-  Check that no harness Vortex window is open, then delete `harness/.cache/instance.json`.
+  Check that no harness Vortex window is open, then delete `~/.doodlebot/instance.json`.
 - A Vortex started outside the kit's launchers (raw Playwright or Electron) writes no record and
   is invisible to these refusals. The record does not detect the operator's own Vortex or a game.
 - Vortex source work happens on a branch of `.vortex-src` or in a checkout given with
@@ -228,14 +300,25 @@ independent QA. A few refusals stop the cases where two would damage data.
 callable from the CLI.
 
 ```powershell
-pnpm run ai -- tools --json                              # live tools and input schemas
-pnpm run ai -- snapshot [--selector <css>]
-pnpm run ai -- click --ref <ref>                         # or --selector <css>
-pnpm run ai -- fill --ref <ref> --value example
-pnpm run ai -- press --key Escape
-pnpm run ai -- call vortex_query --args-file query.json  # or --args <json>
-pnpm run ai -- screenshot --label before [--full-page]
+doodlebot tools --json                              # live tools and input schemas
+doodlebot snapshot [--selector <css>]
+doodlebot click --ref <ref>                         # or --selector <css>
+doodlebot fill --ref <ref> --value example
+doodlebot press --key Escape
+doodlebot call vortex_query --args-file query.json  # or --args <json>
+doodlebot screenshot --label before [--full-page]
+doodlebot log --level warn [--tail <n>] [--since <ISO time>] [--json]
 ```
+
+`doodlebot log` reads `<userDataDir>/vortex.log` of the running instance (from
+`automation_status`). `--level` is a threshold (`debug`, `silly` and `verbose` count below
+`info`; an unrecognised level counts as `info`); each entry keeps its continuation lines, such as
+stack frames, and `--json` appends them to `message`. Driven runs (`/vortex:drive`,
+`/vortex:qa`) also read the renderer console from sequence 0 with
+`doodlebot call ui_read_console`, and write a run report to
+`harness/.artifacts/runs/<UTC time>-<slug>/report.md` (sections Outcome, Scenario and target,
+Steps, Dialogs and prompts answered, Errors and warnings, Evidence, Not checked; defined in
+`plugins/vortex/skills/drive/SKILL.md`).
 
 `--args-file` avoids shell quoting (a PowerShell BOM is fine); keep credential-bearing ones private.
 
@@ -271,7 +354,7 @@ scopes the snapshot so a large table can't exhaust its node budget. Avoid native
 ### Scratch scripts and renderer diagnostics
 
 `doodlebot script <file.mts> [args...]` runs a scratch script with the kit's tsx, in the caller's
-directory (`INIT_CWD` under pnpm; a relative `<file>` is resolved there too), with the instance's cache, artifacts folder, ports and token in
+directory (`INIT_CWD`, which the `doodlebot` shim sets; a relative `<file>` is resolved there too), with the instance's cache, artifacts folder, ports and token in
 its environment. The instance flags (`--dev-dir`, `--cache-dir`, `--port`, `--cdp-port`) are the
 kit's anywhere, even after the file; other arguments, and all after `--`, are the script's. It
 exits with the script's code: 130 after Ctrl+C, `128 + signal` when the script died from a
@@ -310,12 +393,16 @@ uploads files that `--body-file` image references name (push access, under 10 MB
 ## Install and deploy
 
 ```powershell
-pnpm run ai -- install C:/fixtures/example.zip
-pnpm run ai -- collection <collection-url>
-pnpm run ai -- deploy --game <active-game-id> [--purge]
-pnpm run ai -- purge
-pnpm run ai -- e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
+doodlebot fixture mod --out C:/fixtures/probe.zip [--name automation-probe]
+doodlebot install C:/fixtures/example.zip
+doodlebot collection <collection-url>
+doodlebot deploy --game <active-game-id> [--purge]
+doodlebot purge
+doodlebot e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
 ```
+
+- `fixture mod` writes an archive with one file, `textures/<name>.txt` containing `<name>`; in
+  the sandbox it deploys to `<gamePath>/Data/textures/<name>.txt`.
 
 - `slow-download [--count <n>] [--seconds <n>] [--stagger <s>]` keeps real downloads in flight
   (throttled local files, no network or account) for work on the UI that reports them: the
@@ -336,24 +423,31 @@ pnpm run ai -- e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch
 ## Tests and development
 
 ```powershell
-pnpm run ci         # typecheck, lint, format, unit tests, build; no Vortex
-pnpm run ai:test:core # Playwright contract against a real Vortex, account-free (ai:test alias)
-pnpm run ai:test:oauth # opt-in: cached sandbox OAuth survives a fresh restore
-pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080" [--strict]
+pnpm run ci                 # typecheck, lint, format, docs checks, unit tests, build; no Vortex
+doodlebot test core         # Playwright contract against a real Vortex, account-free
+doodlebot test oauth        # opt-in: cached sandbox OAuth survives a fresh restore
+doodlebot test --list       # every suite and check script
+doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080" [--strict]
 ```
 
+- `doodlebot test <suite> [args…]` runs from the workspace root with this Node and environment
+  (`PLAYWRIGHT_JSON_OUTPUT_FILE` and `VORTEX_AI_*` pass through). `core` and `oauth` run
+  Playwright with `harness/playwright.config.ts` / `harness/oauth.playwright.config.ts`, so
+  Playwright's own flags follow (`doodlebot test core --reporter=json`); the other suites run
+  `harness/src/tests/<suite>.e2e.ts` (`nexus` runs `nexus-collection.e2e.ts`). Every argument
+  after the suite is the suite's, verbatim. An unknown suite exits 2 and lists them.
 - Say which suite ran and disclose skips. Quote comma lists in PowerShell.
 - The core suite launches its own Vortex and refuses while a harness Vortex runs
-  (`... before the core suite.`): run `pnpm run ai -- down` first.
+  (`... before the core suite.`): run `doodlebot down` first.
 - See [TESTING.md](TESTING.md) for the core contract, pinned-release CI and opt-in scenarios.
   Feature regressions and performance scripts stay outside the default kit gate.
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (WORKFLOWS.md has the state matrix).
-- `pnpm run ai:source` prepares the managed `.vortex-src` (`--update`, `--no-build`,
-  `--where`); make your changes on a branch of it, or in a separate checkout passed with
+- `doodlebot source` (`/doodlebot:source`) prepares the managed `.vortex-src` (`--update`,
+  `--no-build`, `--where`); make your changes on a branch of it, or in a separate checkout passed with
   `--dev-dir`. `up` defaults to the managed source when present. Select `--installed`,
   `--exe <path>` or `--dev-dir <path>` explicitly for reproducible checks.
-- Extension work uses one watcher: `pnpm run ai:watch` or `pnpm run dev`, against your
+- Extension work uses one watcher: `doodlebot watch` or `pnpm run dev`, against your
   already-running instance. It observes doodlebot source and runs one finite build/copy/reload
   cycle per settled edit. Build failure never installs partial output. It does not build Vortex
   source. `pnpm run build` is one-shot; `build-extension` or `up --rebuild-extension` forces a
@@ -375,7 +469,7 @@ pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000
   Node/platform/architecture/`NODE_ENV` identity. Install pinned dependencies
   (`pnpm install --frozen-lockfile`) before building, not while a build runs. New external config inputs, environment dependencies or symlinks need an explicit
   capture-contract change; dependency integrity is not proved by the generation marker.
-- `ai:test:nexus` (opt-in; same target, cache and ports as account setup): a separate
+- `doodlebot test nexus` (opt-in; same target, cache and ports as account setup): a separate
   `nexus-smoke` profile and disposable Stardew Valley folder, the five required members of
   revision 1 of `stardewvalley/nudx7b`, SHA-256 checks of deployed files, purge, evidence,
   refreshed credentials copied back. No launch. Needs Nexus Premium for unattended downloads.
@@ -385,15 +479,15 @@ pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000
 
 Features and refactors start with a design written and reviewed with Google's
 [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM,
-`v0.1.1`) before any implementation. Follow `.claude/skills/vortex-elephant/SKILL.md`, which
-every agent reads (Codex included). Bug fixes, docs and test-only changes need no design unless
-the user supplies or asks for one. The approved design defining this workflow is
-`designs/egm-workflow.md`.
+`v0.1.1`) before any implementation. Follow `plugins/vortex/skills/design/SKILL.md`
+(`/vortex:design`), which every agent reads (Codex included). Bug fixes, docs and test-only
+changes need no design unless the user supplies or asks for one. The approved designs defining
+this workflow are `designs/egm-workflow.md` and, for its plugin form, `designs/agent-companion.md`.
 
 ```powershell
-pnpm run ai -- design new <file> --title <t> --target vortex|doodlebot
-pnpm run ai -- design check <file> [--ready] [--json]
-pnpm run ai -- design scope <file> --checkout <dir> --base <ref> [--json]
+doodlebot design new <file> --title <t> --target vortex|doodlebot
+doodlebot design check <file> [--ready] [--json]
+doodlebot design scope <file> --checkout <dir> --base <ref> [--json]
 ```
 
 - `design new` writes the design template (required sections, `Status: Draft`, today's date);
@@ -419,8 +513,9 @@ pnpm run ai -- design scope <file> --checkout <dir> --base <ref> [--json]
   counts as body. Never write an `Approved` line the person has not given.
 - The confirmation round (after the last edit, on a checkout without implementation changes)
   runs two fresh reviewers: EGM's `implementation_readiness` with its standard, and
-  `vortex-runtime-goldfish` (`.claude/agents/vortex-runtime-goldfish.md`, persona
-  `harness/egm/vortex_runtime.md`) with `harness/egm/vortex-change-standard.md`.
+  `vortex-runtime-goldfish` (`plugins/vortex/agents/vortex-runtime-goldfish.md`, dispatched as
+  `vortex:vortex-runtime-goldfish`; persona `plugins/vortex/resources/vortex_runtime.md`) with
+  `plugins/vortex/resources/vortex-change-standard.md`.
 - After implementing, run `design scope`, then `down`; independent QA starts with `up --fresh`
   in a fresh context. Readiness binds the result to the approved design (next section).
 
@@ -430,12 +525,13 @@ pnpm run ai -- design scope <file> --checkout <dir> --base <ref> [--json]
 `evidence runtime` hashes the actual executable and selected build files; list the executable
 first, then the app bundle and doodlebot extension bundle. A source runtime also needs
 `--checkout` and `--base`. These commands inspect files; they do not build or select an app.
-Use `pnpm --silent run ai` when redirecting JSON so pnpm's command banner is omitted.
+Receipts below use `node bin/doodlebot.cjs`, run from the workspace root, so they work without
+the shim; it prints no banner, so redirected JSON stays clean.
 
 ```powershell
-pnpm --silent run ai -- evidence identity --checkout . --base <base-sha> > harness/.artifacts/identity.json
-pnpm run ai -- evidence run --checkout . --base <base-sha> --out harness/.artifacts/ci.json -- pnpm run ci
-pnpm run ai -- evidence run --checkout . --base <base-sha> --out harness/.artifacts/scoped.json --test-format vitest --test-report <new-test-report.json> -- pnpm exec vitest run <test-files> --reporter=json --outputFile <new-test-report.json>
+node bin/doodlebot.cjs evidence identity --checkout . --base <base-sha> > harness/.artifacts/identity.json
+node bin/doodlebot.cjs evidence run --checkout . --base <base-sha> --out harness/.artifacts/ci.json -- pnpm run ci
+node bin/doodlebot.cjs evidence run --checkout . --base <base-sha> --out harness/.artifacts/scoped.json --test-format vitest --test-report <new-test-report.json> -- pnpm exec vitest run <test-files> --reporter=json --outputFile <new-test-report.json>
 ```
 
 `evidence run` executes an explicit command in the subject root, or a contained `--cwd`,
@@ -453,16 +549,19 @@ For released-app core evidence, create a runtime JSON with `--kind installed`, a
 `dist/index.js`. Run `down` first: the core suite refuses while a harness Vortex runs. The
 collector sets the selected executable and target from that runtime identity. Set `PLAYWRIGHT_JSON_OUTPUT_FILE` to a new absolute path,
 pass the same path as `--test-report` with `--test-format playwright`, and run
-`pnpm run ai:test:core --reporter=json` through `evidence run --runtime <runtime.json>`.
+`node bin/doodlebot.cjs test core --reporter=json` through `evidence run --runtime <runtime.json>`.
+Readiness's `kit-core` accepts exactly the command prefixes `node bin/doodlebot.cjs test core`
+and `pnpm exec playwright test --config harness/playwright.config.ts`, followed by nothing but an
+optional JSON reporter; a filter (`--grep`, a spec path, `--project`) is refused.
 Core evidence must include the complete unfiltered suite with no skips.
 
 For example, in PowerShell 7, from the kit root (replace paths/version with the actual runtime):
 
 ```powershell
-pnpm run ai -- down
-pnpm --silent run ai -- evidence runtime --kind installed --label <actual-version> --mode production C:/Vortex/Vortex.exe C:/Vortex/resources/app.asar dist/index.js > harness/.artifacts/runtime.json
+node bin/doodlebot.cjs down
+node bin/doodlebot.cjs evidence runtime --kind installed --label <actual-version> --mode production C:/Vortex/Vortex.exe C:/Vortex/resources/app.asar dist/index.js > harness/.artifacts/runtime.json
 $env:PLAYWRIGHT_JSON_OUTPUT_FILE = Join-Path (Get-Location) 'harness/.artifacts/core-tests.json'
-pnpm run ai -- evidence run --checkout . --base <base-sha> --out harness/.artifacts/core.json --runtime harness/.artifacts/runtime.json --test-format playwright --test-report $env:PLAYWRIGHT_JSON_OUTPUT_FILE -- pnpm run ai:test:core --reporter=json
+node bin/doodlebot.cjs evidence run --checkout . --base <base-sha> --out harness/.artifacts/core.json --runtime harness/.artifacts/runtime.json --test-format playwright --test-report $env:PLAYWRIGHT_JSON_OUTPUT_FILE -- node bin/doodlebot.cjs test core --reporter=json
 (Get-FileHash -Algorithm SHA256 harness/.artifacts/core.json).Hash.ToLowerInvariant()
 ```
 
@@ -530,7 +629,7 @@ checkout used another base`), and a reviewed head that is an ancestor of the sub
   `review` entry judges the round, `contested.md` and the approval reference.
 
 ```powershell
-pnpm run ai -- readiness --manifest <task-manifest.json> --json
+doodlebot readiness --manifest <task-manifest.json> --json
 ```
 
 Readiness uses schema **v3** and rejects any other version before parsing
@@ -560,10 +659,10 @@ A local-diff result cannot certify a later commit.
 
 ### Pull request checks
 
-- `pnpm run ai -- pr-checks <number-or-url> [--repo <owner/name>] [--json]`: the PR head's checks
+- `doodlebot pr-checks <number-or-url> [--repo <owner/name>] [--json]`: the PR head's checks
   via `gh`, failed jobs expanded to failed steps (a test failure vs. a failed upload). Nonzero while
   any check is pending or failed.
-- `pnpm run ai:preflight` (= `pr-preflight`) before pushing; put its report in the PR. It diffs
+- `doodlebot pr-preflight` (`/vortex:pr` runs it) before pushing; put its report in the PR. It diffs
   the committed `HEAD` of `--checkout` (default `.vortex-src`) against its merge-base with `--base`
   (default `upstream/master`), prints PASS/WARN/FAIL/SKIP per check with file:line, exits 1 on any
   FAIL or INCONCLUSIVE. `--json` lists every hit. The revert check refuses while the harness
@@ -594,8 +693,7 @@ A local-diff result cannot certify a later commit.
 
 ### Vortex's own E2E suite
 
-Only when requested, `pnpm run ai:vortex-e2e -- --checkout <dir>`
-(= `vortex-e2e`) runs `<checkout>/packages/e2e` as
+Only when requested, `doodlebot vortex-e2e --checkout <dir>` runs `<checkout>/packages/e2e` as
 upstream CI does (`CI=1`, `VORTEX_E2E_HEADED` unset, one worker, no retries). It needs a built
 checkout and refuses while the harness Vortex runs from it (`... before patching it.`); a harness
 Vortex running from elsewhere is noted in the report because it may affect timings. Run one
@@ -649,7 +747,7 @@ cache (Documents moved by a `NODE_OPTIONS=--require` preload, `mainPreload.ts`).
 - `--isolate-user-folders` gives any game the same private folders.
 - `setDeterministicLoadOrder(mcp)` turns LOOT autosort off, orders natives, masters, light plugins
   and plugins by name, and verifies `state.loadOrder`, so Plugins page values compare across runs.
-- `pnpm run ai:test:bethesda`: Missing Masters flags an absent master before and after an offline
+- `doodlebot test bethesda`: Missing Masters flags an absent master before and after an offline
   collection, whose postprocess must fire and plugin list apply; a game-version mismatch prompt
   must appear and Continue must complete.
 
@@ -665,7 +763,7 @@ cache (Documents moved by a `NODE_OPTIONS=--require` preload, `mainPreload.ts`).
 { fail })` (`downloadServer.ts`, `kit.downloads`): `fail(name, attempt)` resets that GET's
   connection. Vortex retries a failed download itself (4 GETs in all), so to make a member fail,
   fail it until the install ends, then stop failing and `resumeViaNotification` (the round trip is
-  `ai:test:collection-download-retry`). `closeCollectionReviews(mcp)` closes any review a script or a
+  `doodlebot test collection-download-retry`). `closeCollectionReviews(mcp)` closes any review a script or a
   resume left open; one left open makes the next install find no Install Now.
 - `addOfflineCollection` registers the archive as a download and runs `start-install-download`, so
   the mod has an `archiveId`; `via: "file"` uses `start-install <path>` instead.
@@ -695,7 +793,7 @@ cache (Documents moved by a `NODE_OPTIONS=--require` preload, `mainPreload.ts`).
 
 Collection startup observes the exact current driver before any resume or Install Now action. A newly added manifest uses stock did-install-mod -> driver.query; wait for its queued preparation and ownership instead of dispatching resume. Idle means a found collectionless driver at prepare or completed review, with preparing===false; only an existing manifest in that state can receive one resume. Dispatch failures propagate including Already installing text. Queued or unobservable preparation waits/fails within the startup deadline, including the final observation before clicking. A foreign current collection is refused even at review. The startup wait mounts the requested view at most once, bounds missing/queued-driver observation to 60 seconds inside the overall deadline, and clicks Install Now only at the exact owned query step. Completion verification remains separate; lastCollectionId alone does not establish active ownership.
 
-Native `collection` and benchmark `addCollection()` never recover errors or retry failed actions. Collection notices (title and message, including warning notices), exact native failed session members and unresolved selected failed downloads are recorded as warnings. `installCollection({warningsAsErrors:true})` fails on any warning; the lower-level default permits warnings only after all selected members and the final completion boundary pass. A warning-bearing install without a supplied final functional/UI completion verifier fails conservatively; driver counters alone cannot prove the visible completion boundary. The native CLI supplies the stock completion-view verifier, prints warnings as they occur and supports --warnings-as-errors. Any remaining failed session/member record at completion fails regardless of policy. The SDK defaults a directly written manifest to strict mode when the option is omitted; the current catalog factories explicitly set `warningsAsErrors:false`, retaining warnings while requiring final functional/UI completion. A machine configuration can opt into strict warnings with `warningsAsErrors:true`. Repeats expose separate warnings with original severity and evidence records the policy. Catalog startup cases verify functional readiness before and after restart, outside the startup timing window. `collection_download_failures` uses the stock matcher without changing failed state. Normal dialogs/FOMOD steps advance the requested installation; failed UI actions propagate once and are not retried. An absent dialog is a normal waiting observation; a rejected host confirmation predicate inspects another candidate without clicking. Watcher errors during teardown cannot turn a failed action into success. Failed SDK install calls remain in evidence before throwing. Planned repeats stop on the first failure/block; an explicit retry case must retain every failed attempt. Timing errors remain separate and publish no invalid phases.
+Native `collection` never recovers errors or retries failed actions. Collection notices (title and message, including warning notices), exact native failed session members and unresolved selected failed downloads are recorded as warnings. `installCollection({warningsAsErrors:true})` fails on any warning; the lower-level default permits warnings only after all selected members and the final completion boundary pass. A warning-bearing install without a supplied final functional/UI completion verifier fails conservatively; driver counters alone cannot prove the visible completion boundary. The native CLI supplies the stock completion-view verifier, prints warnings as they occur and supports --warnings-as-errors. Any remaining failed session/member record at completion fails regardless of policy. `collection_download_failures` uses the stock matcher without changing failed state. Normal dialogs/FOMOD steps advance the requested installation; failed UI actions propagate once and are not retried. An absent dialog is a normal waiting observation; a rejected host confirmation predicate inspects another candidate without clicking. Watcher errors during teardown cannot turn a failed action into success.
 
 The completion poll fails immediately on an owned native review dialog whose text begins with the Collection installation incomplete heading. A match later in the body or a mod name does not establish failure; DOM text may concatenate the heading and body without whitespace. It requires a found review driver with current collectionId equal to the pinned manifest and strong dialog attribution (driver or collection-prop); a present session must match both collection and game. installDone=false is normal at this failed review. Review/postprocessing=false alone does not prove finalization has settled. Selected optional failure also terminates when the matching session has only terminal statuses, a failed recommends witness and unsatisfied selected optional rules. Pending/unknown statuses prevent that optional inference. Warning evidence is recorded before the failure; the detector performs no resume, retry, dismissal or selection repair.
 
@@ -739,7 +837,7 @@ To wait on a plain `events.emit` event: `vortex_dispatch` with `action: "onEvent
 **Production.** Source builds run NODE_ENV=development with React's slow development build, so any
 timing meant to reflect users needs production:
 
-- `pnpm run ai -- build --checkout <dir> [--production]` runs the checkout's `pnpm run build` with
+- `doodlebot build --checkout <dir> [--production]` runs the checkout's `pnpm run build` with
   its pinned pnpm, refusing while the harness Vortex runs from it (`... before building it.`), with
   NODE_ENV=production for the build only (unset otherwise). It restores `etc/vortex.api.md` and
   `etc/Dependency Report.md` if rewritten. The caller's environment is untouched; in the agent
@@ -751,20 +849,22 @@ timing meant to reflect users needs production:
 
 ### Opt-in checks
 
-Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`) under
-`harness/.artifacts`. Keep CPU-heavy work off the machine while they measure.
+Outside `doodlebot test core`; each runs against the running instance (`up` first, with the
+flags in "Needs") and writes JSON evidence (and screenshots or a `.cpuprofile`) under
+`harness/.artifacts`, printing `evidence: <path>` where it measures. Keep CPU-heavy work off the
+machine while they measure.
 
-| Command                                                   | Needs                              | Fails on                                                                    |
-| --------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
-| `ai:test:collection-scale -- --members <n>`               | sandbox                            | a freeze over 10 s in a phase                                               |
-| `ai:test:plugins-page -- --plugins <n> [--vortex-order]`  | fake Fallout 4                     | blocking on scroll, filter, clear or toggle; a row not following its toggle |
-| `ai:test:collection-download-retry`                       | fake Fallout 4                     | a member whose downloads failed not being installed by a resume             |
-| `ai:test:plugins-mod-link -- --mods <n>`                  | fake Fallout 4                     | the Mod link not scrolling the last-sorted mod (default 300) into view      |
-| `ai:test:download-churn -- --downloads <n> --seconds <s>` | any                                | nothing; measures persist:diff, slow writes, dispatches, long tasks         |
-| `ai:test:large-library`                                   | sandbox                            | see below                                                                   |
-| `ai:test:mods-scroll -- --mods <n>`                       | sandbox                            | see below                                                                   |
-| `ai:test:zoom [-- --signed-out]`                          | source build with zoom             | zoom controls, shortcuts, timers, animation, layout                         |
-| `ai:test:panels`                                          | source build, `--bethesda-sandbox` | right-hand split view behaviour                                             |
+| Command                                                       | Needs                              | Fails on                                                                    |
+| ------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| `doodlebot test collection-scale --members <n>`               | sandbox                            | a freeze over 10 s in a phase                                               |
+| `doodlebot test plugins-page --plugins <n> [--vortex-order]`  | fake Fallout 4                     | blocking on scroll, filter, clear or toggle; a row not following its toggle |
+| `doodlebot test collection-download-retry`                    | fake Fallout 4                     | a member whose downloads failed not being installed by a resume             |
+| `doodlebot test plugins-mod-link --mods <n>`                  | fake Fallout 4                     | the Mod link not scrolling the last-sorted mod (default 300) into view      |
+| `doodlebot test download-churn --downloads <n> --seconds <s>` | any                                | nothing; measures persist:diff, slow writes, dispatches, long tasks         |
+| `doodlebot test large-library`                                | sandbox                            | see below                                                                   |
+| `doodlebot test mods-scroll --mods <n>`                       | sandbox                            | see below                                                                   |
+| `doodlebot test zoom [--signed-out]`                          | source build with zoom             | zoom controls, shortcuts, timers, animation, layout                         |
+| `doodlebot test panels`                                       | source build, `--bethesda-sandbox` | right-hand split view behaviour                                             |
 
 - **collection-scale** options (`collectionScale.ts`, deterministic; none = required members, no
   rules): `--optional <f>`, `--glob <f>`, `--duplicates <n>`, `--rules <n>`, `--update` (revision
@@ -790,6 +890,39 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
   window size. The toggle is `[data-split-view-toggle]` (`aria-pressed`), the chooser
   `[data-panel-chooser="panel"]`; both panes stay at least 440 px.
 
+### Benchmarking: `perf-summary` and the benchmark plugin
+
+`/benchmark:measure` and `/benchmark:compare` (`plugins/benchmark/skills/`) are agent procedures
+over the performance checks `mods-scroll`, `large-library`, `collection-scale` (sandbox),
+`download-churn` (any game) and `plugins-page` (`--bethesda-sandbox`, source builds only).
+Builds are given as `--exe <path>` or `--dev-dir <path>` (built with
+`doodlebot build --checkout <dir> --production` and launched with `--production`); nothing is
+downloaded. Each build gets its own new `VORTEX_AI_CACHE_DIR` with a null OAuth tombstone, and
+runs alternate A and B, five each by default (three at least). Each run is
+`doodlebot up <build flags> <game flags> --fresh`, `doodlebot call automation_status`
+(recording `vortexVersion` and `nodeEnv`), `doodlebot test <check> <options>` (capturing the
+`evidence: <path>` line) and `doodlebot down`. A run whose check exits 1 after writing evidence
+counts, with its failures listed; a run with no evidence is not counted.
+
+```powershell
+doodlebot perf-summary --check mods-scroll --a <a1.json> --a <a2.json> --a <a3.json> [--b <b1.json> ...] --out <report.md> [--json]
+```
+
+- `perfSummary.ts` reads a fixed metric table per check (milliseconds, or per minute for
+  `download-churn`'s `persistDiffs.perMinute`; lower is better). A metric missing from a file is
+  left out for that file.
+- Per metric: each side's median (the mean of the middle two for an even count), minimum,
+  maximum and count, and `(median B − median A) / median A × 100` (omitted when median A is 0),
+  to one decimal place.
+- Verdicts: **Blocked** if either side has fewer than three values (applied first); **Faster**
+  if B's maximum is below A's minimum; **Slower** if B's minimum is above A's maximum;
+  otherwise **No clear difference**. Overall: Blocked if either side has fewer than three runs
+  or every metric is Blocked; else Slower if any metric is, else Faster if any is, else No clear
+  difference. It also states the chance of a non-overlap by chance.
+- Without `--b` there is no difference column, no Verdict section and no overall verdict.
+- Reports go to `harness/.artifacts/benchmarks/<UTC time>-<slug>/report.md`; the skill adds the
+  question, builds, measurement, conditions and the machine-quiet caveat.
+
 ## Configuration and recovery
 
 | Variable                                   | Purpose/default                                                            |
@@ -807,11 +940,21 @@ Outside `ai:test`; each writes JSON evidence (and screenshots or a `.cpuprofile`
 | `VORTEX_AI_PNPM`                           | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx` |
 | `VORTEX_AI_KIT`                            | Set by `script`: the `file://` URL of `kit.ts`                             |
 
+Relative paths in these variables resolve against the workspace root (the shim's working
+directory), not the caller's directory; `VORTEX_AI_SOURCE_DIR` (the managed source, default
+`.vortex-src`) and `VORTEX_AI_DEV_DIR` are resolved explicitly. An explicit `--dev-dir` that is
+not a built checkout fails with
+`--dev-dir <abs> is not a built Vortex checkout: <reason>` (`doctor` reports it as a failing
+`Vortex` check instead); a `VORTEX_AI_DEV_DIR` or managed checkout keeps the fallback.
+
 - Unclear prerequisites: `doctor` with the same flags. No UI write tools: Vortex started without a
   token. HTTP 403: token, host or origin mismatch.
-- `A harness Vortex is running ...`: run `pnpm run ai -- down`; it follows the instance record,
-  so no cache or port options are needed. If no harness Vortex window is open and the refusal
-  persists (a reused pid), delete `harness/.cache/instance.json` ("One instance").
+- `A harness Vortex is running ...`: run `doodlebot down`; it follows the instance record, even
+  from another workspace, so no cache or port options are needed. If no harness Vortex window is
+  open and the refusal persists (a reused pid), delete `~/.doodlebot/instance.json`
+  ("One instance").
+- `doodlebot` not found: run `node bin/doodlebot.cjs link` in the workspace (or
+  `/doodlebot:setup`); `link` reports `on PATH: no` when its folder must be added to the PATH.
 - Startup errors name the isolated `userData/vortex.log`. Don't print whole logs: auth flows may
   log sensitive URLs.
 - An instance predating `automation_status`: update its extension and restart it with its MCP

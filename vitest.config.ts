@@ -13,12 +13,7 @@ export default defineConfig({
   test: {
     environment: "node",
     // harness/**/*.spec.ts are Playwright e2e and deliberately not matched.
-    include: [
-      "src/**/*.test.ts",
-      "harness/src/**/*.test.ts",
-      "harness/benchmarks/**/*.test.ts",
-      "benchmarks/**/*.test.ts",
-    ],
+    include: ["src/**/*.test.ts", "harness/src/**/*.test.ts"],
     env: {
       // Operator setup must not change pure command-selection tests.
       VORTEX_AI_PNPM: "",

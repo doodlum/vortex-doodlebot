@@ -7,14 +7,14 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { clearInstanceRecord, INSTANCE_RECORD, writeInstanceRecord } from "./runningVortex";
 import { buildCheckout, buildEnvironment, restoreChanged, saveFiles } from "./vortexBuild";
 
-// The instance record lives in a private cache, and this process counts as a running Vortex.
+// The instance record lives in a private state folder, and this process counts as a running Vortex.
 vi.mock("./paths", async (original) => {
   const nodeFs = await import("node:fs");
   const nodeOs = await import("node:os");
   const nodePath = await import("node:path");
   return {
     ...(await original<typeof import("./paths")>()),
-    DEFAULT_CACHE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "vortex-build-cache-")),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "vortex-build-cache-")),
   };
 });
 vi.mock("./processes", async (original) => ({
@@ -148,7 +148,7 @@ describe("building a checkout", () => {
     await expect(
       buildCheckout({ checkout, production: true, installedPnpm: "11.10.0", runner: mustNotRun }),
     ).rejects.toThrow(
-      `A harness Vortex is running from ${checkout} (pid ${process.pid}); run \`pnpm run ai -- down\` before building it.`,
+      `A harness Vortex is running from ${checkout} (pid ${process.pid}); run \`doodlebot down\` before building it.`,
     );
     expect(fs.readFileSync(path.join(checkout, "etc", "vortex.api.md"), "utf8")).toBe("api v1\n");
     // One running from another checkout, or an installed Vortex, does not stop the build.

@@ -21,9 +21,13 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `eval`
 - `evidence`
 - `fill`
+- `fixture`
 - `help`
 - `install`
+- `link`
+- `log`
 - `login-import`
+- `perf-summary`
 - `pr-checks`
 - `pr-preflight`
 - `press`
@@ -39,22 +43,27 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `snapshot`
 - `source`
 - `status`
+- `test`
 - `tools`
 - `up`
+- `version`
 - `vortex-e2e`
 - `watch`
 
 ## Full help
 
 ```text
-doodlebot — automation for stock Vortex and Vortex development
+doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-First run (no account or installed game required)
-  pnpm install
-  pnpm run build
-  pnpm run ai -- doctor --installed --sandbox
-  pnpm run ai -- setup --installed --sandbox
-  pnpm run ai:test
+Used from Claude Code or Codex through the doodlebot (setup, start, stop, status), vortex
+(design, fix, drive, qa, ui-test, pr) and benchmark (measure, compare) plugins, whose
+commands run these.
+
+The companion itself
+  version [--json]       This workspace's version, commit and path
+  link [--bin-dir <dir>] Write the doodlebot shims into a folder on the PATH
+  update --ref <ref>     Move this workspace to a tag or branch of origin, then install
+                         and build (refuses while a harness Vortex runs or with local changes)
 
 Initial account setup (only for Nexus collections)
   setup --oauth          Open isolated Vortex, wait for browser login, cache OAuth
@@ -163,8 +172,21 @@ Driving a running instance
   purge                  Remove files recorded in this game's deployment manifest
   e2e <collection>       Fresh start, install, verify, deploy, launch real game
     --runs <n> --keep --purge; --no-launch for installation/deployment only
+  log                    The running instance's Vortex log, filtered
+    --level info|warn|error  Lowest level kept (default warn)
+    --tail <n>           Last n entries (default 50)
+    --since <ISO time>   Entries at or after this time
+    --json               LogEntry[] with continuation lines in each message
+  fixture mod --out <zip> [--name <text>]
+                         A one-file mod archive (textures/<name>.txt) for install checks
 
 Testing and iteration
+  test <suite> [args...] Run a suite or check from the workspace root; every argument after
+                         the suite is the suite's (core: Playwright's)
+  test --list            List the suites
+  perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
+                         Medians, ranges and a verdict from performance-check evidence; one
+                         side (no --b) has no verdict
   responsive             Scan width AND height changes; persist JSON evidence
     --viewports 1024x720,1280x720,1280x1080,1920x1080   (quote the list in PowerShell)
     --screenshots        Save PNG per viewport
@@ -191,6 +213,6 @@ Target and isolation (repeat the same flags for all commands)
                          up fails unless the renderer loaded production React
 
 Without a target flag: .vortex-src if present, otherwise installed Vortex.
-Human guides: https://doodlum.github.io/vortex-doodlebot/
+Relative paths you type are yours: they resolve against the directory you run doodlebot in.
 For Vortex changes follow its contribution rules and task-specific documentation.
 ```

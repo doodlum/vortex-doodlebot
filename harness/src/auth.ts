@@ -11,7 +11,7 @@ export async function requireOAuth(mcp: VortexMcpClient): Promise<AuthStatus> {
   const status = await mcp.call<AuthStatus>("nexus_auth_status");
   if (status.oauthPresent !== true || status.oauthRefreshable !== true) {
     throw new ConfigError(
-      "Nexus OAuth setup is incomplete. Run `pnpm run ai -- setup --oauth`, " +
+      "Nexus OAuth setup is incomplete. Run `doodlebot setup --oauth`, " +
         "complete login in the browser once; setup caches it automatically. " +
         "An API key alone cannot authenticate collections. Credentials are never printed.",
     );

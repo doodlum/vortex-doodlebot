@@ -1,8 +1,37 @@
 # Architecture
 
 Design rationale for doodlebot's MCP server: how it reflects Vortex's API instead of
-hand-wrapping it, and where that approach reaches its limits. `pnpm run ai -- tools --json`
+hand-wrapping it, and where that approach reaches its limits. `doodlebot tools --json`
 lists the live tools and their schemas. See [README.md](README.md) for usage.
+
+## Plugins, CLI and workspace
+
+```text
+ Claude Code / Codex window
+   /doodlebot:*   /vortex:*   /benchmark:*      (plugins from the doodlebot marketplace)
+                             v
+                doodlebot  (doodlebot.cmd / doodlebot shim on the PATH, written by `link`)
+                             v
+          node <workspace>/bin/doodlebot.cjs  ->  tsx harness/src/cli.ts
+                             v
+   workspace (clone of this repo): harness, built extension, caches, .vortex-src
+                             v
+       one isolated test Vortex per machine (record: ~/.doodlebot/instance.json)
+```
+
+The plugins (`plugins/<name>/`, listed by `.claude-plugin/marketplace.json` and
+`.agents/plugins/marketplace.json`) hold only procedures: skills, two Claude Code agents and the
+EGM resources. They run nothing themselves; every action is a `doodlebot` command, and
+`harness/src/commands.ts` is the one list of commands they may name. The runtime lives in a
+workspace rather than the plugin folder, so a plugin update never replaces code under a live
+instance or its caches; `doodlebot version --json` tells a skill which workspace to use and
+whether its version matches the plugin's. No MCP server is declared in the plugin manifests: the
+server exists only while the test Vortex runs, and the CLI already exposes every tool.
+
+`bin/doodlebot.cjs` runs the CLI from the workspace root with `INIT_CWD` set to the caller's
+directory; `cliArgs.ts` resolves the paths a caller types against that directory and kit defaults
+against the workspace root. `update` is handled in `bin/update.cjs`, in plain Node, before tsx
+loads, because it replaces that code.
 
 ## Reflection over hand-wrapping
 
@@ -133,20 +162,23 @@ do not restore old refresh tokens or copy another game's mods into a blank profi
 
 ## One instance at a time
 
-doodlebot runs a single harness Vortex at a time, by convention, with a few cheap refusals
-where a second one, or a rebuild under the running one, would damage data. There is no
+doodlebot runs a single harness Vortex per machine at a time, by convention, with a few cheap
+refusals where a second one, or a rebuild under the running one, would damage data. There is no
 ownership, locking or queueing: nothing serializes two harness commands, and the refusals
 read one file rather than coordinate processes.
 
-- **The instance record** is `harness/.cache/instance.json`, one fixed path whatever
-  `--cache-dir` a command uses, so every command finds the one instance. It holds
-  `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir?}`; `sourceDir` is the checkout
-  of a source build. `harness/src/runningVortex.ts` reads and writes it.
+- **The instance record** is `~/.doodlebot/instance.json` (`USER_STATE_DIR` in `paths.ts`), one
+  per-user path whatever workspace or `--cache-dir` a command uses, so every command on the
+  machine finds the one instance. A per-workspace record was rejected: nothing reliably lists
+  other workspaces. It holds `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir?}`;
+  `sourceDir` is the checkout of a source build. `harness/src/runningVortex.ts` reads and writes
+  it. The older `harness/.cache/instance.json` is deleted when found, unless it names a running
+  Vortex, which refuses the launch or `down` (`removeLegacyInstanceFiles` in `instance.ts`).
 - **Every kit launcher writes it** right after spawn and before readiness: `launchVortex` in
-  `instance.ts` (`up`, `setup`, `bootstrap`), the core suite's fixture, benchmark sessions,
-  benchmark setup and the signed-out zoom check. A record that cannot be written stops the
-  child and fails the launch. A Vortex started outside these launchers, such as a raw
-  Playwright or Electron launch, writes no record and is invisible to the refusals.
+  `instance.ts` (`up`, `setup`, `bootstrap`), the core suite's fixture and the signed-out zoom
+  check. A record that cannot be written stops the child and fails the launch. A Vortex started
+  outside these launchers, such as a raw Playwright or Electron launch, writes no record and is
+  invisible to the refusals.
 - **It is cleared after a confirmed exit**: `stopInstance` and `down` clear it once Vortex has
   quit; `down` waits up to 30 seconds, never signals the recorded pid, and reports a Vortex
   that does not exit. `runningVortex()` treats a record as stale, and clears it, when its pid
@@ -154,12 +186,14 @@ read one file rather than coordinate processes.
   A reused pid that belongs to another Electron app still looks alive; deleting the file is
   the recovery.
 - **Refusals.** `assertNoHarnessVortex(action)` stops a second launch, the core suite (a
-  Playwright `globalSetup`), a benchmark session, benchmark setup and the signed-out zoom
-  check while a harness Vortex runs. `assertNoVortexRunningFrom(checkout, action)` stops
-  `build`, source setup's builds and installs, `evidence run`, `pr-preflight`'s revert check
-  and `vortex-e2e`'s patch on the checkout the running Vortex was launched from. Benchmark
-  `resetGameSettings` refuses while Vortex runs. Each message names the pid and tells the
-  caller to run `pnpm run ai -- down` first.
+  Playwright `globalSetup`) and the signed-out zoom check while a harness Vortex runs;
+  `bootstrap` applies it before restarting anything when the running Vortex belongs to another
+  cache, so a second workspace gets the refusal rather than a port error.
+  `assertNoVortexRunningFrom(checkout, action)` stops `build`, source setup's builds and
+  installs, `evidence run`, `pr-preflight`'s revert check and `vortex-e2e`'s patch on the
+  checkout the running Vortex was launched from. `bin/update.cjs` applies the same running rule
+  to both records before updating a workspace. Each message names the pid and tells the caller
+  to run `doodlebot down` first.
 - `processes.ts` holds the platform checks the record relies on: `processAlive` (EPERM counts
   as alive) and `processImageName`.
 - Vortex source work happens on a branch of `.vortex-src` or in a checkout given with

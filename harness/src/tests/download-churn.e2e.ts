@@ -1,5 +1,5 @@
 /**
- * Opt-in measurement of what concurrent downloads cost Vortex: pnpm run ai:test:download-churn.
+ * Opt-in measurement of what concurrent downloads cost Vortex: doodlebot test download-churn.
  *
  * LAZ-1168: during large collection installs, persistence ran constantly on tiny diffs —
  * download progress and speed land in the persisted `persistent.downloads` hive — and the

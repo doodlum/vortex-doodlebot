@@ -15,7 +15,7 @@ const child = spawn(process.env.DOODLEBOT_DOCS_PYTHON ?? "python", args, {
 });
 child.on("error", (error) => {
   console.error(
-    "Documentation needs Python and requirements-docs.txt. See docs/maintaining-documentation.md. " +
+    "Documentation needs Python and requirements-docs.txt. See docs/contributing.md. " +
       error.message,
   );
   process.exitCode = 1;

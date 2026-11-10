@@ -1,27 +1,17 @@
 {
   "groups": [
     {
-      "name": "Human benchmark SDK and proposal cases",
-      "sources": ["^harness/benchmarks/", "^benchmarks/"],
-      "human": [
-        "docs/getting-started/setup.md",
-        "docs/reference/collections.md",
-        "docs/getting-started/first-session.md",
-        "docs/testing/benchmarks.md",
-        "docs/testing/adding-benchmarks.md",
-        "docs/testing/proposal.md",
-        "docs/testing/results.md",
-        "docs/testing/table-fixtures.md"
-      ],
-      "ai": ["harness/reference/script-api.md", "harness/reference/package-scripts.md"]
+      "name": "Plugins and commands",
+      "sources": ["^plugins/", "^\\.claude-plugin/", "^\\.agents/plugins/"],
+      "human": ["docs/reference/commands.md", "docs/get-started/install.md"],
+      "ai": ["AGENTS.md", "harness/AGENTS.md"]
     },
     {
       "name": "MCP and renderer tools",
       "sources": ["^src/.*\\.ts$"],
       "human": [
         "docs/reference/mcp-tools.md",
-        "docs/guides/calling-tools.md",
-        "docs/guides/ui-automation.md",
+        "docs/guides/drive-vortex.md",
         "docs/security.md",
         "docs/troubleshooting.md"
       ],
@@ -34,11 +24,14 @@
     },
     {
       "name": "CLI and configuration",
-      "sources": ["^harness/src/(cli|cliArgs|config|doctor|paths)\\.ts$"],
+      "sources": [
+        "^bin/",
+        "^harness/src/(cli|cliArgs|commands|config|doctor|paths|versionCommand|linkCommand|testCommand|fixtureCommand|logCommand|perfSummary)\\.ts$"
+      ],
       "human": [
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
-        "docs/getting-started/first-session.md"
+        "docs/get-started/set-up.md"
       ],
       "ai": ["harness/reference/cli.md", "harness/AGENTS.md"]
     },
@@ -48,8 +41,8 @@
         "^harness/src/(instance|runningVortex|processes|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
       ],
       "human": [
-        "docs/reference/sessions.md",
-        "docs/getting-started/setup.md",
+        "docs/concepts/one-test-vortex.md",
+        "docs/guides/sign-in.md",
         "docs/security.md",
         "docs/troubleshooting.md"
       ],
@@ -60,12 +53,7 @@
       "sources": [
         "^harness/src/(kit|mcpClient|cdp|uiDriver|uiSession|localMod|deployment|collections|largeLibrary|tableProbes|collectionScale|offlineCollection|profiling|recording|slowDownload|downloadServer|vortexLog|jsonFile)\\.ts$"
       ],
-      "human": [
-        "docs/reference/index.md",
-        "docs/getting-started/first-session.md",
-        "docs/guides/mod-workflows.md",
-        "docs/testing/benchmarks.md"
-      ],
+      "human": ["docs/guides/drive-vortex.md", "docs/guides/benchmark.md"],
       "ai": ["harness/reference/script-api.md", "harness/AGENTS.md", "harness/TESTING.md"]
     },
     {
@@ -75,7 +63,7 @@
       ],
       "human": [
         "docs/guides/source-development.md",
-        "docs/guides/evidence.md",
+        "docs/concepts/evidence.md",
         "docs/contributing.md"
       ],
       "ai": [
@@ -86,7 +74,7 @@
       ]
     },
     {
-      "name": "Checks and benchmarks",
+      "name": "Checks",
       "sources": [
         "^harness/src/tests/",
         "\\.test\\.ts$",
@@ -94,25 +82,16 @@
         "^vitest\\.config\\.ts$",
         "^package\\.json$"
       ],
-      "human": [
-        "docs/testing/running.md",
-        "docs/testing/integration.md",
-        "docs/testing/unit.md",
-        "docs/testing/benchmarks.md",
-        "docs/reference/package-scripts.md"
-      ],
-      "ai": ["harness/TESTING.md", "harness/reference/package-scripts.md"]
+      "human": ["docs/guides/regression-tests.md", "docs/contributing.md"],
+      "ai": ["harness/TESTING.md"]
     },
     {
       "name": "Harness implementation coverage",
       "sources": ["^harness/src/[^/]+\\.ts$"],
       "human": [
-        "docs/reference/index.md",
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
-        "docs/reference/sessions.md",
-        "docs/guides/source-development.md",
-        "docs/testing/running.md"
+        "docs/concepts/how-it-works.md"
       ],
       "ai": [
         "harness/reference/script-api.md",
@@ -125,11 +104,10 @@
       "name": "Design-first workflow",
       "sources": [
         "^harness/src/design(Command)?\\.ts$",
-        "^harness/egm/",
-        "^\\.claude/(settings\\.json|agents/|skills/vortex-elephant/)",
+        "^plugins/vortex/(resources|agents)/",
         "^designs/SITEMAP\\.md$"
       ],
-      "human": ["docs/guides/design-review.md", "docs/guides/agent-plugins.md"],
+      "human": ["docs/guides/design-a-feature.md", "docs/concepts/design-first.md"],
       "ai": ["harness/AGENT-WORKFLOW.md", "harness/AGENTS.md"]
     },
     {
@@ -140,7 +118,7 @@
         "^mkdocs\\.yml$",
         "^requirements-docs\\.txt$"
       ],
-      "human": ["docs/maintaining-documentation.md"],
+      "human": ["docs/contributing.md"],
       "ai": ["AGENTS.md", "harness/KNOWLEDGE-ROUTES.md", "harness/AGENT-WORKFLOW.md"]
     }
   ]

@@ -94,12 +94,12 @@ A positive exit without the fix is a failed negative control. An import/setup/co
 is inconclusive. When the reverted run fails, inspect the assertion and show it exercises the
 reported mechanism; the command cannot decide that causal question. Use `--skip-revert` when
 another task-appropriate control applies and explain why. Source mutation must be authorized,
-and no app may be using that checkout during a revert check: run `pnpm run ai -- down` first,
+and no app may be using that checkout during a revert check: run `doodlebot down` first,
 or the check refuses with "A harness Vortex is running from <checkout> (pid N); run
-`pnpm run ai -- down` before reverting it."
+`doodlebot down` before reverting it."
 
 For a design-bound change, run
-`pnpm run ai -- design scope <design> --checkout <checkout> --base <base-sha>` before
+`doodlebot design scope <design> --checkout <checkout> --base <base-sha>` before
 independent QA. It lists changed files outside the approved boundary and exits 1 if there are
 any; revert them, or amend the design and have the human approve its new digest.
 
@@ -169,12 +169,16 @@ has already run `down`; the reviewer stops its own app before checks that rewrit
 record evidence in that checkout:
 
 ```powershell
-pnpm run ai -- up --dev-dir <qa-checkout> --sandbox --fresh
-pnpm run ai -- down
-pnpm run ai -- design scope <design> --checkout <qa-checkout> --base <base-sha>
-pnpm run ai -- evidence run --checkout <qa-checkout> --base <base-sha> --out <new-evidence.json> -- pnpm run verify
-pnpm run ai:preflight -- --checkout <qa-checkout> --base <base-sha>
+doodlebot up --dev-dir <qa-checkout> --sandbox --fresh      # in the background, with a log
+doodlebot down
+doodlebot design scope <design> --checkout <qa-checkout> --base <base-sha>
+doodlebot evidence run --checkout <qa-checkout> --base <base-sha> --out <new-evidence.json> -- pnpm run verify
+doodlebot pr-preflight --checkout <qa-checkout> --base <base-sha>
 ```
+
+`/vortex:qa` runs this kind of review through the `vortex-driver` agent and returns a run
+report; `/vortex:pr` runs `pr-preflight`, prepares the description (above) and checks the PR
+with `doodlebot pr-checks`, pushing or opening a PR only when asked.
 
 Resolve confirmed findings, identify the resulting revision and renew affected QA. Verify that
 test-only follow-ups really contain no production behavior change. Run expensive final gates

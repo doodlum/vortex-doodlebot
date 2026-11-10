@@ -15,7 +15,7 @@ import type { Page } from "@playwright/test";
 import {
   inspectCollectionCompletion,
   waitForCollectionCompletion,
-} from "../harness/benchmarks/collectionCompletion";
+} from "../harness/src/collectionCompletion";
 
 import {
   accessibleName,

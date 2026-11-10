@@ -34,10 +34,10 @@ criteria. Do not silently replace a supplied design with a generic layout.
 ## Designing a change before coding (EGM)
 
 Features and refactors, for Vortex or for this kit, start with a design written and reviewed
-with Google's Elephant-Goldfish Model (EGM) plugin. Follow the `vortex-elephant` skill
-(`.claude/skills/vortex-elephant/SKILL.md`; Codex agents read it at that path). The approved
-design `designs/egm-workflow.md` defines the procedure; `harness/egm/vortex-change-standard.md`
-defines what a design must contain.
+with Google's Elephant-Goldfish Model (EGM) plugin. Follow the `design` skill of the `vortex`
+plugin (`/vortex:design`, `plugins/vortex/skills/design/SKILL.md`; Codex agents read it at that
+path). The approved design `designs/egm-workflow.md` defines the procedure;
+`plugins/vortex/resources/vortex-change-standard.md` defines what a design must contain.
 
 When a design is required:
 
@@ -66,18 +66,21 @@ Rules:
   head, and get a new approval.
 
 ```powershell
-pnpm run ai -- design new <file> --title "<title>" --target vortex   # or doodlebot; refuses an existing file
-pnpm exec oxfmt <file>                                              # before every check whose digest you record
-pnpm run ai -- design check <file> --ready --json                   # structure, open questions, TBD; prints contentSha256
-pnpm run ai -- design scope <file> --checkout <dir> --base <sha>    # exit 1 names changed files outside the boundary
+doodlebot design new <file> --title "<title>" --target vortex   # or doodlebot; refuses an existing file
+pnpm exec oxfmt <file>                                         # before every check whose digest you record
+doodlebot design check <file> --ready --json                   # structure, open questions, TBD; prints contentSha256
+doodlebot design scope <file> --checkout <dir> --base <sha>    # exit 1 names changed files outside the boundary
 ```
 
-After implementation: `design scope` reports `IN SCOPE`, `pnpm run ai -- down`, independent
+After implementation: `design scope` reports `IN SCOPE`, `doodlebot down`, independent
 QA in a fresh context starting with `up --fresh`, then the readiness manifest. A supplied
 visual design is an input to the EGM design, not a replacement for it; see
 "Implementing a supplied visual design" below.
 
 ## Reproduce, change, verify
+
+`/vortex:fix` follows this procedure for a bug report and `/vortex:drive` for a scenario; the
+steps below are what they do.
 
 1. Identify the target: stock Vortex for an automation-tool issue; the source
    checkout for a Vortex application change. Record the version/commit, game,
@@ -114,7 +117,8 @@ harness renderer (see "Scratch scripts and renderer diagnostics" in AGENTS.md). 
 are leads; the check that settles a question is the one added to the kit.
 
 For an authorized A/B, use the same fixture and comparable build settings at base and head.
-Run `pnpm run ai -- down` before switching the checkout or changing its build output, then
+For timings, `/benchmark:compare` runs a performance check alternately on both builds and
+summarizes the evidence with `doodlebot perf-summary`. Run `doodlebot down` before switching the checkout or changing its build output, then
 build and `up` again; `build` refuses while a Vortex runs from that checkout. Do not switch a
 checkout the user is trying out; agree with them when their demo can go down. Do not
 temporarily patch, revert or rebuild a checkout that the user has made read-only. Set zoom
@@ -171,14 +175,14 @@ the checkout before verify or any check that rewrites its output. Use the checko
 non-writing checks while it is live.
 
 Vortex's own instructions say E2E runs only when asked. When requested, use
-`pnpm run ai:vortex-e2e -- --checkout <dir>` for the baseline, then the
+`doodlebot vortex-e2e --checkout <dir>` for the baseline, then the
 head with `--compare <baseline-report.json>`. This runner temporarily patches fixtures and
 therefore needs source-mutation authorization. Preserve each first outcome and report
 regressions, existing failures, skipped/missing tests, changed failure causes and execution
 conditions separately. Missing credentials and an all-skipped run cannot establish coverage.
 The kit's account-free core suite and upstream E2E prove different contracts.
 
-Use [PULL-REQUESTS.md](PULL-REQUESTS.md) for the description and fresh-review brief. Each claim
+Use [PULL-REQUESTS.md](PULL-REQUESTS.md) (`/vortex:pr`) for the description and fresh-review brief. Each claim
 links to the corresponding evidence and revision. The prepared description ends with the
 doodlebot footer; `pr-preflight --pr <number>` checks an existing PR's metadata. New lessons
 follow the verification and promotion policy in AGENT-WORKFLOW.md.
@@ -186,26 +190,26 @@ follow the verification and promotion policy in AGENT-WORKFLOW.md.
 ## One Vortex at a time
 
 Follow [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md) for task routing, worker briefs, authorization,
-independent QA and handoff. doodlebot runs one harness Vortex at a time, and one agent drives
-it. Nothing schedules or queues commands; the convention is yours to keep, backed by a few
-refusals where a second process would damage data:
+independent QA and handoff. doodlebot runs one harness Vortex at a time on the machine, and one
+agent drives it. Nothing schedules or queues commands; the convention is yours to keep, backed by
+a few refusals where a second process would damage data:
 
-| What is protected                      | What refuses                                                                                                                  |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| The running instance                   | Every kit launcher (`up`, `setup`, `bootstrap`, the core suite, benchmark sessions and setup, `ai:test:zoom -- --signed-out`) |
-| The checkout a source Vortex runs from | `build`, `source` builds and installs, `evidence run`, `pr-preflight`'s revert check, `vortex-e2e`                            |
-| Benchmark game settings                | `resetGameSettings` while Vortex runs                                                                                         |
+| What is protected                      | What refuses                                                                                                            |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| The running instance                   | Every kit launcher (`up`, `setup`, `bootstrap`, the core suite, `doodlebot test zoom --signed-out`), from any workspace |
+| The workspace code under it            | `doodlebot update`                                                                                                      |
+| The checkout a source Vortex runs from | `build`, `source` builds and installs, `evidence run`, `pr-preflight`'s revert check, `vortex-e2e`                      |
 
-Every kit launcher writes the instance record `harness/.cache/instance.json` (this path,
-whatever `--cache-dir` says) when it starts Vortex, and refuses first if a recorded Vortex is
-alive:
+Every kit launcher writes the instance record `~/.doodlebot/instance.json` (this path, whatever
+workspace or `--cache-dir` is used) when it starts Vortex, and refuses first if a recorded
+Vortex is alive:
 
 ```text
-A harness Vortex is running (pid N, cache C); run `pnpm run ai -- down` before <action>.
-A harness Vortex is running from <checkout> (pid N); run `pnpm run ai -- down` before <action>.
+A harness Vortex is running (pid N, cache C); run `doodlebot down` before <action>.
+A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before <action>.
 ```
 
-Run `pnpm run ai -- down` and retry. `down` waits for a clean exit and clears the record; a
+Run `doodlebot down` and retry. `down` waits for a clean exit and clears the record; a
 record whose pid is dead or now belongs to another program is stale and is cleared on the next
 check. A Vortex started outside the kit's launchers (a raw Playwright or Electron start, or the
 user's own Vortex) writes no record and is invisible to these refusals.
@@ -215,14 +219,15 @@ user's own Vortex) writes no record and is invisible to these refusals.
   delegate distinct read-only questions or contracts using the canonical brief and
   PULL-REQUESTS.md supplements; read-only specialists use the identified source and saved
   evidence and start no Vortex. Only one worker edits a checkout or drives the app at a time.
-- **Vortex source** is a branch of `.vortex-src` (prepared by `pnpm run ai:source`) or a
+- **Vortex source** is a branch of `.vortex-src` (prepared by `doodlebot source`) or a
   checkout given with `--dev-dir`. Use the same target flags on every command.
 - **Kit changes.** Verified kit lessons may be committed and pushed to `main` after
   `pnpm run ci` passes (root AGENTS.md). If commit or publication is outside the brief,
   preserve the identified diff and hand it to the agent accountable for the task; candidate
   lessons go to that agent for verification and authorized integration.
 - `pnpm run verify` and `vortex-e2e` need any Vortex running from that checkout stopped first.
-  The core suite (`ai:test`) starts its own Vortex, so it refuses while any harness Vortex runs.
+  The core suite (`doodlebot test core`) starts its own Vortex, so it refuses while any harness
+  Vortex runs.
 - **Timing needs a quiet machine.** Builds, a second Vortex (the user's own included) or other
   heavy work compete for CPU, so a measurement taken alongside them is noise. Before timing,
   check that nothing else is building or running Vortex; say in the PR what else was running,
@@ -232,7 +237,7 @@ user's own Vortex) writes no record and is invisible to these refusals.
 
 A refusal happens before the refused command changes anything. A failure after work starts
 may need inspection and cleanup; if `down` reports an instance that does not exit, close that
-window and retry. Deleting `harness/.cache/instance.json` is the recovery only after you have
+window and retry. Deleting `~/.doodlebot/instance.json` is the recovery only after you have
 confirmed that its pid is not a harness Vortex.
 
 ### Review starts when the design is settled
@@ -244,8 +249,8 @@ let the user try a demo, and start QA only when the user says the design is sett
 has no design questions). For a feature or refactor, settled means the EGM design is approved.
 Stop a running reviewer as soon as the direction changes.
 
-Independent QA starts after the author has run `pnpm run ai -- down`, in a fresh context, and
-begins with `up --fresh` so it does not inherit the author's profile state.
+Independent QA (`/vortex:qa`) starts after the author has run `doodlebot down`, in a fresh
+context, and begins with `up --fresh` so it does not inherit the author's profile state.
 
 ### A reviewer runs only the head it reviews
 
@@ -254,11 +259,11 @@ user's screen, and it looks like the author's work went wrong. Review the head y
 When a new one is pushed, move the checkout to it before starting Vortex again:
 
 ```powershell
-pnpm run ai -- down
+doodlebot down
 git -C .vortex-src fetch origin
 git -C .vortex-src checkout --detach <sha>
-pnpm run ai -- build --checkout .vortex-src
-pnpm run ai -- up --dev-dir .vortex-src --fresh --sandbox   # the task's fixture flags
+doodlebot build --checkout .vortex-src
+doodlebot up --dev-dir .vortex-src --fresh --sandbox   # the task's fixture flags; run it in the background
 ```
 
 Use the `--dev-dir` checkout instead of `.vortex-src` when the task names one. `git checkout`
@@ -272,10 +277,10 @@ rebuild or switch that checkout while it runs: `build`, `evidence run` and `pr-p
 revert check refuse while a Vortex runs from it. Prepare it the same way:
 
 ```powershell
-pnpm run ai -- down
+doodlebot down
 git -C .vortex-src checkout --detach <sha>
-pnpm run ai -- build --checkout .vortex-src
-pnpm run ai -- up --dev-dir .vortex-src --fresh --sandbox
+doodlebot build --checkout .vortex-src
+doodlebot up --dev-dir .vortex-src --fresh --sandbox
 ```
 
 Leave it running until they're done. To show them a new head, repeat the four commands with the
@@ -313,21 +318,21 @@ vertical clipping; run the same height at different widths to expose wrapping.
 Record the actual window and renderer sizes because the OS may clamp requests.
 
 ```powershell
-pnpm run ai -- responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"
+doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"
 ```
 
 Run a sweep in each relevant state, using a distinct `--label` for artifacts:
 
-| State                             | What to verify                                   |
-| --------------------------------- | ------------------------------------------------ |
-| Empty list / first run            | Setup guidance and primary action remain visible |
-| Populated or virtualized list     | Filtering, scrolling, selection, row actions     |
-| Thousands of mods                 | `ai:test:large-library`, `ai:test:mods-scroll`   |
-| Long names or localized text      | Wrapping, truncation, accessible names           |
-| Selection / expanded details      | Actions stay reachable; focus remains useful     |
-| Modal / stacked modal / installer | Dialog scope, scrollable body, footer actions    |
-| Loading / disabled / failure      | Progress, retry, cancellation, useful errors     |
-| Signed out / authenticated        | Correct setup affordances without repeated login |
+| State                             | What to verify                                               |
+| --------------------------------- | ------------------------------------------------------------ |
+| Empty list / first run            | Setup guidance and primary action remain visible             |
+| Populated or virtualized list     | Filtering, scrolling, selection, row actions                 |
+| Thousands of mods                 | `doodlebot test large-library`, `doodlebot test mods-scroll` |
+| Long names or localized text      | Wrapping, truncation, accessible names                       |
+| Selection / expanded details      | Actions stay reachable; focus remains useful                 |
+| Modal / stacked modal / installer | Dialog scope, scrollable body, footer actions                |
+| Loading / disabled / failure      | Progress, retry, cancellation, useful errors                 |
+| Signed out / authenticated        | Correct setup affordances without repeated login             |
 
 For repeatable state setup, use documented Redux actions/events via
 `vortex_dispatch` and verify the resulting state. Use the UI when a private
@@ -342,7 +347,7 @@ original window size on success and failure.
 
 ## Verification boundaries
 
-`pnpm run ci` checks this kit without launching Vortex. `pnpm run ai:test`
+`pnpm run ci` checks this kit without launching Vortex. `doodlebot test core`
 launches a real app with an isolated profile and disposable sandbox game. Neither
 proves an authenticated Nexus collection downloads or a purchased game launches;
 those require the additional setup and explicit collection/game scenario.

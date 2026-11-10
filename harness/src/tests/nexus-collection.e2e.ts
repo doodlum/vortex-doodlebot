@@ -1,4 +1,4 @@
-/** Opt-in live-service test: pnpm run ai:test:nexus after setup --oauth. */
+/** Opt-in live-service test: doodlebot test nexus after setup --oauth. */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -19,7 +19,7 @@ const config = { ...parent, cacheDir, gamePath, gameId: "stardewvalley", apiKey:
 const collection = "https://www.nexusmods.com/games/stardewvalley/collections/nudx7b/revisions/1";
 if (!fs.existsSync(authCacheFile(parent)))
   throw new ConfigError(
-    "Run pnpm run ai -- setup --oauth for this target first. This opt-in test requires a cached Nexus login and unattended downloads require a Premium account.",
+    "Run doodlebot setup --oauth for this target first. This opt-in test requires a cached Nexus login and unattended downloads require a Premium account.",
   );
 await stopStaleInstance(parent);
 fs.mkdirSync(gamePath, { recursive: true });

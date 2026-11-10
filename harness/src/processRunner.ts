@@ -1,5 +1,18 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createRequire } from "node:module";
 import os from "node:os";
+import path from "node:path";
+
+import { REPO_ROOT } from "./paths";
+
+/** tsx's CLI in this workspace's node_modules, to run with this Node. */
+export function tsxCli(): string {
+  try {
+    return createRequire(import.meta.url).resolve("tsx/cli");
+  } catch {
+    return path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+  }
+}
 
 export interface ProcessEvidenceOptions {
   executable: string;
@@ -121,10 +134,10 @@ export async function runEvidenceProcess(options: ProcessEvidenceOptions): Promi
 }
 
 /**
- * Where the caller ran the command from. `pnpm run ai -- …` starts the CLI in this repo's root,
- * whatever directory the caller was in, so `process.cwd()` is always the kit. pnpm (and npm) keep
- * the caller's directory in INIT_CWD. Without this, `script` or a command run from a Vortex
- * checkout ran in the kit instead, under the kit's pnpm.
+ * Where the caller ran the command from. The `doodlebot` shim (bin/doodlebot.cjs) starts the CLI
+ * in the workspace root, whatever directory the caller was in, so `process.cwd()` is always the
+ * kit; it keeps the caller's directory in INIT_CWD, as pnpm and npm do. Without this, `script`
+ * or a command run from a Vortex checkout ran in the kit instead, under the kit's pnpm.
  */
 export function callerCwd(explicit?: string, env: NodeJS.ProcessEnv = process.env): string {
   if (explicit !== undefined) return explicit;

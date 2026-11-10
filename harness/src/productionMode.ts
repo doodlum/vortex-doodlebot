@@ -53,7 +53,7 @@ export function productionErrorMessage(problem: string): string {
     `development React's, so it was stopped.\n\n` +
     `  The harness launches with NODE_ENV=production; something overrode it (NODE_OPTIONS, a ` +
     `preload, or a checkout whose main process forces development).\n` +
-    `  Check: pnpm run ai -- call automation_status   (nodeEnv, react.build)`
+    `  Check: doodlebot call automation_status   (nodeEnv, react.build)`
   );
 }
 
@@ -89,7 +89,7 @@ export function devBundleWarning(sourceDir: string): string {
     `its production build, but Vortex's own development-only branches, inlined at build ` +
     `time, still run (main-process file logging, renderer source-map support and process ` +
     `warning traces, missing-icon checks). For release parity rebuild it with ` +
-    `\`pnpm run ai -- build --checkout ${sourceDir} --production\`, which sets ` +
+    `\`doodlebot build --checkout ${sourceDir} --production\`, which sets ` +
     `NODE_ENV=production for the build only (nx caches the two modes separately).`
   );
 }

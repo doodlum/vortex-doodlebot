@@ -1,6 +1,6 @@
 /**
  * Opt-in check that a collection member whose download fails is installed by a resume:
- * pnpm run ai:test:collection-download-retry (fake Fallout 4: `up --bethesda-sandbox`).
+ * doodlebot test collection-download-retry (fake Fallout 4: `up --bethesda-sandbox`).
  *
  * A required member downloads from a local server (a direct member) that resets every
  * connection until the first install has ended. Vortex retries the download itself, then marks

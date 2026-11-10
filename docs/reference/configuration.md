@@ -1,92 +1,110 @@
-# Configuration reference
+# Configuration
 
-Run commands from the repository root. You can configure them with flags and environment
-variables; without either, the defaults below apply. `harness/.env` supplies private local
-values when present and is ignored by Git. The loader's explicit environment-value helper
-treats empty values as unset, so use a valid setting rather than an empty string when you
-need an override.
+This page lists the settings that change how doodlebot runs: flags, environment variables, and
+the files it keeps. You rarely need them; the commands choose sensible defaults, and you can ask
+the agent for a setting in plain words, such as "use the released Vortex" or "use port 3801".
+
+## Where settings come from
+
+The agent passes flags to `doodlebot` commands. Environment variables apply to every command in
+the agent's session. The workspace file `<workspace>/harness/.env`, when present, supplies
+private local values and is ignored by Git. An empty value counts as unset.
+
+Use the same target, game, cache and port settings for every command on one profile.
+
+## Paths
+
+- Path flags such as `--dev-dir`, `--exe`, `--game-path`, `--cache-dir` and `--out` are resolved
+  against the folder the command is run from, so a relative path works from any folder.
+- Relative paths in environment variables, and the defaults below, are resolved against the
+  workspace.
+- Arguments after `doodlebot test <suite>` are passed to the suite unchanged and resolved
+  against the workspace.
 
 ## Target selection
 
-An explicit source `--dev-dir` chooses that checkout. Otherwise `--installed` or
-`VORTEX_AI_INSTALLED=1` selects released Vortex. An explicit executable bypasses managed-source
-discovery. Without those choices, a configured developer directory or managed `.vortex-src`
-can take precedence over an installed app. Select the runtime explicitly when checking compatibility.
+An explicit `--dev-dir` chooses that source checkout. Otherwise `--installed` or
+`VORTEX_AI_INSTALLED=1` selects released Vortex, and `--exe` or `VORTEX_AI_EXE` names its
+executable. Without those choices, a configured source directory or the managed
+`<workspace>/.vortex-src` can take precedence over an installed Vortex, so name the target
+explicitly for checks you want to repeat.
+
+A `--dev-dir` that is not a built Vortex checkout fails with
+`--dev-dir <path> is not a built Vortex checkout: <reason>`. `doodlebot doctor` reports the
+same error as a failing `Vortex` check.
 
 ## Defaults
 
-Doodlebot runs one Vortex at a time. Without overrides it uses:
+| Setting         | Default                          | Override                               |
+| --------------- | -------------------------------- | -------------------------------------- |
+| Profile cache   | `<workspace>/harness/.cache`     | `--cache-dir` or `VORTEX_AI_CACHE_DIR` |
+| Reports         | `<workspace>/harness/.artifacts` | `VORTEX_AI_ARTIFACT_DIR`               |
+| MCP port        | 3701                             | `--port` or `VORTEX_MCP_PORT`          |
+| CDP port        | 9222                             | `--cdp-port` or `VORTEX_AI_CDP_PORT`   |
+| Instance record | `~/.doodlebot/instance.json`     | None                                   |
 
-| Setting       | Default              | Override                               |
-| ------------- | -------------------- | -------------------------------------- |
-| Profile cache | `harness/.cache`     | `--cache-dir` or `VORTEX_AI_CACHE_DIR` |
-| Task outputs  | `harness/.artifacts` | `VORTEX_AI_ARTIFACT_DIR`               |
-| MCP port      | 3701                 | `--port` or `VORTEX_MCP_PORT`          |
-| CDP port      | 9222                 | `--cdp-port` or `VORTEX_AI_CDP_PORT`   |
+Change a cache or port only when the default conflicts with something on your machine. Whatever
+cache you choose, the running test Vortex is recorded in `~/.doodlebot/instance.json`; see
+[One test Vortex at a time](../concepts/one-test-vortex.md).
 
-Change these only when a default conflicts with something on your machine, and then use the
-same values for every command on that session. Whatever cache you choose, the running instance
-is recorded in `harness/.cache/instance.json`, so every command can tell whether a Doodlebot
-Vortex is already running. See [troubleshooting](../troubleshooting.md#a-harness-vortex-is-running)
-if a command refuses because one is.
+## Environment variables
 
-## Environment settings
+| Variable                                    | Purpose and default                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `VORTEX_AI_INSTALLED`                       | Prefer installed Vortex when true                                                     |
+| `VORTEX_AI_EXE`                             | Explicit released executable                                                          |
+| `VORTEX_AI_DEV_DIR`                         | Explicit source checkout                                                              |
+| `VORTEX_AI_SOURCE_DIR`                      | Managed source location; default `.vortex-src` in the workspace                       |
+| `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source` clones                               |
+| `VORTEX_AI_VORTEX_REPO`                     | Explicit source repository as `owner/name`                                            |
+| `VORTEX_AI_PNPM`                            | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`            |
+| `VORTEX_MCP_TOKEN`                          | Bearer token for the MCP server; doodlebot creates a private one if unset             |
+| `VORTEX_MCP_PORT`                           | MCP port; default 3701                                                                |
+| `VORTEX_AI_CDP_PORT`                        | CDP port; default 9222                                                                |
+| `VORTEX_AI_GAME_ID`                         | Game ID; default `fallout4`; `--sandbox` chooses the sandbox game                     |
+| `VORTEX_AI_GAME_PATH`                       | Explicit game folder                                                                  |
+| `VORTEX_AI_CACHE_DIR`                       | Profile, baseline and login cache; default `harness/.cache` in the workspace          |
+| `VORTEX_AI_ARTIFACT_DIR`                    | Screenshots, reports and other outputs; default `harness/.artifacts` in the workspace |
+| `VORTEX_AI_HEADLESS`                        | Hide the window; off by default. Screenshots may be blank                             |
+| `VORTEX_AI_PRODUCTION`                      | Require production mode for a source build                                            |
+| `VORTEX_AI_NEXUS_API_KEY` / `NEXUS_API_KEY` | Optional legacy API key; not a login for collections                                  |
+| `VORTEX_AI_KIT`                             | Set by `doodlebot script` for the script it runs                                      |
+| `DOODLEBOT_DOCS_PYTHON`                     | Python executable for building this documentation                                     |
+| `DOODLEBOT_DOCS_BASE`                       | Git base revision for the documentation pairing check                                 |
 
-| Setting                                     | Purpose and default                                                                     |
-| ------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `VORTEX_AI_INSTALLED`                       | Prefer installed Vortex when true                                                       |
-| `VORTEX_AI_EXE`                             | Explicit released executable path                                                       |
-| `VORTEX_AI_DEV_DIR`                         | Explicit source target                                                                  |
-| `VORTEX_AI_SOURCE_DIR`                      | Managed source location; default `.vortex-src`                                          |
-| `VORTEX_AI_GITHUB_USER`                     | GitHub identity used by source fork discovery                                           |
-| `VORTEX_AI_VORTEX_REPO`                     | Explicit source repository as `owner/name`                                              |
-| `VORTEX_AI_PNPM`                            | Override for Vortex's own pinned pnpm; does not change the kit's pin                    |
-| `VORTEX_MCP_TOKEN`                          | Bearer token; the harness creates a persisted private default if unset                  |
-| `VORTEX_MCP_PORT`                           | MCP port; default 3701                                                                  |
-| `VORTEX_AI_CDP_PORT`                        | CDP port; default 9222                                                                  |
-| `VORTEX_AI_GAME_ID`                         | Game ID before fixture selection; default `fallout4`; `--sandbox` chooses the fake game |
-| `VORTEX_AI_GAME_PATH`                       | Explicit game install path                                                              |
-| `VORTEX_AI_CACHE_DIR`                       | Profile/baseline/OAuth cache; default `harness/.cache`                                  |
-| `VORTEX_AI_ARTIFACT_DIR`                    | Screenshots, reports and other task outputs; default `harness/.artifacts`               |
-| `VORTEX_AI_HEADLESS`                        | Hide the window; off by default                                                         |
-| `VORTEX_AI_PRODUCTION`                      | Require production mode for a source runtime                                            |
-| `VORTEX_AI_NEXUS_API_KEY` / `NEXUS_API_KEY` | Optional legacy API key; not OAuth for collections                                      |
-| `DOODLEBOT_DOCS_PYTHON`                     | Python executable for documentation build/serve only                                    |
-| `DOODLEBOT_DOCS_BASE`                       | Git base revision for paired-documentation checks in CI/review                          |
+Both ports must be distinct integers between 1 and 65535.
 
-Both debug ports must be distinct integers between 1 and 65535. Flags override their
-configured values for that command; keep overrides consistent for every command on the session.
-
-## Important flags
+## Common flags
 
 | Flag                                                   | Effect                                                                    |
 | ------------------------------------------------------ | ------------------------------------------------------------------------- |
-| `--installed`, `--exe`, `--dev-dir`                    | Choose the runtime                                                        |
-| `--cache-dir`, `--port`, `--cdp-port`                  | Choose the profile cache and endpoints                                    |
-| `--sandbox`                                            | Disposable local-install/deployment game                                  |
-| `--bethesda-sandbox`                                   | Fake Bethesda game with private per-user folders; requires source runtime |
-| `--isolate-user-folders`                               | Source-only per-game folder redirection                                   |
-| `--game`, `--game-path`, `--no-game`                   | Manage a chosen game or open only global UI                               |
-| `--with-api-key`                                       | Deliberately seed the legacy key in a sandbox; normally withheld          |
-| `--headless`, `--production`                           | Window visibility and source React mode                                   |
-| `--fresh`, `--rebuild-snapshot`, `--rebuild-extension` | Working-profile reset, baseline rebuild or extension rebuild              |
+| `--installed`, `--exe <path>`, `--dev-dir <path>`      | Choose the Vortex to run                                                  |
+| `--cache-dir`, `--port`, `--cdp-port`                  | Choose the profile cache and ports                                        |
+| `--sandbox`                                            | The disposable sandbox game                                               |
+| `--bethesda-sandbox`                                   | A fake Fallout 4 with private per-user folders; source builds only        |
+| `--isolate-user-folders`                               | Private per-user game folders for any game; source builds only            |
+| `--game <id>`, `--game-path <dir>`, `--no-game`        | Manage a chosen game, or open only the global UI                          |
+| `--with-api-key`                                       | Seed the legacy API key in a sandbox; normally withheld                   |
+| `--headless`, `--production`                           | Hide the window; require production mode for a source build               |
+| `--fresh`, `--rebuild-snapshot`, `--rebuild-extension` | Reset the working profile, rebuild the baseline, or rebuild the extension |
 
-Flags vary by command. The [CLI reference](cli.md) gives current built-in
-help; task guides show combinations. TypeScript `loadConfig(overrides)` uses a configuration
-object. `pnpm run ai -- script` passes the target, cache and port settings to your script; keep
-the environment it gives you.
+Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands.
 
-## Private and generated files
+## Files doodlebot keeps
 
-| Path                 | Contents                                                                 |
-| -------------------- | ------------------------------------------------------------------------ |
-| `harness/.cache`     | Default app profile, reusable baselines, saved login and `instance.json` |
-| `harness/.artifacts` | Default generated task outputs and local tools                           |
-| `harness/.env`       | Optional private local configuration                                     |
-| `dist/`              | Built Doodlebot extension                                                |
-| `.vortex-src/`       | Managed Vortex checkout                                                  |
+| Path                             | Contents                                                  |
+| -------------------------------- | --------------------------------------------------------- |
+| `~/.doodlebot/instance.json`     | The record of the running test Vortex                     |
+| `<workspace>/harness/.cache`     | Test profiles, baselines and saved logins                 |
+| `<workspace>/harness/.artifacts` | Run reports, benchmark reports, designs and other outputs |
+| `<workspace>/harness/.env`       | Optional private local configuration                      |
+| `<workspace>/dist/`              | The built doodlebot extension                             |
+| `<workspace>/.vortex-src/`       | The managed Vortex source clone                           |
 
-Git ignores the standard private storage paths, but custom paths, logs, backup files and
-screenshots still need privacy review before publication. A new cache directory can import the
-default saved OAuth; use the core fixtures for deliberately anonymous checks. See
-[security](../security.md).
+Git ignores these paths in the workspace, but logs, screenshots and reports still need a privacy
+check before you share them. See [Security and privacy](../security.md).
+
+## What's next
+
+- [Troubleshooting](../troubleshooting.md).
+- [doodlebot CLI](cli.md).

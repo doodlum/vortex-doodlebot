@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { processAlive } from "./processes";
-import { callerCwd, runInteractive } from "./processRunner";
+import { callerCwd, runInteractive, tsxCli } from "./processRunner";
 import * as processes from "./processRunner";
 import { runStreaming } from "./source";
 import { streamingRunner } from "./vortexBuild";
@@ -50,7 +50,7 @@ it("does not report a gracefully exited cancelled command as success", async () 
 
 describe("callerCwd", () => {
   it("runs a command where the caller was, not in the kit's root", () => {
-    // `pnpm run ai -- …` starts the CLI in the kit; pnpm keeps the caller's directory
+    // The doodlebot shim starts the CLI in the kit and keeps the caller's directory in INIT_CWD
     expect(callerCwd(undefined, { INIT_CWD: "J:/vortex/checkout" })).toBe("J:/vortex/checkout");
   });
 
@@ -58,6 +58,17 @@ describe("callerCwd", () => {
     expect(callerCwd("J:/elsewhere", { INIT_CWD: "J:/kit" })).toBe("J:/elsewhere");
     expect(callerCwd(undefined, {})).toBe(process.cwd());
     expect(callerCwd(undefined, { INIT_CWD: "" })).toBe(process.cwd());
+  });
+});
+
+describe("tsxCli", () => {
+  it("is the workspace's tsx CLI, which exists", () => {
+    const cli = tsxCli();
+    expect(path.isAbsolute(cli)).toBe(true);
+    expect(cli.replace(/\\/g, "/")).toMatch(
+      /\/node_modules\/(?:\.pnpm\/.*\/)?tsx\/dist\/cli\.mjs$/,
+    );
+    expect(fs.existsSync(cli)).toBe(true);
   });
 });
 

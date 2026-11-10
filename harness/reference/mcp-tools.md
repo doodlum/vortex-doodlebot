@@ -4,7 +4,7 @@
 
 Machine-facing reference. Read the operating manual and the user’s current scope before acting. Human instructions live under /docs.
 
-Discover the tools in your running instance with `pnpm run ai -- tools --json`. Runtime availability depends on Vortex and bearer-token configuration. This reference covers all **60** registrations in the current source.
+Discover the tools in your running instance with `doodlebot tools --json`. Runtime availability depends on Vortex and bearer-token configuration. This reference covers all **60** registrations in the current source.
 
 A token unlocks the token-required tools and makes **every request** require its bearer header. A diagnostic tool can still contact external services: `check_nexus_mod_updates` consumes Nexus API quota.
 

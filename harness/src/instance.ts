@@ -19,6 +19,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 
 import {
+  ConfigError,
   extensionRoot,
   LEGACY_EXTENSION_IDS,
   MCP_EXTENSION_ID,
@@ -35,12 +36,14 @@ import {
 import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
 import { preparePreload, verifyPreload } from "./mainPreload";
-import { normalizedPath } from "./paths";
+import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { processAlive } from "./processes";
 import {
   INSTANCE_RECORD,
   assertNoHarnessVortex,
   clearInstanceRecord,
+  isVortexProcess,
+  readInstanceRecordFile,
   runningVortex,
   writeInstanceRecord,
 } from "./runningVortex";
@@ -70,7 +73,7 @@ export async function registerLaunchedProcess(
       child.kill("SIGKILL");
       if (!(await waitForExit(child, 5_000)))
         throw new Error(
-          `Vortex ${child.pid} survived a failed launch; close it and run \`pnpm run ai -- down\`.`,
+          `Vortex ${child.pid} survived a failed launch; close it and run \`doodlebot down\`.`,
           { cause: error },
         );
     } catch (stopError) {
@@ -86,11 +89,22 @@ export async function registerLaunchedProcess(
 }
 
 /**
- * Delete the per-cache `instance.pid` and `<cache>/instance.json` an earlier kit wrote. For the
- * default cache `instance.json` is the one instance record itself, and is left alone here
- * (`runningVortex()` clears an unreadable one).
+ * Deal with the files earlier kits wrote: the per-cache `instance.pid` and `<cache>/instance.json`
+ * are deleted. `<DEFAULT_CACHE_DIR>/instance.json` was the one instance record before it moved
+ * to `~/.doodlebot`; it is read first, and while it names a running Vortex (the `runningVortex()`
+ * rule) the caller refuses with `action` ("starting Vortex" or "stopping Vortex"). Otherwise it
+ * is deleted too.
  */
-function removeLegacyInstanceFiles(config: HarnessConfig): void {
+function removeLegacyInstanceFiles(config: HarnessConfig, action: string): void {
+  const legacyDefault = path.join(DEFAULT_CACHE_DIR, "instance.json");
+  if (normalizedPath(legacyDefault) !== normalizedPath(INSTANCE_RECORD)) {
+    const legacy = readInstanceRecordFile(legacyDefault);
+    if (legacy !== undefined && isVortexProcess(legacy.pid))
+      throw new ConfigError(
+        `A harness Vortex from an older doodlebot is running (pid ${String(legacy.pid)}); stop it before ${action}.`,
+      );
+    fs.rmSync(legacyDefault, { force: true });
+  }
   fs.rmSync(path.join(config.cacheDir, "instance.pid"), { force: true });
   const legacyRecord = path.join(config.cacheDir, "instance.json");
   if (normalizedPath(legacyRecord) !== normalizedPath(INSTANCE_RECORD))
@@ -287,12 +301,12 @@ export function removeInstanceDir(dir: string, attempts = 5): void {
  * that says nothing about the real cause. The PID is only waited on, never signalled.
  */
 export async function stopStaleInstance(config: HarnessConfig): Promise<boolean> {
-  return stopStaleInside(config);
+  return stopStaleInside(config, "starting Vortex");
 }
 
 /**
  * `down`: stop the one running harness Vortex, wherever its cache is. The record names its
- * cache and MCP port, so a Vortex left in a benchmark or test cache, or started with another
+ * cache and MCP port, so a Vortex left in a test cache, or started with another
  * `--port`, is reached without the caller repeating those options. The profile check in
  * `stopStaleInside` still refuses to quit a Vortex whose profile is outside that cache. Only
  * `down` follows the record; `up` and `bootstrap` stop only their own cache's leftover.
@@ -302,16 +316,19 @@ export async function stopRunningInstance(
   write: (message: string) => void = (message) => process.stdout.write(`${message}\n`),
 ): Promise<boolean> {
   const record = runningVortex();
-  if (record === undefined) return stopStaleInside(config);
+  if (record === undefined) return stopStaleInside(config, "stopping Vortex");
   if (normalizedPath(record.cacheDir) !== normalizedPath(config.cacheDir))
     write(
       `Stopping the harness Vortex of cache ${record.cacheDir} (MCP port ${String(record.mcpPort)}).`,
     );
-  return stopStaleInside({ ...config, cacheDir: record.cacheDir, mcpPort: record.mcpPort });
+  return stopStaleInside(
+    { ...config, cacheDir: record.cacheDir, mcpPort: record.mcpPort },
+    "stopping Vortex",
+  );
 }
 
-async function stopStaleInside(config: HarnessConfig): Promise<boolean> {
-  removeLegacyInstanceFiles(config);
+async function stopStaleInside(config: HarnessConfig, action: string): Promise<boolean> {
+  removeLegacyInstanceFiles(config, action);
   // Clears a stale record (dead pid, or a pid now owned by something that is not Vortex).
   const running = runningVortex();
   const pid =
@@ -418,7 +435,7 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
   // One harness Vortex at a time. `up` and `bootstrap` stop this cache's own leftover first
   // (stopStaleInstance), which clears its record; any other running one is refused here.
   assertNoHarnessVortex("starting Vortex");
-  removeLegacyInstanceFiles(config);
+  removeLegacyInstanceFiles(config, "starting Vortex");
   if (target.kind === "dev" && target.args[0] !== undefined && !fs.existsSync(target.executable))
     target.executable = resolveDevElectron(target.args[0]);
   installSandboxExtension(userDataDir, config);

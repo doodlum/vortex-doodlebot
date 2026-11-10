@@ -13,5 +13,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "benchmarks", "../benchmarks", "playwright.config.ts"]
+  "include": ["src", "playwright.config.ts"]
 }

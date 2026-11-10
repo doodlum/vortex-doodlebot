@@ -1,4 +1,4 @@
-/** Opt-in feature check against a running source build: pnpm run ai:test:zoom. */
+/** Opt-in feature check against a running source build: doodlebot test zoom. */
 import path from "node:path";
 import { expect } from "@playwright/test";
 import { attachToRenderer, captureScreenshot, realWheel } from "../cdp";

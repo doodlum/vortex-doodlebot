@@ -1,16 +1,17 @@
 /**
- * The one harness Vortex. doodlebot runs a single instance at a time; every launcher records
- * it in one fixed file, whatever cache it uses, so any command can tell whether it is running.
- * The refusals here protect data, not ownership: they stop a second launch, a rebuild of the
- * checkout Vortex runs from, and similar damage.
+ * The one harness Vortex. doodlebot runs a single instance per machine at a time; every
+ * launcher, in every workspace, records it in one per-user file (`~/.doodlebot/instance.json`),
+ * whatever cache it uses, so any command can tell whether it is running. The refusals here
+ * protect data, not ownership: they stop a second launch, a rebuild of the checkout Vortex runs
+ * from, and similar damage.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { ConfigError } from "./errors";
-import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
+import { USER_STATE_DIR, normalizedPath } from "./paths";
 import { processAlive, processImageName } from "./processes";
 
-export const INSTANCE_RECORD = path.join(DEFAULT_CACHE_DIR, "instance.json");
+export const INSTANCE_RECORD = path.join(USER_STATE_DIR, "instance.json");
 
 export interface InstanceRecord {
   pid: number;
@@ -39,9 +40,14 @@ export function writeInstanceRecord(record: InstanceRecord): void {
 }
 
 export function readInstanceRecord(): InstanceRecord | undefined {
+  return readInstanceRecordFile(INSTANCE_RECORD);
+}
+
+/** A record file in the current format, or undefined when it is missing or unreadable. */
+export function readInstanceRecordFile(file: string): InstanceRecord | undefined {
   let value: unknown;
   try {
-    value = JSON.parse(fs.readFileSync(INSTANCE_RECORD, "utf8"));
+    value = JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
     return undefined;
   }
@@ -81,19 +87,24 @@ export function runningVortex(): InstanceRecord | undefined {
     if (fs.existsSync(INSTANCE_RECORD)) fs.rmSync(INSTANCE_RECORD, { force: true });
     return undefined;
   }
-  const image = processAlive(record.pid) ? processImageName(record.pid) : undefined;
-  if (image === undefined || !VORTEX_IMAGES.has(image)) {
+  if (!isVortexProcess(record.pid)) {
     clearInstanceRecord(record.pid);
     return undefined;
   }
   return record;
 }
 
+/** The running rule: the pid is alive and its image is Vortex or Electron. */
+export function isVortexProcess(pid: number): boolean {
+  const image = processAlive(pid) ? processImageName(pid) : undefined;
+  return image !== undefined && VORTEX_IMAGES.has(image);
+}
+
 export function assertNoHarnessVortex(action: string): void {
   const running = runningVortex();
   if (running !== undefined)
     throw new ConfigError(
-      `A harness Vortex is running (pid ${running.pid}, cache ${running.cacheDir}); run \`pnpm run ai -- down\` before ${action}.`,
+      `A harness Vortex is running (pid ${running.pid}, cache ${running.cacheDir}); run \`doodlebot down\` before ${action}.`,
     );
 }
 
@@ -104,6 +115,6 @@ export function assertNoVortexRunningFrom(checkout: string, action: string): voi
     normalizedPath(running.sourceDir) === normalizedPath(checkout)
   )
     throw new ConfigError(
-      `A harness Vortex is running from ${checkout} (pid ${running.pid}); run \`pnpm run ai -- down\` before ${action}.`,
+      `A harness Vortex is running from ${checkout} (pid ${running.pid}); run \`doodlebot down\` before ${action}.`,
     );
 }

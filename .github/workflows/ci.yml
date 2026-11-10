@@ -77,7 +77,7 @@ jobs:
           if ($install.ExitCode -ne 0 -or !(Test-Path -LiteralPath $env:VORTEX_AI_EXE)) {
             throw "Vortex installation failed: $($install.ExitCode)"
           }
-      - run: pnpm run ai:test:core
+      - run: node bin/doodlebot.cjs test core
         env:
           VORTEX_AI_EXE: ${{ runner.temp }}\vortex-release\Vortex.exe
       - uses: actions/upload-artifact@v4

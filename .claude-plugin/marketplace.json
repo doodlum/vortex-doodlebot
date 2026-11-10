@@ -1,0 +1,23 @@
+{
+  "name": "doodlebot",
+  "owner": {
+    "name": "doodlum"
+  },
+  "plugins": [
+    {
+      "name": "doodlebot",
+      "source": "./plugins/doodlebot",
+      "description": "Set up doodlebot and run its isolated test copy of Vortex."
+    },
+    {
+      "name": "vortex",
+      "source": "./plugins/vortex",
+      "description": "Fix, design, drive and check Vortex changes with doodlebot."
+    },
+    {
+      "name": "benchmark",
+      "source": "./plugins/benchmark",
+      "description": "Measure Vortex performance and compare two Vortex builds."
+    }
+  ]
+}

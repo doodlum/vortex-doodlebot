@@ -1,16 +1,14 @@
 #!/usr/bin/env -S node --experimental-strip-types
 /**
- * `doodlebot` — the operator-facing entry point to the AI harness.
+ * `doodlebot` — the companion's command line, run through bin/doodlebot.cjs (the `doodlebot`
+ * shim) by the doodlebot, vortex and benchmark plugins' commands.
  *
- * Two audiences, one binary. A human runs `doctor`/`up`/`watch` to get a driven
- * Vortex running; an agent then talks to that instance over MCP and only comes
- * back here for things MCP cannot do (start a process, rebuild a bundle). The
- * one-shot commands (`snapshot`, `click`, `responsive`, ...) exist so the whole
- * thing is usable from a plain shell before any MCP client is wired up — which
- * is also how you tell a broken harness from a broken MCP config.
+ * An agent runs `up` to get a driven Vortex running, then drives that instance over MCP or
+ * with the one-shot commands here (`snapshot`, `click`, `call`, ...), and comes back for what
+ * MCP cannot do (start a process, rebuild a bundle, run a suite). commands.ts lists every
+ * command; commands.test.ts keeps that list and this dispatcher equal.
  */
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -28,7 +26,7 @@ import { runDoctor, formatDoctorReport } from "./doctor";
 import { parseJson, stripBom } from "./jsonFile";
 import { RendererEvalRefused, evalInRenderer } from "./rendererEval";
 import { watchAndReload } from "./hotReload";
-import { abortOnSignals, callerCwd, runInteractive } from "./processRunner";
+import { abortOnSignals, callerCwd, runInteractive, tsxCli } from "./processRunner";
 import { authCacheFile, ensureExtensionBuilt, stopRunningInstance } from "./instance";
 import { VortexMcpClient } from "./mcpClient";
 import { requireRunning } from "./runningProfile";
@@ -61,6 +59,13 @@ import { runE2e } from "./e2e";
 import { designCommand } from "./designCommand";
 import { importLogin } from "./loginImport";
 import { e2eExitCode, formatE2eReport, playwrightRunner, runVortexE2e } from "./vortexE2e";
+import { versionCommand } from "./versionCommand";
+import { formatLink, link } from "./linkCommand";
+import { testCommand } from "./testCommand";
+import { fixtureCommand } from "./fixtureCommand";
+import { logCommand, vortexLogFile } from "./logCommand";
+import { perfSummaryCommand } from "./perfSummary";
+import { waitForCollectionCompletion } from "./collectionCompletion";
 import {
   buildVortexSource,
   commandEnv,
@@ -71,17 +76,32 @@ import {
   vortexSourceDir,
 } from "./source";
 
-function configFrom(flags: ParsedArgs["flags"]): HarnessConfig {
+/**
+ * The configuration the flags select. An explicit `--dev-dir` that is not a built checkout
+ * throws its ConfigError, except for `doctor`, which reports it as its failing Vortex check
+ * (`targetError`) against an empty installed target.
+ */
+function configFrom(
+  flags: ParsedArgs["flags"],
+  command: string,
+): { config: HarnessConfig; targetError?: string } {
   const overrides: ConfigOverrides = {};
+  let targetError: string | undefined;
   if (typeof flags.game === "string") overrides.gameId = flags.game;
   if (typeof flags["game-path"] === "string") overrides.gamePath = flags["game-path"];
   const devDir = typeof flags["dev-dir"] === "string" ? flags["dev-dir"] : undefined;
   if (devDir !== undefined || typeof flags.exe === "string" || flags.installed === true) {
-    overrides.target = resolveTargetSafely({
-      devDir,
-      exe: typeof flags.exe === "string" ? flags.exe : undefined,
-      preferInstalled: flags.installed === true,
-    });
+    try {
+      overrides.target = resolveTargetSafely({
+        devDir,
+        exe: typeof flags.exe === "string" ? flags.exe : undefined,
+        preferInstalled: flags.installed === true,
+      });
+    } catch (error) {
+      if (!(error instanceof ConfigError) || command !== "doctor") throw error;
+      targetError = error.message;
+      overrides.target = { kind: "installed", executable: "", args: [], appName: "Vortex" };
+    }
   }
   if (typeof flags.port === "string") overrides.mcpPort = Number(flags.port);
   if (typeof flags["cdp-port"] === "string") overrides.cdpPort = Number(flags["cdp-port"]);
@@ -93,11 +113,13 @@ function configFrom(flags: ParsedArgs["flags"]): HarnessConfig {
     throw new ConfigError("Choose one of --sandbox and --bethesda-sandbox.");
   }
   const keepKey = flags["with-api-key"] === true;
+  const result = (chosen: HarnessConfig) =>
+    targetError === undefined ? { config: chosen } : { config: chosen, targetError };
   if (flags["bethesda-sandbox"] === true) {
-    return localOnlyConfig(bethesdaSandboxConfig(config), keepKey);
+    return result(localOnlyConfig(bethesdaSandboxConfig(config), keepKey));
   }
   const chosen = flags.sandbox === true ? localOnlyConfig(sandboxConfig(config), keepKey) : config;
-  return flags["isolate-user-folders"] === true ? isolateUserFolders(chosen) : chosen;
+  return result(flags["isolate-user-folders"] === true ? isolateUserFolders(chosen) : chosen);
 }
 
 function log(message: string): void {
@@ -109,14 +131,17 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
   return new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 }
 
-const HELP = `doodlebot — automation for stock Vortex and Vortex development
+const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-First run (no account or installed game required)
-  pnpm install
-  pnpm run build
-  pnpm run ai -- doctor --installed --sandbox
-  pnpm run ai -- setup --installed --sandbox
-  pnpm run ai:test
+Used from Claude Code or Codex through the doodlebot (setup, start, stop, status), vortex
+(design, fix, drive, qa, ui-test, pr) and benchmark (measure, compare) plugins, whose
+commands run these.
+
+The companion itself
+  version [--json]       This workspace's version, commit and path
+  link [--bin-dir <dir>] Write the doodlebot shims into a folder on the PATH
+  update --ref <ref>     Move this workspace to a tag or branch of origin, then install
+                         and build (refuses while a harness Vortex runs or with local changes)
 
 Initial account setup (only for Nexus collections)
   setup --oauth          Open isolated Vortex, wait for browser login, cache OAuth
@@ -225,8 +250,21 @@ Driving a running instance
   purge                  Remove files recorded in this game's deployment manifest
   e2e <collection>       Fresh start, install, verify, deploy, launch real game
     --runs <n> --keep --purge; --no-launch for installation/deployment only
+  log                    The running instance's Vortex log, filtered
+    --level info|warn|error  Lowest level kept (default warn)
+    --tail <n>           Last n entries (default 50)
+    --since <ISO time>   Entries at or after this time
+    --json               LogEntry[] with continuation lines in each message
+  fixture mod --out <zip> [--name <text>]
+                         A one-file mod archive (textures/<name>.txt) for install checks
 
 Testing and iteration
+  test <suite> [args...] Run a suite or check from the workspace root; every argument after
+                         the suite is the suite's (core: Playwright's)
+  test --list            List the suites
+  perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
+                         Medians, ranges and a verdict from performance-check evidence; one
+                         side (no --b) has no verdict
   responsive             Scan width AND height changes; persist JSON evidence
     --viewports 1024x720,1280x720,1280x1080,1920x1080   (quote the list in PowerShell)
     --screenshots        Save PNG per viewport
@@ -253,7 +291,7 @@ Target and isolation (repeat the same flags for all commands)
                          up fails unless the renderer loaded production React
 
 Without a target flag: .vortex-src if present, otherwise installed Vortex.
-Human guides: https://doodlum.github.io/vortex-doodlebot/
+Relative paths you type are yours: they resolve against the directory you run doodlebot in.
 For Vortex changes follow its contribution rules and task-specific documentation.
 `;
 async function main(): Promise<number> {
@@ -420,9 +458,40 @@ async function main(): Promise<number> {
     return report.exitCode === 0 ? 0 : 1;
   }
 
-  const config = configFrom(flags);
+  if (command === "version") {
+    log(versionCommand(flags));
+    return 0;
+  }
+
+  if (command === "link") {
+    const result = link(typeof flags["bin-dir"] === "string" ? { binDir: flags["bin-dir"] } : {});
+    log(formatLink(result));
+    return 0;
+  }
+
+  if (command === "test") {
+    return testCommand(positional, flags, passthrough);
+  }
+
+  if (command === "fixture") {
+    log(fixtureCommand(positional, flags));
+    return 0;
+  }
+
+  if (command === "perf-summary") {
+    log(perfSummaryCommand(flags, lists));
+    return 0;
+  }
+
+  const { config, targetError } = configFrom(flags, command);
   const dispatch = async (): Promise<number> => {
     switch (command) {
+      case "log": {
+        const mcp = await requireRunning(config);
+        const status = await mcp.call<{ userDataDir: string }>("automation_status");
+        log(logCommand(vortexLogFile(status.userDataDir), flags));
+        return 0;
+      }
       case "install": {
         const file = positional[0];
         if (!file) throw new ConfigError("install needs the path to a local mod archive.");
@@ -472,7 +541,7 @@ async function main(): Promise<number> {
         }
         log("Initial setup: click Log in in the isolated Vortex and complete the browser flow.");
         if (flags["no-wait"] === true) {
-          log("Then run `pnpm run ai -- save-login` with these same configuration flags.");
+          log("Then run `doodlebot save-login` with these same configuration flags.");
           return 0;
         }
         log("Waiting up to 10 minutes; OAuth login will be cached automatically.");
@@ -511,7 +580,10 @@ async function main(): Promise<number> {
         return 0;
       }
       case "doctor": {
-        const report = await runDoctor(config, { skipGame: flags["no-game"] === true });
+        const report = await runDoctor(config, {
+          skipGame: flags["no-game"] === true,
+          ...(targetError === undefined ? {} : { targetError }),
+        });
         log(formatDoctorReport(report));
         return report.ok ? 0 : 1;
       }
@@ -746,7 +818,7 @@ async function main(): Promise<number> {
         }
 
         log("");
-        log("Ready. `pnpm run ai:up` will now drive this clone.");
+        log("Ready. `doodlebot up` will now drive this clone.");
         return 0;
       }
 
@@ -771,8 +843,6 @@ async function main(): Promise<number> {
             onProgress: (m) => log(`  ${m}`),
             verifyCompletion: async (modId, timeoutMs) => {
               renderer = await attachToRenderer(config);
-              const { waitForCollectionCompletion } =
-                await import("../benchmarks/collectionCompletion");
               await waitForCollectionCompletion(renderer.page, modId, {
                 timeoutMs,
                 onObservation: () => undefined,
@@ -972,15 +1042,6 @@ function targetFrom(flags: ParsedArgs["flags"]): Record<string, unknown> {
   if (typeof flags.ref === "string") return { ref: flags.ref };
   if (typeof flags.selector === "string") return { selector: flags.selector };
   throw new ConfigError("Provide --ref <e12> (from `doodlebot snapshot`) or --selector <css>.");
-}
-
-/** tsx's CLI in this repo's node_modules, run with this Node. */
-function tsxCli(): string {
-  try {
-    return createRequire(import.meta.url).resolve("tsx/cli");
-  } catch {
-    return path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
-  }
 }
 
 function parseViewports(

@@ -3,13 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const cache = vi.hoisted(() => ({ dir: "" }));
+const state = vi.hoisted(() => ({ dir: "" }));
 const image = vi.hoisted(() => ({ name: "electron.exe" as string | undefined }));
 
 vi.mock("./paths", async (original) => ({
   ...(await original<typeof import("./paths")>()),
-  get DEFAULT_CACHE_DIR() {
-    return cache.dir;
+  get USER_STATE_DIR() {
+    return state.dir;
   },
 }));
 vi.mock("./processes", async (original) => ({
@@ -38,10 +38,17 @@ function record(pid: number, extra: Record<string, unknown> = {}) {
 
 describe("the instance record", () => {
   beforeEach(() => {
-    cache.dir = fs.mkdtempSync(path.join(os.tmpdir(), "running-vortex-"));
+    state.dir = fs.mkdtempSync(path.join(os.tmpdir(), "running-vortex-"));
     image.name = "electron.exe";
   });
-  afterEach(() => fs.rmSync(cache.dir, { recursive: true, force: true }));
+  afterEach(() => fs.rmSync(state.dir, { recursive: true, force: true }));
+
+  it("lives in the per-user state folder, ~/.doodlebot/instance.json", async () => {
+    const m = await load();
+    expect(m.INSTANCE_RECORD).toBe(path.join(state.dir, "instance.json"));
+    const real = await vi.importActual<typeof import("./paths")>("./paths");
+    expect(real.USER_STATE_DIR).toBe(path.join(os.homedir(), ".doodlebot"));
+  });
 
   it("has no running Vortex without a record, and clears an invalid one", async () => {
     const m = await load();
@@ -96,16 +103,16 @@ describe("the instance record", () => {
   it("refuses with exact messages", async () => {
     const m = await load();
     expect(() => m.assertNoHarnessVortex("the core suite")).not.toThrow();
-    m.writeInstanceRecord({ ...record(process.pid), sourceDir: path.join(cache.dir, "src") });
+    m.writeInstanceRecord({ ...record(process.pid), sourceDir: path.join(state.dir, "src") });
     expect(() => m.assertNoHarnessVortex("the core suite")).toThrow(
-      `A harness Vortex is running (pid ${process.pid}, cache C:/cache); run \`pnpm run ai -- down\` before the core suite.`,
+      `A harness Vortex is running (pid ${process.pid}, cache C:/cache); run \`doodlebot down\` before the core suite.`,
     );
-    const checkout = path.join(cache.dir, "src");
+    const checkout = path.join(state.dir, "src");
     expect(() => m.assertNoVortexRunningFrom(checkout, "building it")).toThrow(
-      `A harness Vortex is running from ${checkout} (pid ${process.pid}); run \`pnpm run ai -- down\` before building it.`,
+      `A harness Vortex is running from ${checkout} (pid ${process.pid}); run \`doodlebot down\` before building it.`,
     );
     expect(() =>
-      m.assertNoVortexRunningFrom(path.join(cache.dir, "other"), "building it"),
+      m.assertNoVortexRunningFrom(path.join(state.dir, "other"), "building it"),
     ).not.toThrow();
   });
 });

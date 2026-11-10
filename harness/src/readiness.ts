@@ -195,6 +195,26 @@ export function inferredContracts(manifest: ReadinessManifest): string[] {
   return [...risks].sort();
 }
 
+/** The argv prefixes that run the complete core contract; anything else is not kit-core. */
+export const KIT_CORE_PREFIXES = [
+  ["node", "bin/doodlebot.cjs", "test", "core"],
+  ["pnpm", "exec", "playwright", "test", "--config", "harness/playwright.config.ts"],
+] as const;
+
+/**
+ * Whether a recorded kit-core command runs the whole core contract: one of the accepted prefixes
+ * followed by nothing but an optional JSON reporter (a bare `--` is ignored). A filter (--grep,
+ * a spec path, --project) or the removed package script for the core suite is refused.
+ */
+export function isCompleteCoreCommand(argv: readonly string[]): boolean {
+  const prefix = KIT_CORE_PREFIXES.find((candidate) =>
+    candidate.every((part, index) => argv[index] === part),
+  );
+  if (prefix === undefined) return false;
+  const tail = argv.slice(prefix.length).filter((arg) => arg !== "--");
+  return ["", "--reporter=json", "--reporter json"].includes(tail.join(" "));
+}
+
 export function requiredEvidence(manifest: ReadinessManifest): Map<EvidenceRole, string> {
   const required = new Map<EvidenceRole, string>([
     ["review", "independent acceptance and applicability review"],
@@ -549,20 +569,7 @@ export function evaluateReadiness(value: unknown, directory: string): ReadinessR
       if (prefix === "kit-core") {
         if (manifest.runtime?.kind !== "installed")
           throw new Error("kit core must establish stock released Vortex compatibility");
-        const argv = command!.command.requested;
-        const prefixLength =
-          argv.slice(0, 3).join(" ") === "pnpm run ai:test:core"
-            ? 3
-            : argv.slice(0, 6).join(" ") ===
-                "pnpm exec playwright test --config harness/playwright.config.ts"
-              ? 6
-              : 0;
-        const tail = argv.slice(prefixLength).filter((arg) => arg !== "--");
-        if (
-          !prefixLength ||
-          !["", "--reporter=json", "--reporter json"].includes(tail.join(" ")) ||
-          command!.tests!.skipped !== 0
-        )
+        if (!isCompleteCoreCommand(command!.command.requested) || command!.tests!.skipped !== 0)
           throw new Error(
             "kit core must run the complete unfiltered core contract without skipped tests",
           );
