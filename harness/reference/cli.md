@@ -193,7 +193,8 @@ Driving a running instance
                          script's.
                          VORTEX_AI_KIT holds the import URL of harness/src/kit.ts
   record                 Save WebM; --ffmpeg <path> --seconds <1-60> --label <name>
-  install <archive>      Install local ZIP/7z through Vortex; no account needed
+  install <archive>      Install local ZIP/7z through Vortex; no account needed. Takes one
+                         path: quote one with spaces, or a split path is refused
   slow-download          Real Vortex downloads of throttled local files, for download UI
                          work; returns once they finish (run it in the background)
     --count <n> --seconds <n> --stagger <s>   (defaults 1, 30, 0)

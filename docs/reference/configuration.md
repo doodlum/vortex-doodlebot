@@ -117,6 +117,10 @@ to one command:
 | `--release <version>`   | `test <suite>`         | Run the suite on that registered release; not passed on to the suite       |
 | `--design-commit <sha>` | `pr-branch`            | Tag that approved design commit `design/<topic>`; without it, no tag moves |
 
+A path argument is one word to the shell, so quote a path that has spaces:
+`doodlebot install "C:\Users\Nexus Two\probe.zip"`. `install` refuses more than one path
+instead of installing the first part of a split one, which can name another file.
+
 ## Files doodlebot keeps
 
 | Path                             | Contents                                                  |

@@ -81,7 +81,8 @@ invalidates UI refs mid-action.
 
 Use Vitest for logic that does not need Vortex: parsing, statistics, input validation and pure
 DOM helpers. Put harness tests next to the code in `harness/src/*.test.ts`, and DOM logic in
-`src/uiAutomation.test.ts`, which runs under jsdom.
+`src/uiAutomation.test.ts`, which runs under jsdom. A rule about the command line itself, such
+as `install` refusing an unquoted path with a space, belongs in `harness/src/cliArgs.test.ts`.
 
 ```powershell
 pnpm exec vitest run harness/src/perfSummary.test.ts
