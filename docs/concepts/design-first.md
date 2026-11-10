@@ -35,6 +35,9 @@ Doodlebot adds one Goldfish of its own, `vortex-runtime-goldfish`, from the dood
 reviews against doodlebot's Vortex change standard and checks that every acceptance criterion can
 be proved on a real Vortex.
 
+Every Goldfish runs on a fast, lower-cost model: Sonnet in Claude Code, GPT-6.1 Terra in Codex.
+Each review report names the model that wrote it.
+
 How well reviewers are kept apart from the conversation depends on your coding agent; see
 [What EGM can guarantee in each agent](../get-started/install.md#what-egm-can-guarantee-in-each-agent).
 

@@ -2,7 +2,7 @@
 name: vortex-runtime-goldfish
 description: Goldfish design reviewer that checks a Vortex or doodlebot design's acceptance criteria can be proved with doodlebot on a real Vortex. Spawn fresh for each review; pass the design path, mode, content digest and Goldfish context.
 tools: Read, Grep, Glob
-model: inherit
+model: sonnet
 omitClaudeMd: true
 ---
 

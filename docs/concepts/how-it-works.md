@@ -64,9 +64,9 @@ changes.
 | Benchmark       | `/doodlebot:measure`, `/doodlebot:compare` | Orchestrates only      | Benchmark report  |
 | Design review   | `/doodlebot:design`                        | EGM and the Goldfishes | Approved design   |
 
-In Claude Code, `vortex-driver` runs on Sonnet, a lower-cost model, and design reviewers run as
-read-only agents. In Codex, the plugins ship no agents: the driver's procedure runs in your
-session, and reviewers run as general-purpose subagents.
+In Claude Code, `vortex-driver` and every design reviewer run on Sonnet, a lower-cost model, and
+the reviewers run as read-only agents. In Codex, the plugin ships no agents: the driver's
+procedure runs in your session, and reviewers run as general-purpose subagents on GPT-6.1 Terra.
 
 ## What's next
 

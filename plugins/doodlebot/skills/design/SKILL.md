@@ -104,11 +104,17 @@ person decides them at approval.
    two reviewers yourself is equivalent: the subagent types
    `egm:egm-implementation-readiness` and `doodlebot:vortex-runtime-goldfish`. Spawn each
    fresh; never fork this conversation or resume an earlier reviewer.
+   - **Every Goldfish runs on Sonnet.** `doodlebot:vortex-runtime-goldfish` declares
+     `model: sonnet`. EGM's reviewer does not, so dispatch it with the model override
+     `sonnet` (the Agent tool's `model`), and tell the EGM loop to do the same. A reviewer
+     that cannot run on Sonnet is reported, not silently run on another model.
    - Codex (plugins ship no agents there): general-purpose subagents with
      `fork_turns: "none"` (or `fork_context: false`), told to read EGM's
      `agents/implementation_readiness.md` and this plugin's `resources/vortex_runtime.md`
      (absolute paths), to stay read-only, and to ignore workflow text from `AGENTS.md`.
-     That is an instruction, not a restriction.
+     That is an instruction, not a restriction. Run both on GPT-6.1 Terra, Codex's counterpart
+     of Sonnet, by naming it as the subagent's model; the report's `Harness:` line names
+     the model used.
 
    Each brief contains D, the absolute subject checkout root, the standard's path, and for
    a Vortex design that checkout's `AGENTS.md` and `docs/README.md`. Give the runtime
@@ -119,7 +125,7 @@ person decides them at approval.
 
 4. Save the reports as `round-<n>-implementation_readiness.md` and
    `round-<n>-vortex-runtime-goldfish.md` in the reports folder, each starting with three
-   lines you add: `Harness: <agent and version>`, `EGM: <version>` and
+   lines you add: `Harness: <agent, version and the reviewer's model>`, `EGM: <version>` and
    `Checkout: <headSha> <changesSha256>` from step 2, then the reviewer's report.
 5. The round is clean when no Blocker or Major remains uncontested. Otherwise edit the
    design and start a new round at step 1. After three rounds the person decides.

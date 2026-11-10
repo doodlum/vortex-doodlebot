@@ -41,7 +41,7 @@ describe("EGM resources", () => {
     expect(frontmatter(adapter)).toMatchObject({
       name: "vortex-runtime-goldfish",
       tools: "Read, Grep, Glob",
-      model: "inherit",
+      model: "sonnet",
       omitClaudeMd: "true",
     });
     expect(read(adapter)).toContain("${CLAUDE_PLUGIN_ROOT}/resources/vortex_runtime.md");

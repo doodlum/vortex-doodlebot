@@ -52,7 +52,8 @@ The expected result: typing `/doodlebot:` in the prompt lists the doodlebot comm
 In Codex, run a command by choosing its skill from the picker, or by asking for it by name, for
 example "use the doodlebot setup skill". Codex plugins ship no agents: where Claude Code hands a
 run to `vortex-driver`, Codex runs the same procedure in your session, and design reviewers run
-as general-purpose subagents given the reviewer's instructions.
+as general-purpose subagents on GPT-6.1 Terra, given the reviewer's instructions. In Claude Code
+the reviewers run on Sonnet.
 
 ## Install EGM for design review
 

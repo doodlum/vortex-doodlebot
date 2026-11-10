@@ -529,7 +529,10 @@ doodlebot design scope <file> --checkout <dir> --base <ref> [--json]
   runs two fresh reviewers: EGM's `implementation_readiness` with its standard, and
   `vortex-runtime-goldfish` (`plugins/doodlebot/agents/vortex-runtime-goldfish.md`, dispatched as
   `doodlebot:vortex-runtime-goldfish`; persona `plugins/doodlebot/resources/vortex_runtime.md`) with
-  `plugins/doodlebot/resources/vortex-change-standard.md`.
+  `plugins/doodlebot/resources/vortex-change-standard.md`. Every Goldfish runs on Sonnet in
+  Claude Code (the runtime adapter declares `model: sonnet`; EGM's reviewer gets the dispatch
+  override `model: sonnet`) and on GPT-6.1 Terra in Codex. The report's `Harness:` line names the
+  model.
 - After implementing, run `design scope`, then `down`; independent QA starts with `up --fresh`
   in a fresh context. Readiness binds the result to the approved design (next section).
 
