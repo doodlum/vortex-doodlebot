@@ -1,14 +1,14 @@
 # Vortex behaviours worth knowing
 
 Non-obvious behaviours of Vortex and of this kit that fail silently, or with a message that
-points somewhere else. Use [knowledge routes](harness/KNOWLEDGE-ROUTES.md) and search the
-relevant symptom or subsystem rather than loading the whole catalogue for every task.
+points somewhere else. Search the relevant symptom or subsystem
+(`doodlebot knowledge search <words>`) rather than loading the whole catalogue for every task.
 
 Entries state symptom, confirmed cause, remedy, applicable scope and source/test evidence.
 A matching symptom is a lead to verify against the current revision. Keep measurements,
 incident history and unconfirmed explanations in task artifacts. Promote only verified,
-reviewed lessons under [the workflow](harness/AGENT-WORKFLOW.md#improve-from-verified-lessons),
-committed after `pnpm run ci` passes. Correct disproved claims and remove obsolete workarounds; retain useful
+reviewed lessons ([the manual](harness/AGENTS.md#improving-the-kit) and
+`plugins/doodlebot/resources/knowledge.md`), committed after `pnpm run ci` passes. Correct disproved claims and remove obsolete workarounds; retain useful
 preventive tests. Existing undated entries require rechecking before a task relies on them.
 
 ## Extensions
@@ -645,9 +645,8 @@ an earlier kit; close it, and the file is deleted on the next launch. Scope: eve
   instance invalidate each other's UI refs, and a watcher reload mid-test does the same. Drive
   it from one session at a time.
 - **A copied OAuth login goes stale.** Nexus rotates the refresh token, so a copy that
-  refreshes first spends the login the other copy holds. Older kits copied the default cache's
-  login into new caches (`seedLoginFromDefaultCache`, `login-import`); both are removed. The one
-  login is `~/.doodlebot/login/oauth-<target>.json`, used directly by the default cache and by
+  refreshes first spends the login the other copy holds, so nothing in the kit copies it. The
+  one login is `~/.doodlebot/login/oauth-<target>.json`, used directly by the default cache and by
   caches that opt in (`sharedLogin: true`); every other cache has none (`login.ts`). Never copy
   it by hand.
 - **CPU.** Timings taken while a build or another process runs measure that work too.

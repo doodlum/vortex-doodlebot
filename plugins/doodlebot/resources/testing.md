@@ -58,9 +58,35 @@ A regression test that passes on the base proves nothing.
 ## 5. Show it on a real Vortex too
 
 Repeat the person's own scenario on the fixed build with `/doodlebot:try`'s report procedure
-(`--dev-dir <checkout>`), observing the result independently of the tool that acted. For UI
-changes, check widths and heights separately, and the loading, empty, populated, error, modal,
-filter and selection states that apply.
+(`--dev-dir <checkout>`), observing the result independently of the tool that acted.
+
+**UI changes: sizes and states.** Resize both dimensions: a list that works at a narrow width
+can still hide its footer in a short window. Run the same width at different heights and the
+same height at different widths, and record the real window and renderer sizes, since the OS
+may clamp a request. `doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"`
+sweeps sizes; run it in each state that applies, with its own `--label`:
+
+| State                             | What to verify                                               |
+| --------------------------------- | ------------------------------------------------------------ |
+| Empty list / first run            | Setup guidance and primary action remain visible             |
+| Populated or virtualized list     | Filtering, scrolling, selection, row actions                 |
+| Thousands of mods                 | `doodlebot test large-library`, `doodlebot test mods-scroll` |
+| Long names or localized text      | Wrapping, truncation, accessible names                       |
+| Selection / expanded details      | Actions stay reachable; focus remains useful                 |
+| Modal / stacked modal / installer | Dialog scope, scrollable body, footer actions                |
+| Loading / disabled / failure      | Progress, retry, cancellation, useful errors                 |
+| Signed out / signed in            | The right setup affordances, without logging out             |
+
+Set up states through documented actions and events (`vortex_dispatch`) and check the
+resulting state; never edit Vortex's database or depend on the person's own mods. Layout scan
+findings are candidates, not proof: confirm each visually.
+
+**A supplied visual design** is an input to the EGM design, not a replacement for it. Turn it
+into explicit acceptance criteria (hierarchy, spacing, typography, control behavior, empty and
+error states, keyboard access, overflow, resizing), build on Vortex's components and its
+`docs/frontend.md` and design-system guidance, and compare screenshots at the design's
+reference size and its neighbours by eye: structural checks cannot judge typography, icons,
+color or fidelity.
 
 ## Rules
 

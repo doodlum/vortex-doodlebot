@@ -9,8 +9,10 @@ argument-hint: "<issue report path, bug report, issue link or symptom>"
 End to end: an issue report, a branch in the Vortex checkout, the fix, a regression test **in
 the Vortex branch** (a Vortex unit or e2e test that goes in the PR), the revert control, the
 person's reproduction on the fix, and then the offer of `/doodlebot:pr`. A bug fix needs no
-design unless the person asks for one; features and refactors start with EGM
-(`/egm:egm-brainstorm`, see `<workspace>/AGENTS.md`).
+design unless the person asks for one; features and refactors start with EGM, whose `/egm:*`
+commands only the person can type (they have `disable-model-invocation: true`): tell them to
+type `/egm:egm-brainstorm`, and give them the filled-in `/egm:egm-review-loop` line from
+`<workspace>/AGENTS.md` when the design reaches the runtime review.
 
 ## Before you begin
 
@@ -26,7 +28,8 @@ design unless the person asks for one; features and refactors start with EGM
    read-only constraint also excludes temporary patches, revert controls and builds that
    rewrite the checkout. Report a missing permission when it blocks the fix.
 4. In the Vortex checkout read its `AGENTS.md`, nested instructions, `CLAUDE.md` when present,
-   `CONTRIBUTING.md` and `docs/README.md`: they govern the submission.
+   `CONTRIBUTING.md` and `docs/README.md`: they govern the submission. "Working in a Vortex
+   checkout" in `<workspace>/harness/AGENTS.md` maps tasks to Vortex's own guides.
 
 Commands that launch Vortex or run long run in the background with a log, as
 `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md` describes under "Commands that block". Only one

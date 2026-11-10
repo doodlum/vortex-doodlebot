@@ -43,9 +43,7 @@ function withFixture(prefix, body) {
       "KNOWLEDGE.md",
       "harness/AGENTS.md",
       "harness/TESTING.md",
-      "harness/AGENT-WORKFLOW.md",
-      "harness/KNOWLEDGE-ROUTES.md",
-      "harness/WORKFLOWS.md",
+      "harness/PULL-REQUESTS.md",
     ]) {
       fs.mkdirSync(path.dirname(path.join(fixture, file)), { recursive: true });
       fs.cpSync(path.join(root, file), path.join(fixture, file), { recursive: true });

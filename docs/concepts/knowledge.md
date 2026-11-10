@@ -105,5 +105,5 @@ Once the maintainer adds the lesson to `KNOWLEDGE.md`, you get it with `/doodleb
 
 ## What's next
 
-- [Drive Vortex and get a report](../guides/drive-vortex.md)
+- [Try things in Vortex](../guides/try-vortex.md)
 - [Fix a Vortex bug](../guides/fix-a-bug.md)

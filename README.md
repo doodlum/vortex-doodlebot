@@ -31,6 +31,22 @@ codex plugin add doodlebot@doodlebot
 Then run `/doodlebot:setup` in your agent. It installs the doodlebot workspace and command, and
 prepares a sandbox test profile.
 
+## Commands
+
+| You ask                                      | Command                  |
+| -------------------------------------------- | ------------------------ |
+| "Set up doodlebot" / "What can I test here?" | `/doodlebot:setup`       |
+| "Get me the Vortex source"                   | `/doodlebot:source`      |
+| "Try X in Vortex" / "Does X work?"           | `/doodlebot:try`         |
+| "Find out why this is broken"                | `/doodlebot:investigate` |
+| "Fix it"                                     | `/doodlebot:fix`         |
+| "Review / QA this PR" / "Check the release"  | `/doodlebot:qa`          |
+| "Is it faster?"                              | `/doodlebot:measure`     |
+| "Ship it"                                    | `/doodlebot:pr`          |
+
+Features start with a design in EGM (`/egm:*`, which you type yourself), then
+`/doodlebot:qa --design <file>`. In Codex the commands are skills with the same names.
+
 **[Read the documentation](https://doodlum.github.io/vortex-doodlebot/)** for setup, your first
 session, and guides to each command.
 

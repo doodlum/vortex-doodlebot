@@ -327,7 +327,7 @@ result(
   "docs/reference/mcp-tools.md",
   "# MCP tool reference\n\n" +
     banner(
-      "Use these contracts when calling tools directly or configuring an assistant. To have the agent drive the Vortex UI for you, see [Drive Vortex and get a report](../guides/drive-vortex.md).",
+      "Use these contracts when calling tools directly or configuring an assistant. To have the agent drive the Vortex UI for you, see [Try things in Vortex](../guides/try-vortex.md).",
     ) +
     mcpBody,
 );
@@ -469,7 +469,7 @@ if (!write) {
       );
   for (const file of walk(path.join(root, "docs")).filter((file) => file.endsWith(".md"))) {
     const body = fs.readFileSync(file, "utf8");
-    if (/\]\([^)]*(?:AGENTS\.md|AGENT-WORKFLOW\.md|KNOWLEDGE-ROUTES\.md|\/\.claude\/)/.test(body))
+    if (/\]\([^)]*(?:AGENTS\.md|PULL-REQUESTS\.md|TESTING\.md|\/\.claude\/)/.test(body))
       errors.push(
         `${path.relative(root, file)} links to AI instructions; explain the operation for human readers instead.`,
       );

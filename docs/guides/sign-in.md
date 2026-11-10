@@ -65,6 +65,6 @@ Nexus still accepts it: if Nexus refuses it, sign in again the same way.
 
 ## What's next
 
-- [Install a Nexus collection](drive-vortex.md#install-a-nexus-collection) with `/doodlebot:try`.
+- [Install a Nexus collection](try-vortex.md#install-a-nexus-collection) with `/doodlebot:try`.
 - [Use real games and baselines](games-and-baselines.md).
 - [Security and privacy](../security.md) explains where credentials are stored.

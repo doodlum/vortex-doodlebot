@@ -33,7 +33,8 @@ commands, one for each thing people ask:
 | "Ship it"                                    | `/doodlebot:pr`          |
 
 The commands are shown in their Claude Code form. In Codex, the same commands are skills with the
-same names. [Commands](reference/commands.md) lists every command and its arguments.
+same names. [Use cases](guides/use-cases.md) walks through each one, with what you get back;
+[Commands](reference/commands.md) lists every command and its arguments.
 
 Behind the commands is one command-line tool, `doodlebot`, which the agent runs for you.
 `/doodlebot:setup` installs it. [How doodlebot works](concepts/how-it-works.md) explains the
@@ -49,9 +50,10 @@ yet. Lessons stay on your machine and later commands check them before they act.
 Features and refactors in Vortex start with a design. Doodlebot uses Google's
 [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM) to
 write and review it, with doodlebot's Vortex runtime reviewer in EGM's review loop, and you
-approve the final text. Then `/doodlebot:qa --design <file>` checks the implementation against
-the design's acceptance criteria. EGM is a separate plugin that you install alongside doodlebot.
-See [Design first](concepts/design-first.md).
+approve the final text. You type EGM's commands yourself; the agent tells you which comes next.
+Then `/doodlebot:qa --design <file>` checks the implementation against the design's acceptance
+criteria. EGM is a separate plugin that you install alongside doodlebot. See
+[Design with EGM](concepts/design-first.md).
 
 ## Get started
 
@@ -59,3 +61,4 @@ See [Design first](concepts/design-first.md).
 2. [Install the plugin](get-started/install.md).
 3. [Set up doodlebot](get-started/set-up.md).
 4. Run [your first session](get-started/first-session.md).
+5. Pick your task from [Use cases](guides/use-cases.md).

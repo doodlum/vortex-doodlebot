@@ -12,7 +12,7 @@
  *   const mcp = kit.clientFor(config);
  *
  * Anything a script proves useful belongs in a harness module with a test, not in the
- * scratch file (harness/AGENT-WORKFLOW.md, "Improve from verified lessons").
+ * scratch file (harness/AGENTS.md, "Improving the kit").
  */
 import type { HarnessConfig } from "./config";
 import { VortexMcpClient } from "./mcpClient";

@@ -53,6 +53,6 @@ section.
 
 ## What's next
 
-- [Try things in Vortex](../guides/drive-vortex.md) covers longer scenarios, collections and QA.
+- [Try things in Vortex](../guides/try-vortex.md) covers longer scenarios, collections and QA.
 - [Fix a Vortex bug](../guides/fix-a-bug.md).
 - [Measure and compare performance](../guides/benchmark.md).

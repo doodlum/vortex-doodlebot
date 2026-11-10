@@ -2262,7 +2262,7 @@ async function revertCheck(
     ...revertResult(
       failureKind === "unclassified" ? "inconclusive" : "fail",
       failureKind === "unclassified"
-        ? "branch passes and reverted run fails; inspect the output and identify the intended assertion before readiness"
+        ? "branch passes and reverted run fails; inspect the output and identify the intended assertion before relying on it"
         : `reverted run failed during ${failureKind}; this does not prove the intended assertion`,
       details,
     ),

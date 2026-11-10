@@ -62,4 +62,4 @@ suite starts its own Vortex and refuses while another runs.
 ## What's next
 
 - [Open a pull request](pull-requests.md) for the Vortex change, with its own Vortex test.
-- [Try things in Vortex](drive-vortex.md) for behavior that is hard to assert.
+- [Try things in Vortex](try-vortex.md) for behavior that is hard to assert.

@@ -148,5 +148,5 @@ doodlebot clean --older-than 14 --yes
 
 ## What's next
 
-- [Try things in Vortex](drive-vortex.md) with the new baseline.
+- [Try things in Vortex](try-vortex.md) with the new baseline.
 - [Sign in to Nexus Mods](sign-in.md) for collections.

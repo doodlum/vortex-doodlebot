@@ -3,7 +3,11 @@
     {
       "name": "Plugins and commands",
       "sources": ["^plugins/", "^\\.claude-plugin/", "^\\.agents/plugins/"],
-      "human": ["docs/reference/commands.md", "docs/get-started/install.md"],
+      "human": [
+        "docs/reference/commands.md",
+        "docs/get-started/install.md",
+        "docs/guides/use-cases.md"
+      ],
       "ai": ["AGENTS.md", "harness/AGENTS.md"]
     },
     {
@@ -11,7 +15,7 @@
       "sources": ["^src/.*\\.ts$"],
       "human": [
         "docs/reference/mcp-tools.md",
-        "docs/guides/drive-vortex.md",
+        "docs/guides/try-vortex.md",
         "docs/security.md",
         "docs/troubleshooting.md"
       ],
@@ -53,7 +57,7 @@
       "sources": [
         "^harness/src/(kit|mcpClient|cdp|uiDriver|uiSession|localMod|deployment|collections|largeLibrary|tableProbes|collectionScale|offlineCollection|profiling|recording|slowDownload|downloadServer|vortexLog|jsonFile)\\.ts$"
       ],
-      "human": ["docs/guides/drive-vortex.md", "docs/guides/benchmark.md"],
+      "human": ["docs/guides/try-vortex.md", "docs/guides/benchmark.md"],
       "ai": ["harness/reference/script-api.md", "harness/AGENTS.md", "harness/TESTING.md"]
     },
     {
@@ -66,12 +70,7 @@
         "docs/concepts/evidence.md",
         "docs/contributing.md"
       ],
-      "ai": [
-        "harness/AGENT-WORKFLOW.md",
-        "harness/WORKFLOWS.md",
-        "harness/TESTING.md",
-        "harness/AGENTS.md"
-      ]
+      "ai": ["harness/AGENTS.md", "harness/PULL-REQUESTS.md", "harness/TESTING.md"]
     },
     {
       "name": "Checks",
@@ -119,8 +118,12 @@
     {
       "name": "Design-first workflow",
       "sources": ["^plugins/doodlebot/(resources|agents)/", "^designs/SITEMAP\\.md$"],
-      "human": ["docs/guides/design-a-feature.md", "docs/concepts/design-first.md"],
-      "ai": ["harness/AGENT-WORKFLOW.md", "harness/AGENTS.md"]
+      "human": [
+        "docs/guides/design-a-feature.md",
+        "docs/concepts/design-first.md",
+        "docs/guides/use-cases.md"
+      ],
+      "ai": ["AGENTS.md", "harness/AGENTS.md"]
     },
     {
       "name": "Documentation maintenance",
@@ -131,7 +134,7 @@
         "^requirements-docs\\.txt$"
       ],
       "human": ["docs/contributing.md"],
-      "ai": ["AGENTS.md", "harness/KNOWLEDGE-ROUTES.md", "harness/AGENT-WORKFLOW.md"]
+      "ai": ["AGENTS.md", "harness/AGENTS.md"]
     }
   ]
 }

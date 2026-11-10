@@ -16,17 +16,15 @@ hard-won knowledge. Nothing here requires a patched or self-built Vortex.
 | `.claude-plugin/marketplace.json` | The `doodlebot` marketplace for Claude Code; `.agents/plugins/marketplace.json` is Codex's                           |
 | `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard and the runtime Goldfish persona                                           |
 | `plugins/doodlebot/agents/`       | Claude Code subagents: `vortex-runtime-goldfish`, `vortex-driver`                                                    |
-| `harness/AGENTS.md`               | **The operating manual.** Start here to use any of this                                                              |
-| `harness/WORKFLOWS.md`            | Bug fixes, design-first features, visual designs, state matrices, independent QA                                     |
-| `harness/PULL-REQUESTS.md`        | Vortex PR titles, description template, agent briefs, review lessons                                                 |
-| `harness/AGENT-WORKFLOW.md`       | Canonical task routing, design-first rule, delegation, evidence and handoff policy                                   |
-| `harness/KNOWLEDGE-ROUTES.md`     | Shared knowledge index and specialist reading paths                                                                  |
+| `harness/AGENTS.md`               | **The agent manual**: CLI, tools, traps and the working rules every skill shares                                     |
+| `harness/PULL-REQUESTS.md`        | Vortex PR titles, description template, review brief, review lessons                                                 |
+| `harness/TESTING.md`              | Kit gates, the core suite and opt-in checks                                                                          |
 | `designs/`                        | Approved doodlebot designs, indexed in `designs/SITEMAP.md`                                                          |
 | `harness/qa/catalog.json`         | The QA catalogue: checks Vortex's own e2e suite lacks, with the Vortex files each guards                             |
 | `KNOWLEDGE.md`                    | Confirmed diagnostic traps; search the relevant area                                                                 |
 | `ARCHITECTURE.md`                 | Why the extension reflects Vortex's API instead of wrapping it; the one-instance model                               |
 | `docs/`                           | The documentation site for people: installing and using the companion, task by task                                  |
-| `.claude/settings.json`           | Registers the EGM marketplace (pinned to `v0.1.1`) and this folder's marketplace; enables the four plugins           |
+| `.claude/settings.json`           | Registers the EGM marketplace (pinned to `v0.1.1`) and this folder's marketplace; enables `egm` and `doodlebot`      |
 | `.vortex-src/`                    | The Vortex clone this kit manages (gitignored, created by `doodlebot source`); Vortex work happens on a branch of it |
 
 ## Getting to a driveable Vortex
@@ -76,6 +74,11 @@ Elephant-Goldfish Model plugin (EGM, `v0.1.1`) as EGM ships it. Bug fixes, docs 
 changes need none unless the user supplies or asks for one. Doodlebot adds one thing to EGM: a
 reviewer that checks every acceptance criterion can be proved on a real Vortex.
 
+**The person types each `/egm:*` command.** Every EGM skill has
+`disable-model-invocation: true`, so an agent cannot start one: it tells the person which command
+to type next (with the line below for the runtime review, filled in) and carries on when the
+person has run it.
+
 1. `/egm:egm-brainstorm`, then `/egm:egm-draft`. At the draft's save step choose `designs/` for
    a doodlebot change (it is listed in `designs/SITEMAP.md`), or `docs/designs/` in the Vortex
    checkout for a Vortex change. A Vortex design is committed on the feature branch as
@@ -95,6 +98,15 @@ reviewer that checks every acceptance criterion can be proved on a real Vortex.
      (`plugins/doodlebot/agents/vortex-runtime-goldfish.md`): read-only, on Sonnet, without
      `CLAUDE.md`. In Codex, spawn a general-purpose subagent on GPT-6.1 Terra and tell it to read
      the persona first. The loop runs `/egm:egm-resolve` itself.
+
+   The line for the person to paste, with `<workspace>` replaced by the workspace's absolute path
+   (`doodlebot version --json`) and `<design path>` by the design's absolute path; add the
+   absolute paths of the Vortex files the design names to `GoldfishContext`:
+
+   ```text
+   /egm:egm-review-loop TargetFile: <design path>; SemanticTarget: full file; Reviewers: [<workspace>/plugins/doodlebot/resources/vortex_runtime.md]; Standards: {"<workspace>/plugins/doodlebot/resources/vortex_runtime.md": "<workspace>/plugins/doodlebot/resources/vortex-change-standard.md"}; GoldfishContext: [<workspace>/ARCHITECTURE.md, <workspace>/KNOWLEDGE.md, <workspace>/harness/reference/cli.md, <workspace>/harness/reference/mcp-tools.md, <workspace>/harness/qa/catalog.json]; Dispatch: Direct Dispatch with subagent type doodlebot:vortex-runtime-goldfish
+   ```
+
 4. The person approves the sections. Never write an approval the person has not given.
 
 EGM's own reviewers run on the session's model (`model: inherit`); start the review from a
@@ -122,8 +134,8 @@ EGM artifact directory: harness/.artifacts/egm
 
 When asked to perform or test something in Vortex:
 
-1. Read `harness/AGENT-WORKFLOW.md` and use `harness/KNOWLEDGE-ROUTES.md` for the relevant
-   manual, skill and specialist sources. Search `KNOWLEDGE.md` for the symptom; verify its
+1. Start from the plugin skill for the use case (`plugins/doodlebot/skills/`), and read
+   `harness/AGENTS.md`'s "Working rules". Search `KNOWLEDGE.md` for the symptom; verify its
    explanation against the current source. Read `ARCHITECTURE.md` when locating a capability. When changing
    Vortex, also follow its own `AGENTS.md`, `CLAUDE.md` and `docs/README.md`: this kit
    supplements Vortex's rules and doesn't replace them. For a feature or refactor, start with
@@ -157,7 +169,7 @@ A task is complete only when its result is verified, or a concrete external bloc
   (`harness/src/plugins.test.ts`). Keep every manifest `version` equal to `package.json`'s. After
   editing a plugin, run `/plugin marketplace update doodlebot`.
 - **One accountable owner per issue.** One agent is accountable for each issue and follows
-  [the canonical agent workflow](harness/AGENT-WORKFLOW.md). Only one doodlebot Vortex runs at a
+  the working rules in [the agent manual](harness/AGENTS.md#working-rules). Only one doodlebot Vortex runs at a
   time, and nothing serializes two harness commands, so do not drive, rebuild or test the
   instance from two sessions at once. Run `doodlebot down` before handing over. Independent
   QA runs after the author's `down`, in a fresh context, and starts with `up --fresh` so it does
@@ -168,7 +180,8 @@ A task is complete only when its result is verified, or a concrete external bloc
   main process goes in the harness over CDP, never into a patch to Vortex.
 - **Two test layers.** Pure DOM logic goes in `src/uiAutomation.test.ts` under jsdom; anything
   that needs a real app goes in `harness/src/tests/`.
-- **Promote verified lessons** using AGENT-WORKFLOW.md. Keep knowledge entries short:
+- **Promote verified lessons** as `harness/AGENTS.md` ("Improving the kit") and
+  `plugins/doodlebot/resources/knowledge.md` say. Keep knowledge entries short:
   symptom, confirmed cause, remedy, applicable scope and source/test evidence.
 - Extension changes hot-reload through finite build, copy and reload cycles: run
   `doodlebot watch` (or `pnpm run dev`) against your already-running instance. One watcher is

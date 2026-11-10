@@ -30,6 +30,10 @@ the checks Vortex's own e2e suite lacks). Three forms:
 4. **The author's instance is gone.** `doodlebot status`: if MCP is `answering`, ask the person
    to confirm the author is done; then `doodlebot down` only if this session or the author
    (with their go-ahead) started it. QA never reuses a running instance.
+5. **The change is settled.** QA starts only when the person says the direction is settled
+   (for a feature, its design is approved), and runs only the head it was given: when a new
+   head arrives, stop, check out that head and rebuild before the next run. The shared rules
+   (who decides, what counts as evidence) are "Working rules" in `<workspace>/harness/AGENTS.md`.
 
 Every run in QA starts with `doodlebot up --fresh` and the chosen flags, in the background, and
 follows `/doodlebot:try`'s report procedure (`${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md`). In

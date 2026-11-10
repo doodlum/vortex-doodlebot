@@ -78,4 +78,4 @@ what is missing instead.
 
 - [Open a pull request](pull-requests.md).
 - Have the fix checked independently with `/doodlebot:qa`; see
-  [Try things in Vortex](drive-vortex.md#check-a-change-a-pull-request-or-a-release).
+  [Try things in Vortex](try-vortex.md#check-a-change-a-pull-request-or-a-release).

@@ -70,6 +70,18 @@ describe("EGM resources", () => {
       "doodlebot:vortex-runtime-goldfish",
     ])
       expect(agents).toContain(text);
+    // EGM's skills have disable-model-invocation: the person types them, from one pasted line.
+    expect(agents).toContain("disable-model-invocation: true");
+    const line = agents.split("\n").find((l) => l.trim().startsWith("/egm:egm-review-loop "));
+    expect(line).toBeDefined();
+    for (const argument of [
+      "TargetFile:",
+      "SemanticTarget: full file",
+      "Reviewers:",
+      "Standards:",
+      "GoldfishContext:",
+    ])
+      expect(line).toContain(argument);
   });
 
   it("documents EGM setup for each coding agent", () => {

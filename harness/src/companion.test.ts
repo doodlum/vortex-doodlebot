@@ -44,7 +44,40 @@ const REMOVED_FILES = [
   ...["login", "baseline", "start", "stop", "status", "update", "drive", "ui-test", "compare"].map(
     (skill) => `plugins/doodlebot/skills/${skill}`,
   ),
+  // One manual (plan step 9): folded into the skills and harness/AGENTS.md.
+  "harness/AGENT-WORKFLOW.md",
+  "harness/WORKFLOWS.md",
+  "harness/KNOWLEDGE-ROUTES.md",
+  // The drive guide is now docs/guides/try-vortex.md.
+  "docs/guides/drive-vortex.md",
 ];
+
+/**
+ * Names of the machinery designs/companion-simplified.md removed. Designs record that history,
+ * and tests that assert the absence name them; nothing else may.
+ */
+const STALE_TERMS = [
+  "AGENT-WORKFLOW.md",
+  "KNOWLEDGE-ROUTES.md",
+  "WORKFLOWS.md",
+  "drive-vortex.md",
+  "doodlebot readiness",
+  "readiness manifest",
+  "schema-3",
+  "design-review entry",
+  "design-review role",
+  "design new",
+  "design check",
+  "design scope",
+  "/doodlebot:design",
+  "login-import",
+  "vortex-e2e",
+  "isolate-user-folders",
+  "test zoom",
+  "test panels",
+];
+const staleExempt = (file: string): boolean =>
+  file.startsWith("designs/") || /\.test\.(?:ts|cjs)$/.test(file);
 const BINARY = /\.(?:png|jpe?g|gif|ico|ttf|woff2?|zip|7z|exe|dll)$/i;
 
 /** Tracked and untracked non-ignored files that exist on disk. */
@@ -96,6 +129,20 @@ describe("the agent companion", () => {
         for (const removed of REMOVED)
           if (line.includes(removed)) hits.push(`${file}:${String(index + 1)}: ${removed}`);
       });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("names no removed machinery outside designs and the tests that assert its absence", () => {
+    const hits: string[] = [];
+    for (const file of repositoryFiles()) {
+      if (staleExempt(file)) continue;
+      read(file)
+        .split(/\r?\n/)
+        .forEach((line, index) => {
+          for (const term of STALE_TERMS)
+            if (line.includes(term)) hits.push(`${file}:${String(index + 1)}: ${term}`);
+        });
     }
     expect(hits).toEqual([]);
   });

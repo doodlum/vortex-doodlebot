@@ -174,7 +174,7 @@ read one file rather than coordinate processes.
   `sourceDir` is the checkout of a source build. `harness/src/runningVortex.ts` reads and writes
   it. The older `harness/.cache/instance.json` is deleted when found, unless it names a running
   Vortex, which refuses the launch or `down` (`removeLegacyInstanceFiles` in `instance.ts`).
-- **Every kit launcher writes it** right after spawn and before readiness: `launchVortex` in
+- **Every kit launcher writes it** right after spawn and before waiting for MCP: `launchVortex` in
   `instance.ts` (`up`, `setup`, `bootstrap`) and the core suite's fixture. A record that cannot be written stops the child and fails the launch. A Vortex started
   outside these launchers, such as a raw Playwright or Electron launch, writes no record and is
   invisible to the refusals.

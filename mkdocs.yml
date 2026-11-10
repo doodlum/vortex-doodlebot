@@ -53,9 +53,10 @@ nav:
       - Set up doodlebot: get-started/set-up.md
       - Your first session: get-started/first-session.md
   - Guides:
-      - Drive Vortex and get a report: guides/drive-vortex.md
+      - Use cases: guides/use-cases.md
+      - Try things in Vortex: guides/try-vortex.md
       - Fix a Vortex bug: guides/fix-a-bug.md
-      - Design a feature: guides/design-a-feature.md
+      - Design a feature with EGM: guides/design-a-feature.md
       - Add a regression test: guides/regression-tests.md
       - Open a pull request: guides/pull-requests.md
       - Measure and compare performance: guides/benchmark.md
@@ -65,7 +66,7 @@ nav:
   - Concepts:
       - How doodlebot works: concepts/how-it-works.md
       - One test Vortex at a time: concepts/one-test-vortex.md
-      - Design first: concepts/design-first.md
+      - Design with EGM: concepts/design-first.md
       - What doodlebot learns: concepts/knowledge.md
       - Evidence and the QA catalogue: concepts/evidence.md
   - Reference:

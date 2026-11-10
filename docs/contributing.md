@@ -37,7 +37,7 @@ The extension must keep working against a stock, released Vortex. Anything that 
 main process belongs in the harness, never in a patch to Vortex.
 
 Features and refactors of doodlebot start with an approved design, like Vortex changes; see
-[Design a feature](guides/design-a-feature.md). Doodlebot designs are committed in
+[Design a feature with EGM](guides/design-a-feature.md). Doodlebot designs are committed in
 `designs/<topic>.md`.
 
 ## Run the checks

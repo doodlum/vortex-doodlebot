@@ -49,9 +49,11 @@ sees, and answers in the chat. No report is written.
       to install a mod;
    2. answers a dialog only when the scenario needs it, and records the title, the button and
       why;
-   3. reads the renderer console (`doodlebot call ui_read_console`), Vortex log warnings and
-      errors (`doodlebot log --level warn`, which keeps the lines Vortex marks `WARN` and
-      `ERRO`) and Vortex's notifications;
+   3. reads the renderer console's errors and warnings from the start
+      (`doodlebot call ui_read_console`), Vortex log warnings and errors
+      (`doodlebot log --level warn`, which keeps the lines Vortex marks `WARN` and `ERRO`) and
+      Vortex's notifications. The console keeps only its newest 500 entries, so after a noisy
+      run the report says the console read was truncated rather than "none";
    4. writes the report.
 
 4. The agent stops the test Vortex and summarizes the report. It is in

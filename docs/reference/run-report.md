@@ -42,13 +42,15 @@ a kit gap.
 
 ## Where the errors come from
 
-- **Console**: the renderer console from the start of its buffer, read with
-  `doodlebot call ui_read_console`.
+- **Console**: the renderer console's errors and warnings from the start of its buffer, read
+  with `doodlebot call ui_read_console` (up to 500 entries). The buffer keeps only the newest
+  500 entries of every level; when earlier ones were lost, the report says the console read was
+  truncated, with the last sequence number.
 - **Vortex log**: entries at warning level or above in the test profile's `vortex.log`, read
   with `doodlebot log --level warn`.
 - **Notifications**: Vortex's notifications, read from its state.
 
 ## What's next
 
-- [Try things in Vortex](../guides/drive-vortex.md).
+- [Try things in Vortex](../guides/try-vortex.md).
 - [Evidence and the QA catalogue](../concepts/evidence.md).

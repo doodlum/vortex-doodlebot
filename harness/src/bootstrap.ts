@@ -187,7 +187,7 @@ export async function seedLogin(mcp: VortexMcpClient, apiKey: string): Promise<v
 }
 
 export interface BootstrapOptions {
-  /** Observe every spawned cold/live process before readiness checks. */
+  /** Observe every spawned cold/live process before waiting for MCP. */
   onProcessSpawn?: (child: ChildProcess) => void;
   /** Keep an explicitly copied real game intact when resetting its profile.
    * Default reset behavior remains appropriate for generated disposable games.

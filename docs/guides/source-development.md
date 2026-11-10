@@ -94,7 +94,7 @@ another branch as well.
 
 ## Features and refactors start with a design
 
-Before you write code for a new feature or a refactor, write and approve a design with EGM ([Design a feature](design-a-feature.md)).
+Before you write code for a new feature or a refactor, write and approve a design with EGM ([Design a feature with EGM](design-a-feature.md)).
 A bug fix needs no design; use [`/doodlebot:fix`](fix-a-bug.md).
 
 When someone else checks your change, stop your test Vortex first. They start with

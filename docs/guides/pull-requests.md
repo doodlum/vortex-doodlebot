@@ -11,7 +11,7 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
   scenario was reproduced on the base and passes on the fix; see
   [Fix a Vortex bug](fix-a-bug.md#test-the-reported-scenario). Without that, the agent does not
   prepare a pull request, draft included.
-- For a feature or a refactor, have the approved design; see [Design a feature](design-a-feature.md).
+- For a feature or a refactor, have the approved design; see [Design a feature with EGM](design-a-feature.md).
 - Stop the test Vortex (`doodlebot down`). The checks below refuse to change a checkout that
   a running test Vortex uses.
 
@@ -52,8 +52,9 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
      and acceptance criteria verbatim, and "Design approved by <owner> on <date>", with a link
      to the design at its `design/<topic>` tag on your fork; "None" for a bug fix.
    - **Behaviour changes**: what users and extension authors can observe.
-   - **Evidence**: revision and platform, design scope, scoped tests and controls, app
-     checks, performance if relevant, and CI.
+   - **Evidence**: revision and platform, the before and after run reports, the regression
+     test and its control, each acceptance criterion with its negative control (with a design),
+     the QA catalogue entries the change touches, performance if relevant, and CI.
    - **Review**: the independent review and its findings.
    - **Not covered**: related work left out.
 
@@ -82,5 +83,5 @@ exists, its check status.
 ## What's next
 
 - Have the change checked independently with `/doodlebot:qa`; see
-  [Try things in Vortex](drive-vortex.md#check-a-change-a-pull-request-or-a-release).
+  [Try things in Vortex](try-vortex.md#check-a-change-a-pull-request-or-a-release).
 - [Evidence and the QA catalogue](../concepts/evidence.md).

@@ -393,7 +393,7 @@ directly; every other cache has its own, which starts absent: signed out (login.
 export function authCacheFile(config: HarnessConfig): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L121).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L124).
 
 ```typescript
 export interface VortexInstance {
@@ -404,7 +404,7 @@ export interface VortexInstance {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L129).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L132).
 
 Build the environment for an isolated Vortex instance.
 
@@ -427,7 +427,7 @@ Where the harness reads a Nexus API key from; stripped from Vortex's env unless 
 export const API_KEY_VARIABLES;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L153).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L156).
 
 ```typescript
 export function buildInstanceEnv(
@@ -436,7 +436,7 @@ export function buildInstanceEnv(
 ): Record<string, string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L155).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L158).
 
 Create the directory layout Vortex expects before first launch.
 
@@ -450,7 +450,7 @@ like a naming problem.
 export function prepareUserDataDir(userDataDir: string, appName: string): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L199).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L202).
 
 Copy the built extension into an instance's plugins directory.
 
@@ -461,7 +461,7 @@ match info.json's `id` or Vortex treats it as a different extension next run.
 export function installMcpExtension(userDataDir: string, source = extensionRoot()): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L210).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L213).
 
 Ensure the extension is built, building it when needed. Returns this repo's root.
 
@@ -471,7 +471,7 @@ export async function ensureExtensionBuilt(
 ): Promise<string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L256).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L259).
 
 Remove an instance directory, retrying past transient Windows locks.
 
@@ -483,7 +483,7 @@ turns that into a short wait rather than a failed run.
 export function removeInstanceDir(dir: string, attempts = 5): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L274).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L277).
 
 Shut down an instance left behind by an earlier run.
 
@@ -499,7 +499,7 @@ that says nothing about the real cause. The PID is only waited on, never signall
 export async function stopStaleInstance(config: HarnessConfig): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L304).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L307).
 
 `down`: stop the one running harness Vortex, wherever its cache is. The record names its
 cache and MCP port, so a Vortex left in a test cache, or started with another
@@ -514,7 +514,7 @@ export async function stopRunningInstance(
 ): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L315).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L318).
 
 ```typescript
 export interface LaunchOptions {
@@ -524,12 +524,12 @@ export interface LaunchOptions {
   onProgress?: (message: string) => void;
   /** Monotonic timestamp immediately before process creation, for startup measurements. */
   onSpawn?: (at: number) => void;
-  /** Exact child immediately after spawn and the instance record, before any readiness await. */
+  /** Exact child immediately after spawn and the instance record, before awaiting MCP. */
   onProcessSpawn?: (child: ChildProcess) => void;
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L381).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L384).
 
 Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio.log`.
 
@@ -537,7 +537,7 @@ Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio
 export function stdioLogFile(userDataDir: string): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L393).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L396).
 
 How Vortex is spawned. Detached, so it outlives the `doodlebot` process that started it, and
 with none of that process's stdio: stdin is ignored and stdout/stderr go to a log file (or
@@ -553,7 +553,7 @@ export function launchStdio(logFd: number | undefined): {
 };
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L413).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L416).
 
 Start Vortex and wait until its MCP server answers.
 
@@ -562,7 +562,7 @@ itself, so this works on the released build too — and it is what screenshots
 and the Playwright specs attach to, replacing what would otherwise have to be
 a patch to Vortex core.
 
-"Answers MCP" rather than "process started" is the readiness signal on
+"Answers MCP" rather than "process started" is the signal that Vortex is up on
 purpose: the extension registers in `context.once`, which runs only after the
 renderer has loaded its extensions and the store is live. A port check or a
 fixed sleep would both report ready while the app is still on the splash
@@ -572,7 +572,7 @@ screen, and every subsequent tool call would fail confusingly.
 export async function launchVortex(options: LaunchOptions): Promise<VortexInstance>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L436).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L439).
 
 Stop an instance, preferring Vortex's own graceful shutdown.
 
@@ -588,7 +588,7 @@ export async function stopInstance(
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L572).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L575).
 
 ## jsonFile
 
