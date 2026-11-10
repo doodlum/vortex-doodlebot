@@ -137,7 +137,14 @@ capture open, so the command never returns. So:
    2. take `doodlebot snapshot` (scoped to the dialog) to get the button's ref;
    3. answer with `doodlebot click --ref <ref>`, choosing the button the scenario needs.
 
-   `install` gives up after 300 seconds, so answer before then.
+   While `install` runs, its own dialog and FOMOD watchers take snapshots, and each one
+   makes your refs stale (`Stale or unknown ref`). Take the scoped snapshot and click in
+   the same shell call, and on a stale ref simply snapshot and click again.
+
+   `install` gives up after 300 seconds, so answer before then. When you answer with
+   **Cancel**, `install` exits 1 with `McpError: canceled by user`: that is the expected
+   end of a cancelled install, not a failure of the scenario. Record the exit and check the
+   mods with `vortex_query`.
 
 4. Login is `/doodlebot:login`; never type credentials.
 

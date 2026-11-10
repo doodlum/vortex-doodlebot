@@ -110,6 +110,48 @@ function bullets(lines: Line[], from: number, to: number): string[] {
   return found;
 }
 
+/**
+ * Acceptance criteria: each top-level `` `id`: `` bullet with everything nested under it
+ * (indented bullets and paragraphs, across blank lines) up to the next top-level bullet or an
+ * unindented line, bullet markers removed and whitespace collapsed.
+ */
+function acceptanceItems(
+  lines: Line[],
+  from: number,
+  to: number,
+): { id: string; criterion: string }[] {
+  const found: { id: string; criterion: string }[] = [];
+  let current: { id: string; parts: string[] } | undefined;
+  const flush = (): void => {
+    if (current !== undefined)
+      found.push({
+        id: current.id,
+        criterion: current.parts.join(" ").replace(/\s+/g, " ").trim(),
+      });
+    current = undefined;
+  };
+  for (let i = from; i < to; i++) {
+    const { text, fenced } = lines[i]!;
+    if (fenced || FENCE.test(text) || text.trim() === "") continue;
+    if (HEADING.test(text)) {
+      flush();
+      continue;
+    }
+    const indented = /^\s/.test(text);
+    const bullet = BULLET.exec(text);
+    if (!indented && bullet !== null) {
+      flush();
+      const match = /^`([a-z0-9][a-z0-9-]*)`:\s*(.*)$/.exec(bullet[1]!);
+      if (match !== null) current = { id: match[1]!, parts: [match[2]!] };
+    } else if (current !== undefined) {
+      if (!indented && lines[i - 1]?.text.trim() === "") flush();
+      else current.parts.push(bullet !== null ? bullet[1]! : text.trim());
+    }
+  }
+  flush();
+  return found;
+}
+
 export function parseDesign(markdown: string): DesignDocument {
   const text = normalize(markdown);
   const lines: Line[] = [];
@@ -172,11 +214,7 @@ export function parseDesign(markdown: string): DesignDocument {
   }
 
   const acceptance = section("Acceptance Criteria", 2);
-  if (acceptance !== undefined)
-    for (const bullet of bullets(lines, ...acceptance)) {
-      const match = /^`([a-z0-9][a-z0-9-]*)`:\s*(.*)$/.exec(bullet);
-      if (match !== null) design.acceptance.push({ id: match[1]!, criterion: match[2]!.trim() });
-    }
+  if (acceptance !== undefined) design.acceptance = acceptanceItems(lines, ...acceptance);
 
   const contracts = section("Affected Contracts", 2);
   if (contracts !== undefined)
@@ -236,9 +274,10 @@ export function checkDesign(design: DesignDocument, options: { ready?: boolean }
   }
   if (design.acceptance.length === 0) issues.push("no acceptance criteria");
   const seen = new Set<string>();
-  for (const { id } of design.acceptance) {
+  for (const { id, criterion } of design.acceptance) {
     if (seen.has(id)) issues.push(`duplicate acceptance id ${id}`);
     seen.add(id);
+    if (criterion === "") issues.push(`empty acceptance criterion ${id}`);
   }
   for (const contract of design.contracts)
     if (!(contractNames as readonly string[]).includes(contract))

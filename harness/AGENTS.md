@@ -106,7 +106,10 @@ from the workspace root.
   start launches Vortex up to three times on the same port, so `doodlebot status` answering
   is only a liveness hint, never completion. For a command that may raise a dialog, poll
   `doodlebot call ui_active_dialogs`, take `doodlebot snapshot` for the button's ref and answer
-  with `doodlebot click --ref <ref>` (`install` times out after 300 s).
+  with `doodlebot click --ref <ref>` (`install` times out after 300 s). `install`'s own
+  dialog and FOMOD watchers (`autoAnswerDialogs`, `autoAdvanceFomods`) snapshot while it
+  runs, so take the snapshot and click in one call and retry on `Stale or unknown ref`. A
+  Cancel answer ends `install` with exit 1 and `McpError: canceled by user`.
 
 ## Initial setup
 

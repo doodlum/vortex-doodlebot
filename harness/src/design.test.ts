@@ -123,6 +123,38 @@ describe("parseDesign", () => {
     ]);
   });
 
+  it("keeps nested bullets and indented paragraphs in their acceptance criterion", () => {
+    const parsed = parseDesign(
+      design({
+        acceptance: [
+          "- `lead`: Following it yields:",
+          "  - one;",
+          "    - deeper;",
+          "  - two.",
+          "",
+          "  A paragraph under it.",
+          "",
+          "- `bare`:",
+          "  - only nested.",
+          "- `plain`: Plain.",
+          "",
+          "Not part of any criterion.",
+        ].join("\n"),
+      }),
+    );
+    expect(parsed.acceptance).toEqual([
+      { id: "lead", criterion: "Following it yields: one; deeper; two. A paragraph under it." },
+      { id: "bare", criterion: "only nested." },
+      { id: "plain", criterion: "Plain." },
+    ]);
+    expect(checkDesign(parsed)).not.toContain("empty acceptance criterion bare");
+  });
+
+  it("reports an acceptance criterion with no text", () => {
+    const parsed = parseDesign(design({ acceptance: "- `empty`:\n- `b`: B." }));
+    expect(checkDesign(parsed)).toContain("empty acceptance criterion empty");
+  });
+
   it("reads contracts, ignoring backticks on a None bullet", () => {
     expect(parseDesign(design({ contracts: "- None: `inferredContracts` agrees." }))).toMatchObject(
       { contracts: [], noContracts: true },
