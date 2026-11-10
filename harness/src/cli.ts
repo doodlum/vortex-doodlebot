@@ -251,7 +251,8 @@ Driving a running instance
   e2e <collection>       Fresh start, install, verify, deploy, launch real game
     --runs <n> --keep --purge; --no-launch for installation/deployment only
   log                    The running instance's Vortex log, filtered
-    --level info|warn|error  Lowest level kept (default warn)
+    --level info|warn|error  Lowest level kept (default warn); Vortex's INFO, WARN
+                         and ERRO codes rank as info, warn and error
     --tail <n>           Last n entries (default 50)
     --since <ISO time>   Entries at or after this time
     --json               LogEntry[] with continuation lines in each message

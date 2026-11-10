@@ -326,7 +326,9 @@ doodlebot log --level warn [--tail <n>] [--since <ISO time>] [--json]
 
 `doodlebot log` reads `<userDataDir>/vortex.log` of the running instance (from
 `automation_status`). `--level` is a threshold (`debug`, `silly` and `verbose` count below
-`info`; an unrecognised level counts as `info`); each entry keeps its continuation lines, such as
+`info`; an unrecognised level counts as `info`). Vortex writes four-letter codes: `DEBG` ranks
+with `debug`, `INFO` with `info`, `WARN` with `warn` and `ERRO` with `error`, so the default
+`warn` keeps `ERRO` lines; each entry keeps its continuation lines, such as
 stack frames, and `--json` appends them to `message`. Driven runs (`/doodlebot:drive`,
 `/doodlebot:qa`) also read the renderer console from sequence 0 with
 `doodlebot call ui_read_console`, and write a run report to

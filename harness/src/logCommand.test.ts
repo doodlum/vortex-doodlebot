@@ -20,7 +20,33 @@ const LOG = [
   "2026-11-10T09:00:07.000Z [Error] [renderer] second failure",
 ].join("\r\n");
 
+// Lines as Vortex really writes them: four-letter level codes (copied in form from a live
+// harness profile's vortex.log, messages shortened).
+const REAL_LOG = [
+  '2026-11-10T12:37:46.015Z [DEBG] [MAIN] [elevation-trace] main entry {"pid":7932}',
+  "2026-11-10T12:37:47.000Z [INFO] [RENDERER] loaded extensions",
+  '2026-11-10T12:37:48.286Z [WARN] [RENDERER] migration sequence failed {"err":"Invalid Version: "}',
+  "2026-11-10T12:37:49.000Z [ERRO] [RENDERER] failed to deploy",
+  "Error: EPERM: operation not permitted",
+  "    at deploy (renderer.js:1:1)",
+].join("\n");
+
 describe("doodlebot log", () => {
+  it("ranks Vortex's four-letter codes: DEBG < INFO < WARN < ERRO", () => {
+    expect(["DEBG", "INFO", "WARN", "ERRO"].map(levelRank)).toEqual([0, 1, 2, 3]);
+    expect(levelRank("ERRO")).toBe(levelRank("error"));
+  });
+
+  it("keeps ERRO lines, with their stack, at the default warn level and at error", () => {
+    expect(filterLog(REAL_LOG).map((b) => [b.entry.level, b.entry.message])).toEqual([
+      ["WARN", "migration sequence failed"],
+      ["ERRO", "failed to deploy"],
+    ]);
+    const errors = filterLog(REAL_LOG, { level: "error" });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.lines).toHaveLength(3);
+  });
+
   it("ranks levels case-insensitively, an unknown one as info", () => {
     expect(["debug", "silly", "verbose"].map(levelRank)).toEqual([0, 0, 0]);
     expect(["info", "INFO", "notice", "weird"].map(levelRank)).toEqual([1, 1, 1, 1]);

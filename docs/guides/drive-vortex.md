@@ -48,7 +48,8 @@ of the window, acts on what it sees, and answers in the chat. No report is writt
    3. answers a dialog only when the scenario needs it. It reads the dialog's text, picks the
       button, and records the title, the button and why;
    4. reads the renderer console (`doodlebot call ui_read_console`), Vortex log warnings and
-      errors (`doodlebot log --level warn`) and Vortex's notifications;
+      errors (`doodlebot log --level warn`, which keeps the lines Vortex marks `WARN` and
+      `ERRO`) and Vortex's notifications;
    5. writes the report.
 
 4. Read the summary in the chat. The report is in

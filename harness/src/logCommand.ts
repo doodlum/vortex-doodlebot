@@ -26,9 +26,24 @@ export interface LogBlock {
   lines: string[];
 }
 
-const RANK: Record<string, number> = { silly: 0, debug: 0, verbose: 0, info: 1, warn: 2, error: 3 };
+// Vortex writes four-letter codes (`[DEBG]`, `[INFO]`, `[WARN]`, `[ERRO]`); the spelled-out
+// names are aliases, so `--level error` keeps `ERRO` lines.
+const RANK: Record<string, number> = {
+  silly: 0,
+  debug: 0,
+  debg: 0,
+  verbose: 0,
+  info: 1,
+  warn: 2,
+  warning: 2,
+  error: 3,
+  erro: 3,
+};
 
-/** debug, silly and verbose < info < warn < error; an unrecognised level counts as info. */
+/**
+ * debug (DEBG), silly and verbose < info (INFO) < warn (WARN) < error (ERRO); an unrecognised
+ * level counts as info.
+ */
 export function levelRank(level: string): number {
   return RANK[level.toLowerCase()] ?? RANK.info!;
 }
