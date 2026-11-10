@@ -15,7 +15,6 @@ export const commands: CommandEntry[] = [
   { name: "setup" },
   { name: "auth-status" },
   { name: "save-login" },
-  { name: "login-import" },
   { name: "doctor" },
   { name: "up" },
   { name: "bootstrap" },
@@ -48,7 +47,8 @@ export const commands: CommandEntry[] = [
   { name: "e2e" },
   { name: "log" },
   { name: "fixture", subcommands: ["mod"] },
-  { name: "knowledge", subcommands: ["add", "search", "list", "remove", "path"] },
+  { name: "knowledge", subcommands: ["add", "search", "list", "remove", "note", "share", "path"] },
+  { name: "gap", subcommands: ["add", "list", "close", "share"] },
   // Content the kit may write to
   { name: "game", subcommands: ["copy", "register", "restore"] },
   { name: "release", subcommands: ["get", "list"] },
@@ -62,6 +62,7 @@ export const commands: CommandEntry[] = [
   { name: "evidence", subcommands: ["identity", "run", "runtime"] },
   { name: "pr-checks" },
   { name: "pr-preflight" },
+  { name: "pr-branch" },
 ];
 
 export function findCommand(name: string): CommandEntry | undefined {

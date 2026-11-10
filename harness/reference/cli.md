@@ -23,14 +23,15 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `fill`
 - `fixture`
 - `game`
+- `gap`
 - `help`
 - `install`
 - `inventory`
 - `knowledge`
 - `link`
 - `log`
-- `login-import`
 - `perf-summary`
+- `pr-branch`
 - `pr-checks`
 - `pr-preflight`
 - `press`
@@ -74,9 +75,9 @@ Initial account setup (only for Nexus collections)
     --no-wait            Return with login pending; finish with save-login
   auth-status            Print presence booleans only; never print credentials
   save-login             Verify OAuth, stop cleanly, capture the current baseline
-  login-import --from <cache-dir>
-                         Reuse the saved login of another cache dir (default: the
-                         harness cache) in --cache-dir; --force replaces one
+                         The login is one file, ~/.doodlebot/login/oauth-<target>.json,
+                         used directly by the default cache only; other caches are
+                         signed out. Nothing copies it. Lost or expired: setup --oauth
 
 Instance lifecycle
   doctor                 Report prerequisites and actionable fixes
@@ -111,10 +112,21 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          1 MB stay), unused baselines and caches, releases content.json
                          no longer names; deletes only with --yes. Never touches game
                          copies, the login, pending restores or the running instance
-  source                 Find your fork, clone to .vortex-src and build Vortex
-    --update             Fetch origin and upstream in an existing clone
+  source                 Clone your fork (origin) and Nexus-Mods/Vortex (upstream) to
+                         .vortex-src and build it; without a fork, clone upstream alone
+                         (enough to build and test; pushing needs a fork)
+    --update             Fetch every remote of an existing clone (adds a missing upstream)
+    --branch <name>      Cut a new work branch from upstream/<default branch>
     --no-build           Clone only
     --where              Print managed source path
+  pr-branch <topic>      Build pr/<topic> from the merge-base with upstream: every commit
+                         except docs(design) ones (a non-design commit touching
+                         docs/designs/ is refused); tag the last design commit design/<topic>
+    --checkout <dir>     Vortex checkout (default: .vortex-src)
+    --base <ref>         Base (default: upstream/<default branch>)
+    --push               Push both to origin, only after gh shows origin is your own fork
+                         of Nexus-Mods/Vortex (or the VORTEX_AI_VORTEX_REPO fork you can
+                         push to)
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
   evidence identity --checkout <dir> --base <ref>
@@ -129,7 +141,7 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          Newly produced JSON reporter output, required for test counts
   pr-preflight           Mechanical checks on a Vortex branch before pushing: size,
                          callers outside the diff, revert check (negative control),
-                         measurements in comments, PR description
+                         measurements in comments, design kept out, PR description
     --checkout <dir>     Vortex checkout (default: .vortex-src)
     --base <ref>         Base to diff from (default: upstream/master, via merge-base)
     --head <ref>         Compare this ref without checking it out (no revert check)
@@ -191,9 +203,27 @@ Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
   knowledge search <words...> [--json]
                          Local lessons and the workspace's KNOWLEDGE.md holding every word
   knowledge add --title <t> --area <a> --symptom <s> --cause <c> --remedy <r>
-                --scope <s> --evidence <e> [--vortex <version>] [--json]
+                --scope <s> --evidence <e> --vortex <version> [--third-party <text>] [--json]
                          Record a lesson whose cause you checked (never credentials)
+  knowledge note <id> <text>   Append a dated note, e.g. "does not hold on <version>"
   knowledge list [--json] | knowledge remove <id> | knowledge path
+  knowledge share <id>   Print the redacted lesson for a GitHub issue on
+                         doodlum/vortex-doodlebot; publishes nothing without --yes
+    --yes                Publish (after the person confirmed the printed text); an open
+                         issue with the same title gets a comment instead
+    --print              Only the text, to paste into an issue by hand (no gh)
+    --include-third-party  Include data marked third-party (confirmed separately)
+    --nexus-user <name>  Your Nexus user name, redacted too (or VORTEX_AI_NEXUS_USER)
+
+Kit gaps (what the kit should have done and didn't, in ~/.doodlebot/gaps.md)
+  gap add --title <t> --command <c> --needed <x> --happened <x> --blocked yes|no
+          [--workaround <x>] [--third-party <text>] [--json]
+                         Same command and title: counts it again; a wontfix gap is not
+                         recorded; a gap closed --by a commit re-opens only when this kit
+                         contains that commit
+  gap list [--all] [--json]    Open gaps (--all: closed too; --json always lists all)
+  gap close <id> --by <commit> | --wontfix
+  gap share <id> [--yes] [--print] [--include-third-party]   As knowledge share
 
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after

@@ -36,6 +36,7 @@ import {
 import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
 import { readNxmHandler } from "./nxmHandler";
+import { loginFileFor } from "./login";
 import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { processAlive } from "./processes";
 import {
@@ -112,12 +113,17 @@ function removeLegacyInstanceFiles(config: HarnessConfig, action: string): void 
     fs.rmSync(legacyRecord, { force: true });
 }
 
+/**
+ * The OAuth file Vortex reads and writes (`VORTEX_AI_AUTH_CACHE`), per target. A shared-login cache
+ * (the default one, or `sharedLogin: true`) uses `~/.doodlebot/login/oauth-<target>.json`
+ * directly; every other cache has its own, which starts absent: signed out (login.ts).
+ */
 export function authCacheFile(config: HarnessConfig): string {
   const key = createHash("sha256")
     .update(`${config.target.kind}:${config.target.appName}`)
     .digest("hex")
     .slice(0, 16);
-  return path.join(config.cacheDir, `oauth-${key}.json`);
+  return loginFileFor(config, `oauth-${key}.json`);
 }
 
 export interface VortexInstance {

@@ -38,7 +38,7 @@
     {
       "name": "Lifecycle and authentication",
       "sources": [
-        "^harness/src/(instance|runningVortex|processes|bootstrap|auth|loginImport|runningProfile|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
+        "^harness/src/(instance|runningVortex|processes|bootstrap|auth|login|runningProfile|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
       ],
       "human": [
         "docs/concepts/one-test-vortex.md",
@@ -59,7 +59,7 @@
     {
       "name": "Builds and evidence",
       "sources": [
-        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|prChecks|prPreflight)\\.ts$"
+        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|prChecks|prPreflight|prPush)\\.ts$"
       ],
       "human": [
         "docs/guides/source-development.md",
@@ -84,6 +84,12 @@
       ],
       "human": ["docs/guides/regression-tests.md", "docs/contributing.md"],
       "ai": ["harness/TESTING.md"]
+    },
+    {
+      "name": "Knowledge, kit gaps and sharing",
+      "sources": ["^harness/src/(knowledgeCommand|gapCommand|share|entryStore)\\.ts$"],
+      "human": ["docs/concepts/knowledge.md"],
+      "ai": ["harness/AGENTS.md", "KNOWLEDGE.md"]
     },
     {
       "name": "Inventory, QA catalogue and disk use",

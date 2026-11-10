@@ -8,6 +8,7 @@ import {
   KNOWLEDGE_FILE,
   addLesson,
   knowledgeCommand,
+  noteLesson,
   parseLessons,
   removeLesson,
   searchKnowledge,
@@ -82,6 +83,42 @@ describe("knowledge store", () => {
     ).toMatch(/^k-/);
   });
 
+  it("requires the Vortex version the lesson was confirmed on", () => {
+    const { local } = files();
+    const { vortex: _vortex, ...withoutVersion } = lesson;
+    expect(() => addLesson(withoutVersion, local)).toThrow(/needs --vortex/);
+    expect(fs.existsSync(local)).toBe(false);
+  });
+
+  it("refuses a stack trace and keeps third-party data apart", () => {
+    const { local } = files();
+    expect(() =>
+      addLesson({ ...lesson, evidence: "at install (C:/x/vortex/main.js:12:5)" }, local),
+    ).toThrow(/stack trace/);
+    const added = addLesson({ ...lesson, thirdParty: "from a user's vortex.log" }, local);
+    expect(fs.readFileSync(local, "utf8")).toContain("- **Third-party:** from a user's vortex.log");
+    expect(parseLessons(fs.readFileSync(local, "utf8"))[0]).toEqual(added);
+  });
+
+  it("appends a dated note that the lesson did not hold, keeping the lesson", () => {
+    const { local } = files();
+    const added = addLesson(lesson, local);
+    const noted = noteLesson(
+      added.id,
+      "does not hold on 2.9.0 (2026-11-11, runs/x/report.md)",
+      local,
+      new Date("2026-11-11T08:00:00Z"),
+    );
+    expect(noted.notes).toEqual([
+      "2026-11-11: does not hold on 2.9.0 (2026-11-11, runs/x/report.md)",
+    ]);
+    const [read] = parseLessons(fs.readFileSync(local, "utf8"));
+    expect(read?.notes).toEqual(noted.notes);
+    expect(read?.fields.symptom).toBe(lesson.symptom);
+    expect(() => noteLesson(added.id, " ", local)).toThrow(/needs an id/);
+    expect(() => noteLesson("k-none", "x", local)).toThrow(/No local lesson/);
+  });
+
   it("refuses a duplicate title and removes by id", () => {
     const { local } = files();
     const added = addLesson(lesson, local);
@@ -128,6 +165,14 @@ describe("knowledge command", () => {
     );
     expect(knowledgeCommand(["list"], {}, store)).toMatch(/^No local lessons yet/);
     expect(knowledgeCommand(["path"], {}, store)).toBe(store.local);
+  });
+
+  it("notes a lesson through the CLI form", () => {
+    const store = files();
+    const added = addLesson(lesson, store.local);
+    expect(
+      knowledgeCommand(["note", added.id, "does", "not", "hold", "on", "2.9.0"], {}, store),
+    ).toMatch(new RegExp(`^noted ${added.id}: \\d{4}-\\d{2}-\\d{2}: does not hold on 2.9.0$`));
   });
 
   it("explains its usage for an unknown sub-command", () => {

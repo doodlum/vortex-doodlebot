@@ -33,7 +33,7 @@ Setup asks before it enables pnpm. If you agree, it runs `corepack enable`, then
 | Nexus collections                  | A Nexus Mods account, signed in once with [`/doodlebot:login`](../guides/sign-in.md)                                                       |
 | Unattended collection downloads    | Nexus Mods Premium                                                                                                                         |
 | A real game                        | The game installed; a test machine or QA-only Windows account is safest ([Use real games and baselines](../guides/games-and-baselines.md)) |
-| Changing Vortex itself             | A GitHub fork of Vortex and Vortex's own build prerequisites ([Work on Vortex source](../guides/source-development.md))                    |
+| Changing Vortex itself             | Vortex's own build prerequisites, and a GitHub fork of Vortex to push ([Work on Vortex source](../guides/source-development.md))           |
 | Designing features                 | The EGM plugin, `v0.1.1` ([Install the plugin](install.md))                                                                                |
 
 ## What's next

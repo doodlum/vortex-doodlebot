@@ -35,18 +35,32 @@ only whether credentials are present, never the credentials themselves.
 
 ## How the saved login is used
 
-- The login is saved per target, installed Vortex or source build, in the workspace's private
-  cache. `/doodlebot:login` signs in the installed target.
-- To sign in a source build, name its checkout: `/doodlebot:login --dev-dir <path>`. The agent
-  uses `--dev-dir <path>` instead of `--installed` on every command, `setup` and `save-login`
-  included.
+- The login is one file per target, installed Vortex or source build, in
+  `~/.doodlebot/login`. It is outside the workspace. Every workspace on this machine uses it,
+  and it stays after `/doodlebot:update` and a new `/doodlebot:setup`.
+- `/doodlebot:login` signs in the installed target. To sign in a source build, name its
+  checkout: `/doodlebot:login --dev-dir <path>`. The agent uses `--dev-dir <path>` instead of
+  `--installed` on every command, `setup` and `save-login` included.
 - If the target already has a saved login present, the agent reports it and no click
   is needed.
-- Fresh and rebuilt profiles of the same target inherit the login, but not mod lists or game
-  paths.
-- A saved login does not prove Nexus still accepts it. If Nexus refuses it, run
-  `/doodlebot:login` again.
-- Benchmarks use signed-out profiles on purpose, so measurements do not depend on your account.
+- The main test Vortex uses the login directly. Fresh and rebuilt profiles keep it, but not
+  mod lists or game paths.
+- Test profiles, benchmarks and the core suite are signed out. They never get a copy of your
+  login, so they cannot use it up.
+- Doodlebot never copies the login. Nexus replaces part of it each time it refreshes, so a copy
+  stops working.
+- Logging out in the main test Vortex signs you out everywhere. The agent never clicks
+  **Log out** unless you ask for it.
+- Only you, Windows (SYSTEM) and administrators can read the folder. The agent's check reports
+  anything else, with the command that fixes it.
+
+## If your login is lost or expired
+
+Run `/doodlebot:setup --login`, or `/doodlebot:login`, and sign in again. It takes about a minute.
+
+There is no backup command. A copy of the login stops working the first time the real login
+refreshes, and it would leave a password-like file on disk. A saved login also does not prove
+Nexus still accepts it: if Nexus refuses it, sign in again the same way.
 
 ## What's next
 

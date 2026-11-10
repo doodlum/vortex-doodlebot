@@ -149,7 +149,6 @@ describe("path rules", () => {
         "exe",
         "bin-dir",
         "args-file",
-        "from",
         "cwd",
         "ffmpeg",
         "a",
@@ -263,6 +262,19 @@ describe("path rules", () => {
       passthrough: [],
     });
     expect(BOOLEAN_FLAGS.has("json")).toBe(true);
+  });
+
+  it("reads the share, gap and pr-branch switches without taking the next word", () => {
+    expect(parse(["gap", "share", "--print", "g-1"])).toMatchObject({
+      positional: ["share", "g-1"],
+      flags: { print: true },
+    });
+    expect(parse(["knowledge", "share", "--include-third-party", "--yes", "k-1"]).flags).toEqual({
+      "include-third-party": true,
+      yes: true,
+    });
+    expect(parse(["gap", "close", "--wontfix", "g-1"]).positional).toEqual(["close", "g-1"]);
+    expect(parse(["pr-branch", "--push", "zoom"]).positional).toEqual(["zoom"]);
   });
 
   it("defaults to the caller's directory from INIT_CWD", () => {

@@ -56,8 +56,11 @@ longer belongs to Vortex or Electron is cleared as stale. The older record
 ("A harness Vortex from an older doodlebot is running (pid N); stop it before starting Vortex.").
 
 To work on Vortex's own code: `doodlebot source` (`/doodlebot:source`) finds **your** GitHub
-fork, clones it into `.vortex-src` and builds it. Make a branch of `.vortex-src` for each piece of
-work, or pass a checkout of your own with `--dev-dir <dir>`. The kit never searches the filesystem
+fork, clones it into `.vortex-src` (as `origin`, beside Nexus-Mods/Vortex as `upstream`) and
+builds it; without a fork it clones upstream alone, which is enough to build and test. Make a
+branch from `upstream` for each piece of work (`doodlebot source --branch <name>`), or pass a
+checkout of your own with `--dev-dir <dir>`. The kit pushes only to your own fork
+(`doodlebot pr-branch <topic> --push`). The kit never searches the filesystem
 for a Vortex checkout. Building, installing, patching, reverting or recording evidence in the
 checkout a running harness Vortex was launched from refuses with
 "A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before <action>."

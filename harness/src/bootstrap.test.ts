@@ -342,6 +342,34 @@ describe("cold game management", () => {
   });
 });
 
+describe("the Nexus login of a cache", () => {
+  it("never seeds a test cache: it starts with no login, and the shared login is untouched", async () => {
+    const config = fakeConfig();
+    const sharedDir = path.join(USER_STATE_DIR, "login");
+    fs.mkdirSync(sharedDir, { recursive: true });
+    const sharedFile = path.join(sharedDir, path.basename(authCacheFile(config)));
+    fs.writeFileSync(sharedFile, JSON.stringify({ token: "t", refreshToken: "r" }));
+    try {
+      expect(authCacheFile(config)).toBe(path.join(config.cacheDir, path.basename(sharedFile)));
+      const result = await bootstrap(config, { fresh: true });
+      expect(fs.existsSync(authCacheFile(config))).toBe(false);
+      expect(fs.readFileSync(sharedFile, "utf8")).toBe(
+        JSON.stringify({ token: "t", refreshToken: "r" }),
+      );
+      await result.instance.stop();
+    } finally {
+      fs.rmSync(sharedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("puts a test cache's signed-out marker in that cache only", () => {
+    const config = fakeConfig();
+    fs.writeFileSync(authCacheFile(config), "null");
+    expect(fs.readdirSync(config.cacheDir)).toContain(path.basename(authCacheFile(config)));
+    expect(fs.existsSync(path.join(USER_STATE_DIR, "login"))).toBe(false);
+  });
+});
+
 describe("real copied game preservation", () => {
   it.each([false, true])(
     "preserveGameFixture=%s retains masters only when explicitly requested",

@@ -23,7 +23,13 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
    /doodlebot:pr
    ```
 
-2. The agent runs `doodlebot pr-preflight` on the branch. It compares the committed branch with
+2. The agent builds the branch the pull request is opened from:
+   `doodlebot pr-branch <topic>`. It makes `pr/<topic>` from your commits, without the
+   `docs(design)` commits, so the design never reaches the pull request. It tags the last design
+   commit `design/<topic>`, so the description can link the design. A commit that mixes code with
+   a change to `docs/designs/` is refused: split it first.
+
+3. The agent runs `doodlebot pr-preflight` on `pr/<topic>`. It compares the committed branch with
    its merge base and reports PASS, WARN, FAIL or SKIP for each check:
 
    | Check                    | What it reports                                                             |
@@ -34,10 +40,11 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
    | Dispatchers of reducers  | Each changed reducer's action creator and its uses                          |
    | Revert check             | Whether the tests fail with the fix reverted, which shows they test the fix |
    | Measurements in comments | Timing or size figures in added comments                                    |
+   | Design kept out          | FAIL when the branch still carries its design file                          |
 
    The agent gives each meaningful warning a disposition.
 
-3. The agent writes the description with these sections, in this order:
+4. The agent writes the description with these sections, in this order:
 
    - **Problem**: the trigger, the user-visible result, the affected scope and the cause, with
      the issue link.
@@ -55,10 +62,15 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
    The title follows Conventional Commits, such as `fix(collections): ...`, in under about 72
    characters.
 
-4. The agent shows you the title and description. It never pushes a branch or opens a pull
+5. The agent shows you the title and description. It never pushes a branch or opens a pull
    request unless you ask it to.
 
-5. After you ask it to open the pull request, the agent runs `doodlebot pr-checks <number>` to
+6. When you ask, it pushes with `doodlebot pr-branch <topic> --push`. That pushes `pr/<topic>`
+   and the `design/<topic>` tag only to your own fork; see
+   [Working with your fork](source-development.md#working-with-your-fork-and-worktrees). If you
+   have no fork yet, the agent offers to make one.
+
+7. After you ask it to open the pull request, the agent runs `doodlebot pr-checks <number>` to
    report the pull request's CI checks, with failed jobs expanded to their failed steps.
 
 The expected result: a preflight report, a description ready to post, and, once the pull request

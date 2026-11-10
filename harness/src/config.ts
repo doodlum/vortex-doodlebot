@@ -96,6 +96,12 @@ export interface HarnessConfig {
    * local-only, and a seeded key makes every local install wait on Nexus lookups.
    */
   apiKeyWithheld?: boolean;
+  /**
+   * Use the one shared Nexus login, `~/.doodlebot/login/oauth-<target>.json`, directly (login.ts).
+   * The default cache always does; any other cache has no login unless it opts in here. A logout
+   * in a shared-login cache signs the person out everywhere.
+   */
+  sharedLogin?: boolean;
 }
 
 /** An environment variable, with an empty one counted as unset. */

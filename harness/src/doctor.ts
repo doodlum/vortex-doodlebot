@@ -12,12 +12,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { ANONYMOUS, loginDir, markerFile, readMarker, snapshotDir, liveDir } from "./bootstrap";
+import { ANONYMOUS, markerFile, readMarker, snapshotDir, liveDir } from "./bootstrap";
 import { extensionRoot, findInstalledVortex, type HarnessConfig } from "./config";
 import { KNOWN_GAMES, findGamePath, steamLibraryRoots } from "./gameSetup";
 import { VortexMcpClient } from "./mcpClient";
 import { hasVortexSource, vortexSourceDir } from "./source";
 import { authCacheFile } from "./instance";
+import { checkLoginAcl, loginState, usesSharedLogin } from "./login";
 import { SEVEN_ZIP_HINT, find7Zip } from "./releaseFetch";
 
 export interface Check {
@@ -61,6 +62,7 @@ export async function runDoctor(
   checks.push(checkCache(config, options.skipGame === true));
   checks.push(checkSandboxBaseline(config, options.skipGame === true));
   checks.push(checkCapturedLogin(config));
+  checks.push(checkLoginFolder(path.join(options.homeDir ?? os.homedir(), ".doodlebot", "login")));
   checks.push(checkSevenZip());
   const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
   if (lease !== undefined) checks.push(lease);
@@ -124,13 +126,16 @@ function checkLegacyLeaseStore(homeDir: string): Check | undefined {
   };
 }
 
+/**
+ * The login of this cache: the shared `~/.doodlebot/login` file for the default cache (and a
+ * cache that opts in), the cache's own file otherwise, which only a signed-out marker or a test
+ * writes (login.ts).
+ */
 function checkCapturedLogin(config: HarnessConfig): Check {
-  const key = config.apiKey?.trim();
-  const captured =
-    readMarker(snapshotDir(config, key === undefined || key === "" ? "anonymous" : key))
-      ?.loginCaptured === true ||
-    readMarker(loginDir(config))?.loginCaptured === true ||
-    fs.existsSync(authCacheFile(config));
+  const file = authCacheFile(config);
+  const state = loginState(file);
+  const shared = usesSharedLogin(config);
+  const captured = state === "login";
   return {
     name: "Nexus login captured",
     ok: captured,
@@ -138,9 +143,36 @@ function checkCapturedLogin(config: HarnessConfig): Check {
     // and everything else works without it.
     advisory: true,
     detail: captured
-      ? "cache recorded — auth-status checks live credentials; this marker does not prove server validity"
-      : "not captured — collections will fail; an API key alone does not cover them",
-    fix: "doodlebot setup --oauth (complete browser login once; caches automatically)",
+      ? `present in ${file}; auth-status checks live credentials, this file does not prove Nexus still accepts them`
+      : shared
+        ? `${state === "missing" ? "missing" : state} (${file}) — collections will fail; an API key alone does not cover them`
+        : `this cache has no login (${state}); only the default cache uses the shared login in ~/.doodlebot/login`,
+    fix: shared
+      ? "doodlebot setup --oauth --installed (the account owner signs in once; a lost or expired login is fixed the same way)"
+      : "run collections and Nexus tests in the default cache",
+  };
+}
+
+/** The shared login's folder is private: only the user, SYSTEM and Administrators can read it. */
+function checkLoginFolder(dir: string): Check {
+  let report;
+  try {
+    report = checkLoginAcl(dir);
+  } catch (error) {
+    return {
+      name: "Nexus login folder",
+      ok: false,
+      advisory: true,
+      detail: `${dir}: could not read its ACL (${error instanceof Error ? error.message : String(error)})`,
+      fix: `icacls "${dir}"`,
+    };
+  }
+  return {
+    name: "Nexus login folder",
+    ok: report.ok,
+    advisory: true,
+    detail: `${dir}: ${report.detail}`,
+    ...(report.fix === undefined ? {} : { fix: report.fix }),
   };
 }
 

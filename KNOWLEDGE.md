@@ -644,9 +644,12 @@ an earlier kit; close it, and the file is deleted on the next launch. Scope: eve
 - **Two commands at once.** Nothing serializes harness commands: two sessions driving the same
   instance invalidate each other's UI refs, and a watcher reload mid-test does the same. Drive
   it from one session at a time.
-- **OAuth copies diverge between caches.** A non-default cache copies the default cache's login
-  once (`seedLoginFromDefaultCache` in `bootstrap.ts`), then refreshes its own. If Nexus rotates
-  refresh tokens, a stale copy needs `login-import --cache-dir <dir> --force`.
+- **A copied OAuth login goes stale.** Nexus rotates the refresh token, so a copy that
+  refreshes first spends the login the other copy holds. Older kits copied the default cache's
+  login into new caches (`seedLoginFromDefaultCache`, `login-import`); both are removed. The one
+  login is `~/.doodlebot/login/oauth-<target>.json`, used directly by the default cache and by
+  caches that opt in (`sharedLogin: true`); every other cache has none (`login.ts`). Never copy
+  it by hand.
 - **CPU.** Timings taken while a build or another process runs measure that work too.
 
 ## Tooling on Windows
@@ -675,12 +678,16 @@ Keep logs in `harness/.artifacts/runs/`. Scope: Windows agent shells; the plugin
 `vortex-driver` agent follow this procedure (`designs/agent-companion.md`, "Long-running and
 blocking commands from an agent").
 
-### Account-free lifecycle tests must prevent automatic login import
+### A test cache never holds the person's login
 
-`bootstrap` seeds a new non-default cache from the default cache's OAuth login
-(`seedLoginFromDefaultCache`). After the operator logs in, a fresh
-test profile can unexpectedly be signed in. Core fixtures write a `null` OAuth tombstone in
-their disposable cache before bootstrapping; this prevents import without touching the login.
+Older kits seeded a new non-default cache from the default cache's OAuth login, so a fresh test
+profile could be signed in unexpectedly. Nothing seeds a cache now: only the default cache (and
+a cache with `sharedLogin: true`) uses the shared login in `~/.doodlebot/login`, and every other
+cache resolves to its own `oauth-<target>.json` (`authCacheFile` in `instance.ts`, `login.ts`).
+Core fixtures still write a `null` tombstone in their disposable cache, to be explicit; it lands
+in that cache and never touches the shared login. A signed-out test of the default cache would
+spend the real login, so logout scenarios need the person's go-ahead. Evidence:
+`login.test.ts`, `bootstrap.test.ts`.
 
 ### Fractional display scaling rounds window sizes
 

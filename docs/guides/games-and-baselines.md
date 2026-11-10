@@ -113,7 +113,7 @@ is ready:
 - baselines in the profile cache, with the build and game they were made for;
 - the sandbox and the Bethesda sandbox, which are always ready;
 - collections: the offline ones doodlebot builds, and Nexus collections, which need a login;
-- the Nexus login.
+- the Nexus login, in `~/.doodlebot/login` for the main test Vortex (other caches have none).
 
 Every item that is not ready shows the command that makes it ready, for example
 `next: doodlebot game copy skyrimse`. Add `--json` for the full list in JSON. The command only

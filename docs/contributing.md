@@ -50,8 +50,9 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
 
    It checks types, lint, formatting, documentation, the QA catalogue (`doodlebot qa check`),
    unit tests and the extension build. It does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
-   to its design: the manifests and icon, every skill's frontmatter, and both agents running on
-   Sonnet.
+   to its design: the manifests and icon, every skill's frontmatter, every plugin resource a
+   skill names, and both agents running on Sonnet. Tests that would reach GitHub (sharing,
+   pushing) use a stand-in for `gh`; none of them publishes anything.
 
 2. If formatting or lint fails, fix it with the repository's tools rather than by hand:
 
@@ -127,7 +128,8 @@ The site is built with MkDocs Material. Pages live in `docs/`, and the navigatio
 
 `scripts/documentation-map.json` pairs source paths with the site pages and the agent manuals
 that describe them. When a change touches a group's source, `docs:check` expects one of that
-group's pages and one of its manuals to change as well. The site documents setup and commands
+group's pages and one of its manuals to change as well. For example, a change to the knowledge,
+gap or sharing code pairs with [What doodlebot learns](concepts/knowledge.md). The site documents setup and commands
 for people; the manuals document internals for agents.
 
 Write each page as a task: what it is for, "Before you begin", numbered steps with the exact

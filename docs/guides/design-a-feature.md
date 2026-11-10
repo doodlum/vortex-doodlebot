@@ -55,6 +55,12 @@ for you.
 Everything under `harness/.artifacts` stays on your machine and is ignored by Git. Vortex designs
 are not added to Vortex pull requests; the pull request links the approved copy instead.
 
+A design you commit on a Vortex branch goes in its own `docs(design): <topic>` commit under
+`docs/designs/`. `doodlebot pr-branch <topic>` then builds `pr/<topic>` without those commits
+and tags the design `design/<topic>`, so the pull request can link it on your fork. The
+preflight fails if the design file is still in the pull request's branch. See
+[Open a pull request](pull-requests.md).
+
 ## What a design contains
 
 A design is a Markdown file. Its header is a list of bullets under the title:

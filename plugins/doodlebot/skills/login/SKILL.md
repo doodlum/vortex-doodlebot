@@ -27,7 +27,10 @@ one in chat or a file.
 
 ## Steps
 
-The login is cached per target. `<target>` below is `--installed` (the released Vortex)
+The login is one file per target, `~/.doodlebot/login/oauth-<target>.json`, outside the
+workspace. The default cache uses it directly; every other cache is signed out, and nothing
+copies it. Run these commands without `--cache-dir`. `<target>` below is `--installed` (the
+released Vortex)
 unless the person works on a source build, then `--dev-dir <checkout>`. Use the same
 `<target>` on every command, `setup` and `save-login` included.
 
@@ -67,6 +70,8 @@ unless the person works on a source build, then `--dev-dir <checkout>`. Use the 
 
 ## Finish
 
-Tell the person the login is cached for this target and that later test profiles inherit
-it. Mention that a revoked login means running `/doodlebot:login` again, and that a
-password change or Nexus outage is something only they can fix.
+Tell the person the login is saved for this target in `~/.doodlebot/login`, where every
+workspace on the machine uses it and updates keep it. There is no backup of it: a lost,
+revoked or expired login means running `/doodlebot:login` again, and a password change or
+Nexus outage is something only they can fix. Never click Log out in a test Vortex of the
+default cache unless the person asked: it signs them out everywhere.

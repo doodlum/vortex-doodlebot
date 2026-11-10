@@ -67,14 +67,15 @@ cache you choose, the running test Vortex is recorded in `~/.doodlebot/instance.
 | `VORTEX_AI_DEV_DIR`                         | Explicit source checkout                                                              |
 | `VORTEX_AI_SOURCE_DIR`                      | Managed source location; default `.vortex-src` in the workspace                       |
 | `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source` clones                               |
-| `VORTEX_AI_VORTEX_REPO`                     | Explicit source repository as `owner/name`                                            |
+| `VORTEX_AI_VORTEX_REPO`                     | Your fork as `owner/name` (also a pushable organisation fork for `pr-branch --push`)  |
+| `VORTEX_AI_NEXUS_USER`                      | Your Nexus user name, replaced with `<nexus user>` when you share a lesson or gap     |
 | `VORTEX_AI_PNPM`                            | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`            |
 | `VORTEX_MCP_TOKEN`                          | Bearer token for the MCP server; doodlebot creates a private one if unset             |
 | `VORTEX_MCP_PORT`                           | MCP port; default 3701                                                                |
 | `VORTEX_AI_CDP_PORT`                        | CDP port; default 9222                                                                |
 | `VORTEX_AI_GAME_ID`                         | Game ID; default `fallout4`; `--sandbox` chooses the sandbox game                     |
 | `VORTEX_AI_GAME_PATH`                       | Explicit game folder                                                                  |
-| `VORTEX_AI_CACHE_DIR`                       | Profile, baseline and login cache; default `harness/.cache` in the workspace          |
+| `VORTEX_AI_CACHE_DIR`                       | Profile and baseline cache; default `harness/.cache`. Only the default is signed in   |
 | `VORTEX_AI_ARTIFACT_DIR`                    | Screenshots, reports and other outputs; default `harness/.artifacts` in the workspace |
 | `VORTEX_AI_HEADLESS`                        | Hide the window; off by default. Screenshots may be blank                             |
 | `VORTEX_AI_PRODUCTION`                      | Require production mode for a source build                                            |

@@ -23,14 +23,15 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `fill`
 - `fixture`
 - `game`
+- `gap`
 - `help`
 - `install`
 - `inventory`
 - `knowledge`
 - `link`
 - `log`
-- `login-import`
 - `perf-summary`
+- `pr-branch`
 - `pr-checks`
 - `pr-preflight`
 - `press`

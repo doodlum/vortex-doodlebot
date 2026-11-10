@@ -50,7 +50,9 @@ groups are `COMMAND_GROUPS` in `scripts/docs.cjs`; every skill must be in exactl
   give a general-purpose subagent the persona file.
 - `plugins/doodlebot/resources/` holds the EGM persona `vortex_runtime.md`, the document
   standard `vortex-change-standard.md`, and `knowledge.md`, the procedure skills follow to search
-  and record lessons ("Knowledge" below). Skills and agents reach them through
+  and record lessons, record kit gaps, propose test gaps and share them ("Knowledge" below).
+  `plugins.test.ts` checks that every `${CLAUDE_PLUGIN_ROOT}/resources/…` path a skill or agent
+  names exists. Skills and agents reach them through
   `${CLAUDE_PLUGIN_ROOT}/resources/…` (in Codex, the plugin root is three folders above a
   `SKILL.md`).
 - Every repository path in a skill or agent body is written `<workspace>/<path>` or
@@ -77,16 +79,17 @@ caller's directory; kit defaults resolve against the workspace root. Everything 
 the shim may not exist (CI, evidence receipts, a fresh clone), run `node bin/doodlebot.cjs …`
 from the workspace root.
 
-| Command                           | What it does                                                                                                                                               |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                         |
-| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`           |
-| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build` |
-| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                         |
-| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`)                                                           |
-| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`    |
-| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                               |
-| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `path` ("Knowledge")       |
+| Command                           | What it does                                                                                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                                    |
+| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`                      |
+| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build`            |
+| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                                    |
+| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`)                                                                      |
+| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`               |
+| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                                          |
+| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `note`, `share`, `path` ("Knowledge") |
+| `doodlebot gap <sub>`             | Kit gaps in `~/.doodlebot/gaps.md`: `add`, `list`, `close`, `share` ("Knowledge")                                                                                     |
 
 - `link` writes no `.ps1` and spawns no `npm`. Without `--bin-dir` it takes the first of these
   that is on the PATH and writable: `npm_config_prefix` (its `bin` outside Windows); on Windows
@@ -160,7 +163,6 @@ true while collection downloads fail. Don't ask for an API key for local tests o
 doodlebot setup --oauth --installed     # waits up to 10 min; --no-wait returns at once
 doodlebot save-login --installed        # after a timeout or --no-wait, once logged in
 doodlebot auth-status                   # presence booleans, never secrets
-doodlebot login-import --cache-dir D:\other-cache [--from D:\old-cache] [--force]
 ```
 
 - From an agent (`/doodlebot:login`): run `doodlebot setup --oauth --installed --no-wait`, ask
@@ -171,18 +173,36 @@ doodlebot login-import --cache-dir D:\other-cache [--from D:\old-cache] [--force
 - `save-login` refuses an unsigned or API-key-only profile and one that cannot shut down cleanly.
 - **Never put passwords, API keys or OAuth tokens in chat or committed files.** Cache directories
   hold credentials: keep them private (the default is gitignored).
-- The login cache is per target (installed or source build), independent of game and API key.
-  Fresh and rebuilt profiles inherit credentials, not mod lists or game paths. The extension writes
-  `oauth-<target>.json` in harness mode only, on every token rotation; only a real logout writes a
+- **One shared login, outside the workspace** (`login.ts`). The login is
+  `~/.doodlebot/login/oauth-<target>.json`, per target (installed or source build), independent
+  of game and API key. It survives `update`, re-setup and a new workspace, and every workspace
+  on the machine uses it. Fresh and rebuilt profiles keep it, not mod lists or game paths. The
+  extension writes the file Vortex is given (`VORTEX_AI_AUTH_CACHE`, `authCacheFile` in
+  `instance.ts`) in harness mode only, on every token rotation; only a real logout writes a
   `null` tombstone. Vortex's forced-logout migration is handled (KNOWLEDGE.md).
-- Credential presence does not prove Nexus still accepts them; a revoked login means repeating
-  `setup --oauth`.
-- A nondefault cache with no OAuth file can inherit the default cache's login automatically.
-  A new cache is therefore not proof of anonymous execution; core fixtures write an explicit
-  null OAuth tombstone. `login-import` copies the login from `harness/.cache` (or
-  `--from`) for the target `--installed`/`--dev-dir` selects; it refuses a logged-out source and
-  replaces a login only with `--force`. Copies then rotate apart; if Nexus refuses one, import
-  again or repeat setup.
+- **A cache either uses it directly or has no login.** The default cache uses it, and so does a
+  cache whose config sets `HarnessConfig.sharedLogin: true` (`test nexus`'s `nexus-smoke`).
+  Every other cache (test, measure and core-suite caches, plain `--cache-dir` runs) resolves to
+  `<cacheDir>/oauth-<target>.json`, which starts absent: signed out. Its `null` marker never
+  touches the shared login.
+- **No copies.** Nexus rotates the refresh token, so a copy that refreshes first spends the
+  shared login. Nothing seeds or imports a login into another cache; only `setup --oauth`
+  creates it, and only one Vortex runs at a time, so it is never refreshed twice at once.
+  Anything that needs a login (`collection`, `test nexus`, catalogue entries with
+  `account: true`) runs in a shared-login cache.
+- **Logging out in a shared-login cache signs the person out everywhere.** Never click Log out
+  unless the scenario says so; such a scenario runs only after the person's go-ahead and its
+  report ends with `setup --oauth`.
+- **The one-time move.** A login in an older workspace's `harness/.cache/oauth-*.json` moves to
+  `~/.doodlebot/login` on the first launch of the default cache. It refuses while a harness
+  Vortex runs, moves only a file holding a login (a `null` marker stays, unused), and never
+  overwrites an existing shared login (the older file stays where it is).
+- **The folder is private.** `doctor`'s advisory `Nexus login folder` check reads its ACL
+  (`icacls`): only you, SYSTEM and Administrators may read it. Anything else is reported with the
+  `icacls ... /inheritance:r /grant:r` fix.
+- Credential presence does not prove Nexus still accepts them. There is no backup command: a
+  copy goes stale at the first refresh. A lost, revoked or expired login means repeating
+  `setup --oauth` (`/doodlebot:login`).
 - Optional legacy key: `VORTEX_AI_NEXUS_API_KEY` in `harness/.env`.
 
 ## Run and reset
@@ -623,9 +643,41 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (WORKFLOWS.md has the state matrix).
 - `doodlebot source` (`/doodlebot:source`) prepares the managed `.vortex-src` (`--update`,
-  `--no-build`, `--where`); make your changes on a branch of it, or in a separate checkout passed with
-  `--dev-dir`. `up` defaults to the managed source when present. Select `--installed`,
-  `--exe <path>` or `--dev-dir <path>` explicitly for reproducible checks.
+  `--no-build`, `--where`, `--branch <name>`); make your changes on a branch of it, or in a
+  separate checkout passed with `--dev-dir`. `up` defaults to the managed source when present.
+  Select `--installed`, `--exe <path>` or `--dev-dir <path>` explicitly for reproducible checks.
+  See "Vortex source, forks and sessions".
+
+### Vortex source, forks and sessions
+
+- **Which repository** (`source.ts`). `source` finds the GitHub login (`VORTEX_AI_GITHUB_USER`,
+  `gh api user`, git's `github.user`, a noreply email, then `user.name`) and the fork
+  `<login>/Vortex`, or `VORTEX_AI_VORTEX_REPO=<owner>/<repo>`. Nexus-Mods/Vortex is always the
+  remote **`upstream`**.
+  - With a fork: `git clone -o origin <fork>`, then `upstream` is added and fetched.
+  - Without one (or with an unknown login): `git clone -o upstream`, no `origin`. Building,
+    trying, QA and measuring need nothing more; it prints that pushing needs a fork
+    (`gh repo fork Nexus-Mods/Vortex --remote` adds it as `origin` and renames nothing).
+  - `--update` fetches every remote (`git fetch --all --prune`), adds a missing `upstream` to an
+    older clone and runs `git remote set-head upstream --auto`. It works on an upstream-only
+    clone.
+- **Branches start from upstream.** `source --branch <name>` fetches `upstream` and runs
+  `git switch --no-track -c <name> upstream/<default branch>` (`cutWorkBranch`), never from the
+  fork's default branch, which can carry its own work (doodlum's is `linux`). It refuses an
+  existing branch, an invalid name, a checkout without `upstream`, and a checkout a harness
+  Vortex runs from (`... before switching it to a new branch.`).
+- **Pushes go only to the person's fork** (`prPush.ts`). Before any kit push,
+  `gh api repos/<origin>` must show a fork of Nexus-Mods/Vortex owned by `gh api user`'s login,
+  or the `VORTEX_AI_VORTEX_REPO` repository when it is such a fork with `permissions.push`. An
+  absent `origin`, Nexus-Mods/Vortex itself (whatever rights the person has there) and someone
+  else's fork are refused, and nothing is pushed.
+- **Sessions per branch.** Several Claude sessions can work on several Vortex branches, each in
+  its own worktree: `git -C .vortex-src worktree add ../vortex-<branch> <branch>`, then
+  `doodlebot build --checkout <dir>` and `--dev-dir <dir>` (or `VORTEX_AI_DEV_DIR`) on every
+  command. Each worktree is a full build of several GB. Editing, building, unit tests and `ci`
+  run in parallel; anything that runs Vortex (`up`, `test core`, the checks) runs one at a time
+  on the machine ("One instance"). A session never runs `down` on an instance another session
+  started from another checkout: it waits, or tells the person.
 - Extension work uses one watcher: `doodlebot watch` or `pnpm run dev`, against your
   already-running instance. It observes doodlebot source and runs one finite build/copy/reload
   cycle per settled edit. Build failure never installs partial output. It does not build Vortex
@@ -650,8 +702,9 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   capture-contract change; dependency integrity is not proved by the generation marker.
 - `doodlebot test nexus` (opt-in; same target, cache and ports as account setup): a separate
   `nexus-smoke` profile and disposable Stardew Valley folder, the five required members of
-  revision 1 of `stardewvalley/nudx7b`, SHA-256 checks of deployed files, purge, evidence,
-  refreshed credentials copied back. No launch. Needs Nexus Premium for unattended downloads.
+  revision 1 of `stardewvalley/nudx7b`, SHA-256 checks of deployed files, purge, evidence. The
+  cache opts in to the shared login, so token rotations land in it directly; nothing is copied.
+  No launch. Needs Nexus Premium for unattended downloads.
   Outages are failures, not a reason to repeat OAuth.
 
 ### Design-first work
@@ -846,6 +899,14 @@ A local-diff result cannot certify a later commit.
 - `doodlebot pr-checks <number-or-url> [--repo <owner/name>] [--json]`: the PR head's checks
   via `gh`, failed jobs expanded to failed steps (a test failure vs. a failed upload). Nonzero while
   any check is pending or failed.
+- `doodlebot pr-branch <topic> [--checkout <dir>] [--base <ref>] [--push]` (`prPush.ts`) builds
+  `pr/<topic>` in a temporary worktree from the merge-base of `HEAD` and `--base` (default
+  `upstream/<default branch>`), cherry-picking every commit except `docs(design): ...` ones,
+  and tags the last design commit `design/<topic>`, so the PR links the design at its commit.
+  It refuses merge commits, a branch of only design commits, `pr/<topic>` being checked out,
+  and a non-design commit that touches `docs/designs/`. The checkout's own files never change.
+  `--push` pushes both to `origin` (`--force-with-lease` for the branch) only after the fork
+  check above.
 - `doodlebot pr-preflight` (`/doodlebot:pr` runs it) before pushing; put its report in the PR. It diffs
   the committed `HEAD` of `--checkout` (default `.vortex-src`) against its merge-base with `--base`
   (default `upstream/master`), prints PASS/WARN/FAIL/SKIP per check with file:line, exits 1 on any
@@ -860,6 +921,7 @@ A local-diff result cannot certify a later commit.
 | Dispatchers of reducers  | WARN: each changed reducer's action creator, its calls and type-string uses                                                                                              |
 | Revert check             | Branch failure or a reverted pass is FAIL; a reverted failure is INCONCLUSIVE until its intended assertion is inspected                                                  |
 | Measurements in comments | WARN for timing or size figures in added comments                                                                                                                        |
+| Design kept out          | FAIL when a `docs/designs/` file of the branch's `docs(design)` commits (in the range, or behind a local `design/<topic>` tag) is in the diff or in any commit           |
 | PR description           | With `--pr <n>`: FAIL on a non-Conventional or >72-char title, missing section, "Not run", no head sha                                                                   |
 
 - Test code (`*.test.*`, `*.spec.*`, `__tests__`, `__mocks__`, `__fixtures__`, `test-utils`) is
@@ -1075,27 +1137,81 @@ local lessons are listed before shared sections.
   instance record. It survives `update` and re-setup and is shared by Claude Code, Codex and
   every workspace. It is a Markdown file with one `## <title>` section per lesson, holding:
   - `- **Id:** k-<yyyymmdd>-<6 hex>`;
-  - `- **<Field>:** <text>` lines for Area, Symptom, Cause, Remedy, Scope, Evidence, Vortex and
-    Seen.
+  - `- **<Field>:** <text>` lines for Area, Symptom, Cause, Remedy, Scope, Evidence, Vortex,
+    Seen, Third-party and Issue;
+  - any number of `- **Note:** <date>: <text>` lines.
 
-  It is rewritten through a temporary file and a rename.
+  It is rewritten through a temporary file and a rename. `entryStore.ts` holds this store code,
+  shared with the gaps.
 
 `doodlebot knowledge add`:
 
-- requires `--title`, `--area`, `--symptom`, `--cause`, `--remedy`, `--scope` and
-  `--evidence`, and takes `--vortex <version>` optionally;
+- requires `--title`, `--area`, `--symptom`, `--cause`, `--remedy`, `--scope`, `--evidence`
+  and `--vortex <version>`, so every lesson says which Vortex it was confirmed on;
+- takes `--third-party <text>` for evidence that came from someone else (a user's
+  `vortex.log`), kept apart so sharing leaves it out;
 - sets `Seen` to today's date;
 - refuses a duplicate title (case-insensitive);
 - refuses any value that looks like a credential: a `Bearer` header, or an unbroken run of 32
   or more base64-style characters mixing letters and digits that is not pure hex. Paths, slugs
-  and commit SHAs pass.
+  and commit SHAs pass. It also refuses a stack frame (`at name (file:line:column)`).
 
 The other sub-commands:
 
 - `list` prints the lessons with their ids;
-- `remove <id>` deletes one;
+- `remove <id>` deletes one; an agent removes a lesson only when it fails on the same Vortex
+  version and within its Scope;
+- `note <id> <text>` appends a dated note (for example `does not hold on 2.9.0 (<report>)`),
+  leaving removal to the owner;
+- `share <id>` (below);
 - `path` prints the file's location;
-- `--json` gives JSON output from `add`, `list` and `search`.
+- `--json` gives JSON output from `add`, `list`, `note` and `search`.
+
+**Kit gaps** (`gapCommand.ts`, `~/.doodlebot/gaps.md`, the same store format): something the
+kit should have done for a task and didn't. Not a Vortex bug, and not something setup reports
+as missing. An agent records a gap instead of patching the workspace mid-task, and offers the
+fix as doodlebot work afterwards. A kit limitation is only ever a gap, never also a lesson.
+
+```powershell
+doodlebot gap add --title <t> --command <c> --needed <x> --happened <x> --blocked yes|no [--workaround <x>] [--third-party <x>] [--json]
+doodlebot gap list [--all] [--json]
+doodlebot gap close <id> --by <commit> | --wontfix
+doodlebot gap share <id> [--yes] [--print] [--include-third-party]
+```
+
+- Fields: `Id` (`g-<yyyymmdd>-<6 hex>`), the title, `Command`, `What was needed`,
+  `What happened`, `Workaround used` (default `none`), `Blocked`, `Kit` (the `doodlebot version`
+  commit), `Seen`, `Count`, `Status` (`open`, `closed`, `wontfix`), `Closed`, `Fixed by`.
+- The same gap is the same `Command` and title (case-insensitive). `gap list --json` lists
+  every gap, closed ones too, so an agent reuses a title before adding. An add that matches an
+  open gap updates `Seen`, `Kit` and `Count`; a `wontfix` gap records nothing
+  (`rejected by the owner on <date>`); a gap closed `--by <commit>` re-opens only when
+  `git merge-base --is-ancestor <commit> <Kit>` succeeds in the workspace (the fix did not
+  hold). A commit git cannot find counts as "fix not present", and the add prints
+  ``fixed in <commit>; run `/doodlebot:setup --update` ``.
+- The same credential and stack-trace guard as lessons.
+- A criterion that needed a workaround is "passed with workaround: <x>", never a plain pass;
+  a check that passed while the scenario failed is the scenario's failure plus a gap.
+
+**Sharing** (`share.ts`): `knowledge share <id>` and `gap share <id>` turn an entry into a
+GitHub issue on `doodlum/vortex-doodlebot`, which the maintainer turns into a change.
+
+- Without `--yes` it prints `Title: [knowledge] <title>` (or `[gap]`), a blank line and the
+  body, and publishes nothing; instructions go to stderr. The skill shows the text to the person
+  and reruns with `--yes` after they confirm. The published body is byte-identical to the
+  printed body (`gh issue create --body-file`).
+- Redaction: copy folders and registered copies become `<game copy>`, the caches `<cache>`,
+  the workspace `<workspace>`, `%USERPROFILE%` `<home>` (any slash, any case), then the Windows
+  user, the machine and the Nexus user name (`--nexus-user` or `VORTEX_AI_NEXUS_USER`) become
+  `<user>`, `<machine>` and `<nexus user>` wherever they stand as words. The credential guard
+  runs on the result.
+- Third-party data is left out unless `--include-third-party` (the person confirms that part
+  separately).
+- With `--yes` it searches the open issues for the same title (case-insensitive) and comments
+  on a match instead of creating an issue. The issue URL is recorded in the entry (`Issue`), and
+  a second share of the same id is refused.
+- `--print` gives only the text, without `gh`, to paste by hand. Without `gh`, `--yes` fails
+  with that advice.
 
 `plugins/doodlebot/resources/knowledge.md` is the procedure. Before acting, `fix`, `drive`,
 `design` and `ui-test` search for the symptom or area, and treat every match as a lead to
@@ -1105,8 +1221,9 @@ recheck against the source. After acting, `fix`, `drive` and `qa` record a lesso
 - the lesson would have saved real time;
 - neither store has it already.
 
-Guesses stay in the run report. A local lesson that keeps holding is shared as a doodlebot pull
-request to `KNOWLEDGE.md`, and only when the person asks.
+Guesses stay in the run report. A local lesson that keeps holding is shared with
+`knowledge share`, and only when the person asks; the maintainer adds it to `KNOWLEDGE.md`
+through a doodlebot pull request.
 
 ## Configuration and recovery
 
@@ -1116,7 +1233,10 @@ request to `KNOWLEDGE.md`, and only when the person asks.
 | `VORTEX_AI_DEV_DIR`                        | Explicit Vortex source directory                                           |
 | `VORTEX_AI_INSTALLED`                      | `1` forces installed Vortex, including tests                               |
 | `VORTEX_AI_GAME_ID`, `VORTEX_AI_GAME_PATH` | Game and install path                                                      |
-| `VORTEX_AI_CACHE_DIR`                      | Profiles/login cache; default `harness/.cache`                             |
+| `VORTEX_AI_CACHE_DIR`                      | Profiles cache; default `harness/.cache` (only it uses the shared login)   |
+| `VORTEX_AI_GITHUB_USER`                    | GitHub login whose fork `source` looks for                                 |
+| `VORTEX_AI_VORTEX_REPO`                    | The fork as `owner/repo`; a pushable organisation fork for pushes          |
+| `VORTEX_AI_NEXUS_USER`                     | Nexus user name that `share` redacts (or `--nexus-user`)                   |
 | `VORTEX_AI_ARTIFACT_DIR`                   | Screenshots/reports; default `harness/.artifacts`                          |
 | `VORTEX_MCP_PORT`, `VORTEX_AI_CDP_PORT`    | MCP/CDP; default 3701/9222                                                 |
 | `VORTEX_MCP_TOKEN`                         | Bearer token shared by harness and MCP client                              |

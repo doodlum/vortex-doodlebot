@@ -103,7 +103,8 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
             apiKey: undefined,
           }),
         );
-        // New profiles stay anonymous even when the default cache has an operator's cached OAuth.
+        // A test cache has no login (only shared-login caches use ~/.doodlebot/login); this
+        // signed-out marker says so explicitly and lands in the test cache, never the shared login.
         fs.writeFileSync(authCacheFile(config), "null");
         await use(config);
       } finally {

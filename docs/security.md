@@ -21,8 +21,12 @@ own Vortex.
 
 - No doodlebot command asks for a password, API key or token. You sign in to Nexus Mods in your
   browser; see [Sign in to Nexus Mods](guides/sign-in.md).
-- The saved login is kept in the workspace's cache, `<workspace>/harness/.cache`, which Git
-  ignores. Keep that folder private.
+- The saved login is one file per target in `~/.doodlebot/login`, outside every workspace.
+  Only you, Windows (SYSTEM) and administrators should be able to read that folder; doodlebot's
+  check reports anything else, with the `icacls` command that fixes it. Doodlebot never copies
+  the login.
+- When you share a lesson or a kit gap, the text is shown to you first, with your folders and
+  user, computer and Nexus names replaced. Nothing is published until you confirm.
 - `doodlebot auth-status` reports only whether credentials are present.
 - Do not paste passwords, API keys or tokens into the chat, and do not put them in files you
   commit.

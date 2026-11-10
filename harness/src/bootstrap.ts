@@ -40,8 +40,8 @@ import { VortexMcpClient } from "./mcpClient";
 import { requireOAuth } from "./auth";
 import { ensureFallout4Inis, isBethesdaSandbox } from "./bethesdaSandbox";
 import { resetDisposableGameData } from "./sandbox";
-import { importLogin } from "./loginImport";
-import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
+import { describeMigration, migrateDefaultLogin, usesSharedLogin } from "./login";
+import { normalizedPath } from "./paths";
 import {
   assertNoHarnessVortex,
   buildOf,
@@ -248,8 +248,12 @@ export async function bootstrap(
     );
 
   fs.mkdirSync(config.cacheDir, { recursive: true });
-  const seeded = seedLoginFromDefaultCache(config);
-  if (seeded !== undefined) report(`copied the saved login from ${seeded}`);
+  // A shared-login cache uses ~/.doodlebot/login directly; an older workspace's login moves there
+  // once. Every other cache has no login, and nothing is ever copied into it (login.ts).
+  if (usesSharedLogin(config)) {
+    const moved = describeMigration(migrateDefaultLogin());
+    if (moved !== undefined) report(moved);
+  }
 
   // One harness Vortex per machine: a running one of another cache (another workspace, a test
   // cache) is refused here with the documented message, never restarted or left to fail on a
@@ -660,22 +664,4 @@ async function withSnapshotInstance<T>(
   if (failed) throw failure;
   if (stopFailed) throw stopFailure;
   return result as T;
-}
-
-/**
- * A cache other than the default starts with the machine's saved login, as `login-import`
- * would copy it: its first `up` needs no interactive login. Only when the cache has none of its
- * own; after that each copy is refreshed by its own Vortex and the two diverge (KNOWLEDGE.md).
- * Returns the cache it was copied from, or undefined when nothing was copied.
- */
-export function seedLoginFromDefaultCache(config: HarnessConfig): string | undefined {
-  if (path.resolve(config.cacheDir) === path.resolve(DEFAULT_CACHE_DIR)) return undefined;
-  const destination = authCacheFile(config);
-  if (fs.existsSync(destination)) return undefined;
-  try {
-    return importLogin(DEFAULT_CACHE_DIR, destination);
-  } catch {
-    // No usable login in the default cache: this one starts logged out, as any cache does.
-    return undefined;
-  }
 }

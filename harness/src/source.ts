@@ -5,7 +5,8 @@
  * assume a Vortex checkout exists anywhere on the machine, and it must not go
  * hunting around the filesystem for one. Instead it asks GitHub who the operator
  * is, looks for their fork, and clones it **inside this repo** at
- * `.vortex-src/` (gitignored).
+ * `.vortex-src/` (gitignored). Without a fork it clones Nexus-Mods/Vortex itself, as the remote
+ * `upstream`: enough to read, build and test, though pushing needs a fork (prPush.ts).
  *
  * Everything here works unauthenticated. `gh` is used when it happens to be
  * logged in, but the fallback — GitHub's public REST API plus the identity git
@@ -309,20 +310,25 @@ export async function findFork(user: string): Promise<ForkInfo | undefined> {
   };
 }
 
+/** What `source` says when it clones upstream: reading and building need no fork; pushing does. */
+export const NO_FORK_NOTE =
+  `No fork of ${UPSTREAM} was found, so .vortex-src is a clone of ${UPSTREAM} (remote ` +
+  `\`upstream\`, no \`origin\`). Building, trying and QA need nothing more. Pushing a fix or ` +
+  `opening a pull request needs your own fork: \`gh repo fork ${UPSTREAM} --remote\` adds it as ` +
+  "`origin`. If your fork has another name, set VORTEX_AI_VORTEX_REPO=<owner>/<repo>; if your " +
+  "login was guessed wrong, set VORTEX_AI_GITHUB_USER.";
+
 /**
- * Resolve which repository to clone.
- *
- * A fork rather than upstream on purpose: the point of this suite is to build,
- * change and push Vortex, and you cannot push to Nexus-Mods/Vortex. Failing with
- * "go and fork it" is more useful than silently cloning a repo the operator
- * cannot commit to.
+ * Resolve the person's fork: `VORTEX_AI_VORTEX_REPO`, else `<login>/Vortex`. Undefined when the
+ * login is unknown or has no fork: `source` then clones upstream, which is enough to read and
+ * build Vortex. Pushing needs the fork (prPush.ts).
  */
-export async function resolveVortexRepo(): Promise<ForkInfo> {
+export async function resolveVortexRepo(): Promise<ForkInfo | undefined> {
   const override = process.env.VORTEX_AI_VORTEX_REPO;
   if (override !== undefined && override !== "") {
     const asUrl = override.includes("://") || override.endsWith(".git");
     return {
-      fullName: asUrl ? override : override,
+      fullName: override,
       cloneUrl: asUrl ? override : `https://github.com/${override}.git`,
       defaultBranch: "master",
       isFork: true,
@@ -331,27 +337,9 @@ export async function resolveVortexRepo(): Promise<ForkInfo> {
   }
 
   const user = await detectGitHubUser();
-  if (user === undefined) {
-    throw new ForkError(
-      "Could not work out your GitHub username, so I cannot find your Vortex fork.\n\n" +
-        "  Set it explicitly:   VORTEX_AI_GITHUB_USER=<your-login>\n" +
-        "  Or point at a repo:  VORTEX_AI_VORTEX_REPO=<owner>/<repo>\n" +
-        "  Or log in:           gh auth login",
-    );
-  }
-
+  if (user === undefined) return undefined;
   const fork = await findFork(user);
-  if (fork === undefined) {
-    throw new ForkError(
-      `No Vortex fork found at https://github.com/${user}/Vortex.\n\n` +
-        `  This suite builds and tests YOUR fork, so you need one:\n\n` +
-        `    gh repo fork ${UPSTREAM} --clone=false\n` +
-        `  or fork it in the browser: https://github.com/${UPSTREAM}/fork\n\n` +
-        `  Then re-run. If your fork is named something else, set\n` +
-        `  VORTEX_AI_VORTEX_REPO=${user}/<name>. If "${user}" is the wrong login,\n` +
-        `  set VORTEX_AI_GITHUB_USER.`,
-    );
-  }
+  if (fork === undefined) return undefined;
 
   if (!fork.isFork) {
     // Not fatal — someone may keep a non-fork mirror — but worth saying, because
@@ -367,61 +355,163 @@ export async function resolveVortexRepo(): Promise<ForkInfo> {
 export interface EnsureSourceOptions {
   /** Re-fetch and fast-forward an existing clone. */
   update?: boolean;
-  /** buildVortexSource: the checkout to build, when not .vortex-src. */
+  /** The checkout to clone into or build, when not .vortex-src. */
   dir?: string;
   /** buildVortexSource: install dependencies only. */
   installOnly?: boolean;
   /** Progress reporting. */
   onProgress?: (message: string) => void;
+  /** Finds the person's fork (default resolveVortexRepo); undefined clones upstream alone. */
+  resolveRepo?: () => Promise<ForkInfo | undefined>;
+  /** The Nexus repository's clone URL (tests use a local one). */
+  upstreamUrl?: string;
 }
 
 export interface VortexSource {
   dir: string;
+  /** The fork (`origin`) when there is one, else the upstream URL. */
   repo: string;
+  /** Upstream's default branch, which work branches start from. */
   defaultBranch: string;
   cloned: boolean;
+  /** Whether `origin`, the person's fork, exists. Pushing needs it. */
+  hasFork: boolean;
+}
+
+/** A remote's URL, or undefined when the checkout has no such remote. */
+export async function remoteUrl(dir: string, name: string): Promise<string | undefined> {
+  return tryExec("git", ["-C", dir, "remote", "get-url", name]);
+}
+
+/** `upstream`'s default branch, from `refs/remotes/upstream/HEAD` (default `master`). */
+export async function upstreamDefaultBranch(dir: string): Promise<string> {
+  const head = await tryExec("git", [
+    "-C",
+    dir,
+    "symbolic-ref",
+    "--short",
+    "refs/remotes/upstream/HEAD",
+  ]);
+  return head?.replace(/^upstream\//, "") ?? "master";
 }
 
 /**
  * Ensure a Vortex clone exists at `.vortex-src`, cloning it if not.
  *
- * `upstream` is wired up alongside `origin` so the usual "sync my fork" flow
- * works without further setup — the fork is where changes are pushed, upstream
- * is where they are rebased from.
+ * The Nexus repository is always the remote `upstream`. With a fork, the fork is `origin` (where
+ * changes are pushed) and upstream is added and fetched beside it. Without one, upstream is cloned
+ * with `git clone -o upstream`, so there is no `origin` until `gh repo fork --remote` adds it;
+ * reading and building need nothing more.
  */
 export async function ensureVortexSource(options: EnsureSourceOptions = {}): Promise<VortexSource> {
   const report = options.onProgress ?? ((): void => undefined);
-  const dir = vortexSourceDir();
+  const dir = options.dir ?? vortexSourceDir();
+  const upstreamUrl = options.upstreamUrl ?? UPSTREAM_URL;
 
   if (hasVortexSource(dir)) {
-    const remote = (await tryExec("git", ["-C", dir, "remote", "get-url", "origin"])) ?? "unknown";
-    const branch =
-      (await tryExec("git", ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"])) ?? "master";
+    const origin = await remoteUrl(dir, "origin");
     if (options.update === true) {
-      report("fetching origin and upstream");
+      // An older clone had no upstream remote; branches start from it, so add it.
+      if ((await remoteUrl(dir, "upstream")) === undefined) {
+        report(`adding the upstream remote (${UPSTREAM})`);
+        await runStreaming("git", ["-C", dir, "remote", "add", "upstream", upstreamUrl], {
+          label: "Configuring Vortex upstream",
+        });
+      }
+      report(origin === undefined ? "fetching upstream" : "fetching origin and upstream");
       await runStreaming("git", ["-C", dir, "fetch", "--all", "--prune"], {
         label: "Fetching Vortex source",
       });
+      await tryExec("git", ["-C", dir, "remote", "set-head", "upstream", "--auto"]);
     }
-    return { dir, repo: remote, defaultBranch: branch, cloned: false };
+    return {
+      dir,
+      repo: origin ?? (await remoteUrl(dir, "upstream")) ?? "unknown",
+      defaultBranch: await upstreamDefaultBranch(dir),
+      cloned: false,
+      hasFork: origin !== undefined,
+    };
   }
 
-  const fork = await resolveVortexRepo();
-  report(`cloning ${fork.fullName} into ${dir} (this is a large repo — several minutes)`);
-
+  const fork = await (options.resolveRepo ?? resolveVortexRepo)();
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   // A full Vortex clone over a slow link genuinely takes a while; a short
   // timeout here would abort a working clone and leave a half-written dir.
-  await runStreaming("git", ["clone", "--progress", fork.cloneUrl, dir], {
+  if (fork === undefined) {
+    report(`cloning ${UPSTREAM} into ${dir} as upstream (a large repo: several minutes)`);
+    await runStreaming("git", ["clone", "--progress", "-o", "upstream", upstreamUrl, dir], {
+      label: `Cloning ${UPSTREAM}`,
+    });
+    report(`cloned; upstream=${UPSTREAM}, no origin`);
+    report(NO_FORK_NOTE);
+    return {
+      dir,
+      repo: upstreamUrl,
+      defaultBranch: await upstreamDefaultBranch(dir),
+      cloned: true,
+      hasFork: false,
+    };
+  }
+
+  report(`cloning ${fork.fullName} into ${dir} (a large repo: several minutes)`);
+  await runStreaming("git", ["clone", "--progress", "-o", "origin", fork.cloneUrl, dir], {
     label: `Cloning ${fork.fullName}`,
   });
-
-  await runStreaming("git", ["-C", dir, "remote", "add", "upstream", UPSTREAM_URL], {
+  await runStreaming("git", ["-C", dir, "remote", "add", "upstream", upstreamUrl], {
     label: "Configuring Vortex upstream",
   });
+  await runStreaming("git", ["-C", dir, "fetch", "upstream"], { label: "Fetching upstream" });
+  await tryExec("git", ["-C", dir, "remote", "set-head", "upstream", "--auto"]);
   report(`cloned; origin=${fork.fullName}, upstream=${UPSTREAM}`);
 
-  return { dir, repo: fork.fullName, defaultBranch: fork.defaultBranch, cloned: true };
+  return {
+    dir,
+    repo: fork.fullName,
+    defaultBranch: await upstreamDefaultBranch(dir),
+    cloned: true,
+    hasFork: true,
+  };
+}
+
+/**
+ * Cut a work branch from `upstream/<default branch>`, never from the fork's default branch, which
+ * can carry the fork's own work. Fetches upstream first, refuses an existing branch and refuses
+ * while a harness Vortex runs from the checkout.
+ */
+export async function cutWorkBranch(
+  dir: string,
+  name: string,
+  options: { onProgress?: (message: string) => void; fetch?: boolean } = {},
+): Promise<{ branch: string; from: string }> {
+  const report = options.onProgress ?? ((): void => undefined);
+  if ((await tryExec("git", ["check-ref-format", "--branch", name])) === undefined)
+    throw new ForkError(`${name} is not a valid branch name.`);
+  if ((await remoteUrl(dir, "upstream")) === undefined)
+    throw new ForkError(
+      `${dir} has no upstream remote. Run \`doodlebot source --update\` to add ${UPSTREAM}.`,
+    );
+  if (
+    (await tryExec("git", [
+      "-C",
+      dir,
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${name}`,
+    ])) !== undefined
+  )
+    throw new ForkError(`The branch ${name} already exists in ${dir}; switch to it with git.`);
+  assertNoVortexRunningFrom(dir, "switching it to a new branch");
+  if (options.fetch !== false) {
+    report("fetching upstream");
+    await runStreaming("git", ["-C", dir, "fetch", "upstream"], { label: "Fetching upstream" });
+  }
+  const from = `upstream/${await upstreamDefaultBranch(dir)}`;
+  report(`creating ${name} from ${from}`);
+  await runStreaming("git", ["-C", dir, "switch", "--no-track", "-c", name, from], {
+    label: `Creating ${name}`,
+  });
+  return { branch: name, from };
 }
 
 /**

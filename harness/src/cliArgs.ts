@@ -52,6 +52,10 @@ export const BOOLEAN_FLAGS = new Set([
   "new",
   "dry-run",
   "yes",
+  "print",
+  "include-third-party",
+  "wontfix",
+  "push",
 ]);
 
 /**
@@ -73,7 +77,6 @@ export const PATH_FLAGS = new Set([
   "exe",
   "bin-dir",
   "args-file",
-  "from",
   "cwd",
   "ffmpeg",
   "a",

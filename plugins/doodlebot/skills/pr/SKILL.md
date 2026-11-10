@@ -32,24 +32,34 @@ asks for that step.
    The branch must not be `master`, and its changes must be committed: preflight reads the
    committed head.
 2. **Stop the test Vortex** if it runs from that checkout: `doodlebot down`.
-3. **Preflight.** `doodlebot pr-preflight --checkout <checkout> --base upstream/master`
+3. **The PR branch.** `doodlebot pr-branch <topic> --checkout <checkout>` builds `pr/<topic>`
+   from the merge-base with upstream, with every commit except the `docs(design)` ones, and
+   tags the last design commit `design/<topic>`. It refuses a non-design commit that touches
+   the Vortex `docs/designs` folder: split that commit first. Check out `pr/<topic>` for the next step.
+4. **Preflight.** `doodlebot pr-preflight --checkout <checkout> --base upstream/master`
    (add `--test <path>` and `--revert <file>` for the intended-assertion control). It
-   prints PASS, WARN, FAIL or SKIP per check and exits 1 on a FAIL or INCONCLUSIVE.
+   prints PASS, WARN, FAIL or SKIP per check and exits 1 on a FAIL or INCONCLUSIVE. It FAILs
+   when the branch still carries its design file.
    - Read every WARN list (callers outside the diff, readers of changed state, reducer
      dispatchers) and say in the description how each was checked.
    - A size WARN means the change may need splitting or maintainer agreement first.
    - An INCONCLUSIVE revert check needs its failing assertion read: is it the intended one?
-4. **Description.** Write it from the template in `<workspace>/harness/PULL-REQUESTS.md`:
+5. **Description.** Write it from the template in `<workspace>/harness/PULL-REQUESTS.md`:
    a Conventional Commit title of at most 72 characters, every required section, the head
    sha, what was run and its results (never "Not run"), the reported scenario before and
-   after, and the doodlebot footer at the end. Save it as
+   after, and the doodlebot footer at the end. For a feature, link the design by its
+   `design/<topic>` tag on the person's fork. Save it as
    `<workspace>/harness/.artifacts/pr/<branch>.md` and show it to the person.
-5. **Publish, only when asked.** On the person's go-ahead: push the branch to their fork
-   (`origin`) and open the PR against `Nexus-Mods/Vortex` with `gh pr create --body-file`
-   (draft unless they say otherwise). Then run
+6. **Publish, only when asked.** On the person's go-ahead:
+   `doodlebot pr-branch <topic> --checkout <checkout> --push`. It pushes `pr/<topic>` and the
+   design tag to `origin` only after checking that `origin` is the person's own fork of
+   `Nexus-Mods/Vortex`. If it refuses because there is no fork, offer
+   `gh repo fork Nexus-Mods/Vortex --remote` and run it only when the person agrees. Then open
+   the PR against `Nexus-Mods/Vortex` from `pr/<topic>` with `gh pr create --body-file` (draft
+   unless they say otherwise), and run
    `doodlebot pr-preflight --checkout <checkout> --base upstream/master --pr <number>` to
    check the published description.
-6. **CI.** `doodlebot pr-checks <number>` reports the head's checks, with failed jobs
+7. **CI.** `doodlebot pr-checks <number>` reports the head's checks, with failed jobs
    expanded to their failed steps. It exits nonzero while any check is pending or failed;
    wait and run it again. A test failure and an upload failure are different problems.
 

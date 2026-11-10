@@ -6,8 +6,9 @@ fix in the scenario that was reported, with `/doodlebot:fix`.
 ## Before you begin
 
 - [Set up doodlebot](../get-started/set-up.md).
-- Have a GitHub fork of Vortex and Vortex's build prerequisites. The agent prepares the source
-  clone if it does not exist yet; see [Work on Vortex source](source-development.md).
+- Have Vortex's build prerequisites, and a GitHub fork of Vortex if you want to push the fix.
+  The agent prepares the source clone if it does not exist yet; see
+  [Work on Vortex source](source-development.md).
 - Have the bug report: what the user did, what they saw, and any collection, mod or files they
   named. If the report depends on a Nexus collection, [sign in to Nexus Mods](sign-in.md).
 
@@ -21,8 +22,8 @@ A bug fix needs no design. If you supply one anyway, the agent holds the change 
    /doodlebot:fix <the bug report or a link to it>
    ```
 
-2. If the source clone is missing, the agent runs `doodlebot source`, which clones your fork into
-   `<workspace>/.vortex-src` and builds it.
+2. If the source clone is missing, the agent runs `doodlebot source`, which clones your fork
+   (or Nexus-Mods/Vortex, if you have none) into `<workspace>/.vortex-src` and builds it.
 
 3. The agent reproduces the bug on the unchanged base build, in the reported scenario. If it
    cannot reproduce it, it stops and tells you what it tried.

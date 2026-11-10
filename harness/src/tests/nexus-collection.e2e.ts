@@ -15,9 +15,19 @@ const parent = loadConfig(
 );
 const cacheDir = path.join(parent.cacheDir, "nexus-smoke");
 const gamePath = path.join(cacheDir, "game");
-const config = { ...parent, cacheDir, gamePath, gameId: "stardewvalley", apiKey: undefined };
+// Its own Stardew profile, so your working profile is not replaced, but the one shared login
+// (~/.doodlebot/login), used directly: Vortex writes its token rotations straight into it, so
+// nothing is copied in or back (login.ts).
+const config = {
+  ...parent,
+  cacheDir,
+  gamePath,
+  gameId: "stardewvalley",
+  apiKey: undefined,
+  sharedLogin: true,
+};
 const collection = "https://www.nexusmods.com/games/stardewvalley/collections/nudx7b/revisions/1";
-if (!fs.existsSync(authCacheFile(parent)))
+if (!fs.existsSync(authCacheFile(config)))
   throw new ConfigError(
     "Run doodlebot setup --oauth for this target first. This opt-in test requires a cached Nexus login and unattended downloads require a Premium account.",
   );
@@ -27,7 +37,6 @@ fs.writeFileSync(
   path.join(gamePath, "Stardew Valley.exe"),
   "Automation path marker; not a playable game.",
 );
-fs.copyFileSync(authCacheFile(parent), authCacheFile(config));
 try {
   const { instance, tier } = await bootstrap(config, { fresh: true, onProgress: console.log });
   await purgeGame(instance.mcp, { allowForeignPurge: true, onProgress: console.log });
@@ -87,7 +96,4 @@ try {
   );
 } finally {
   await stopStaleInstance(config);
-  // Preserve any refresh-token rotation for later setup/up/test invocations.
-  if (fs.existsSync(authCacheFile(config)))
-    fs.copyFileSync(authCacheFile(config), authCacheFile(parent));
 }

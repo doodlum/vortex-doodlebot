@@ -34,6 +34,7 @@ import {
   type CheckoutIdentity,
 } from "./evidence";
 import { UPSTREAM, childEnv } from "./source";
+import { DESIGNS_DIR, isDesignSubject } from "./prPush";
 import { REPO_ROOT } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -41,7 +42,7 @@ const execFileAsync = promisify(execFile);
 export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "inconclusive";
 
 export interface CheckResult {
-  id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "description";
+  id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "design" | "description";
   title: string;
   status: CheckStatus;
   summary: string;
@@ -2390,6 +2391,7 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
   }
 
   checks.push(commentCheck(files));
+  checks.push(await designCheck(dir, files, mergeBase, headSha));
 
   if (options.pr !== undefined) {
     const fetch = options.fetchPullRequest ?? fetchPullRequestText;
@@ -2435,6 +2437,70 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
     passed:
       kitUnchanged &&
       checks.every((check) => check.status !== "fail" && check.status !== "inconclusive"),
+  };
+}
+
+/** Each commit of `range` with its subject and the files it touches. */
+async function commitsIn(
+  dir: string,
+  range: string,
+): Promise<{ sha: string; subject: string; files: string[] }[]> {
+  const shas = (await git(dir, ["rev-list", range])).split("\n").filter(Boolean);
+  return Promise.all(
+    shas.map(async (sha) => ({
+      sha,
+      subject: (await git(dir, ["log", "-1", "--format=%s", sha])).trim(),
+      files: (await git(dir, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha]))
+        .split("\n")
+        .filter(Boolean),
+    })),
+  );
+}
+
+/**
+ * The design stays out of a Vortex PR: FAIL when a `docs/designs/` file of this branch's
+ * `docs(design)` commits is in the diff or in any commit of the range. The design commits are the
+ * range's own and those behind the local `design/<topic>` tags (`doodlebot pr-branch`).
+ */
+export async function designCheck(
+  dir: string,
+  files: FileDiff[],
+  mergeBase: string,
+  headSha: string,
+): Promise<CheckResult> {
+  const range = await commitsIn(dir, `${mergeBase}..${headSha}`);
+  const designCommits = range.filter((commit) => isDesignSubject(commit.subject));
+  const tags = (await git(dir, ["for-each-ref", "--format=%(objectname)", "refs/tags/design/"]))
+    .split("\n")
+    .filter(Boolean);
+  for (const tag of tags) {
+    if (!(await gitOk(dir, ["merge-base", "--is-ancestor", mergeBase, tag]))) continue;
+    designCommits.push(
+      ...(await commitsIn(dir, `${mergeBase}..${tag}`)).filter((c) => isDesignSubject(c.subject)),
+    );
+  }
+  const designFiles = new Set(
+    designCommits.flatMap((commit) => commit.files.filter((file) => file.startsWith(DESIGNS_DIR))),
+  );
+  const details: string[] = [];
+  for (const file of files)
+    if (designFiles.has(file.path)) details.push(`in the diff: ${file.path}`);
+  for (const commit of range) {
+    const touched = commit.files.filter((file) => designFiles.has(file));
+    if (touched.length > 0)
+      details.push(`${commit.sha.slice(0, 7)} ${commit.subject}: ${touched.join(", ")}`);
+  }
+  return {
+    id: "design",
+    title: "Design kept out of the PR",
+    status: details.length > 0 ? "fail" : "pass",
+    summary:
+      details.length > 0
+        ? "the branch carries its design; push pr/<topic> from `doodlebot pr-branch <topic>` instead"
+        : designFiles.size > 0
+          ? "no design file in the diff or its commits"
+          : "no docs(design) commits",
+    details,
   };
 }
 

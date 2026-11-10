@@ -47,7 +47,7 @@ describe("the command list", () => {
     for (const name of ["version", "test", "link", "fixture", "log", "perf-summary", "update"])
       expect(names).toContain(name);
     expect(findCommand("evidence")?.subcommands).toEqual(["identity", "run", "runtime"]);
-    for (const removed of ["design", "readiness", "vortex-e2e"])
+    for (const removed of ["design", "readiness", "vortex-e2e", "login-import"])
       expect(findCommand(removed)).toBeUndefined();
     expect(findCommand("fixture")?.subcommands).toEqual(["mod"]);
     expect(findCommand("knowledge")?.subcommands).toEqual([
@@ -55,14 +55,18 @@ describe("the command list", () => {
       "search",
       "list",
       "remove",
+      "note",
+      "share",
       "path",
     ]);
+    expect(findCommand("gap")?.subcommands).toEqual(["add", "list", "close", "share"]);
+    expect(findCommand("pr-branch")?.subcommands).toBeUndefined();
     expect(findCommand("game")?.subcommands).toEqual(["copy", "register", "restore"]);
     expect(findCommand("release")?.subcommands).toEqual(["get", "list"]);
     expect(findCommand("qa")?.subcommands).toEqual(["list", "check"]);
     for (const name of ["inventory", "clean"])
       expect(findCommand(name)?.subcommands, name).toBeUndefined();
-    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(6);
+    expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(7);
     expect(findCommand("help")).toBeUndefined();
   });
 });

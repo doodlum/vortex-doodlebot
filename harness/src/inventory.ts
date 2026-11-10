@@ -17,6 +17,7 @@ import { findInstalledVortex } from "./config";
 import { readContent, type Content } from "./content";
 import { ConfigError } from "./errors";
 import { KNOWN_GAMES, USER_FOLDERS, findGamePath } from "./gameSetup";
+import { sharedLoginDir, usesSharedLogin } from "./login";
 import { CONTENT_FILE, DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { gitBranch } from "./runningVortex";
 import { hasVortexSource, missingBuildOutputs, vortexSourceDir } from "./source";
@@ -66,6 +67,11 @@ export interface InventoryDeps {
   contentFile?: string;
   /** The cache whose snapshots and login are listed; the default cache unless given. */
   cacheDir?: string;
+  /**
+   * Where the login of a shared-login cache (the default one) is: `~/.doodlebot/login` unless
+   * given. Every other cache's login is in the cache itself (login.ts).
+   */
+  sharedLoginDir?: string;
   installedVortex?: () => string | undefined;
   /** The managed source checkout, or undefined when there is none. */
   source?: () => { dir: string; info: SourceInfo } | undefined;
@@ -111,7 +117,10 @@ const inside = (child: string, parent: string): boolean => {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 };
 
-/** A Nexus login is present when an `oauth-*.json` in the cache holds a login, not the null tombstone. */
+/**
+ * A Nexus login is present when an `oauth-*.json` in the folder (the shared login folder, or a
+ * cache of its own) holds a login, not the null tombstone.
+ */
 export function loginPresent(cacheDir: string): boolean {
   let names: string[];
   try {
@@ -348,7 +357,10 @@ function sandboxItems(): InventoryItem[] {
 }
 
 function collectionAndLoginItems(content: Content, deps: InventoryDeps): InventoryItem[] {
-  const loggedIn = loginPresent(deps.cacheDir ?? DEFAULT_CACHE_DIR);
+  const cacheDir = deps.cacheDir ?? DEFAULT_CACHE_DIR;
+  const loggedIn = loginPresent(
+    usesSharedLogin({ cacheDir }) ? (deps.sharedLoginDir ?? sharedLoginDir()) : cacheDir,
+  );
   return [
     {
       id: "collection:offline",

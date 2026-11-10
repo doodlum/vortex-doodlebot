@@ -75,7 +75,10 @@ import path from "node:path";
 const kit = process.env.VORTEX_AI_KIT!;
 const { loadConfig } = await import(new URL("./config.ts", kit).href);
 const { authCacheFile } = await import(new URL("./instance.ts", kit).href);
+const { usesSharedLogin } = await import(new URL("./login.ts", kit).href);
 const config = loadConfig();
+// The default cache uses the person's one shared login: a null there would sign them out.
+if (usesSharedLogin(config)) throw new Error(`${config.cacheDir} uses the shared login`);
 const file = authCacheFile(config);
 fs.mkdirSync(path.dirname(file), { recursive: true });
 fs.writeFileSync(file, "null");

@@ -488,6 +488,22 @@ describe("workspace paths in plugin skills and agents", () => {
     expect(pathTokenViolations("See harness/AGENTS.md in prose.")).toEqual([]);
   });
 
+  it("names only plugin resources that exist", () => {
+    const named = [...allSkills.map(({ file }) => file), ...agentFiles].flatMap((file) =>
+      [...read(file).matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/(resources\/[\w./-]*[\w-])/g)].map(
+        (match) => ({ file, resource: match[1]! }),
+      ),
+    );
+    expect(named.map(({ resource }) => resource)).toContain("resources/knowledge.md");
+    expect(
+      named
+        .filter(
+          ({ resource }) => !fs.existsSync(path.join(REPO_ROOT, "plugins/doodlebot", resource)),
+        )
+        .map(({ file, resource }) => `${file}: ${resource}`),
+    ).toEqual([]);
+  });
+
   it("writes every repository path as <workspace>/ or ${CLAUDE_PLUGIN_ROOT}/", () => {
     const problems = [...allSkills.map(({ file }) => file), ...agentFiles].flatMap((file) =>
       pathTokenViolations(body(read(file))).map((token) => `${file}: ${token}`),

@@ -3,14 +3,27 @@
  * workspace in `~/.doodlebot/knowledge.md` so they survive `update` and re-setup, are shared by
  * Claude Code and Codex, and never make the workspace dirty. `search` also reads the shared,
  * reviewed `KNOWLEDGE.md` of the workspace. A local lesson is a lead to recheck against the
- * current code, never a fact; a lesson that keeps holding goes to doodlebot as a pull request.
+ * current code, never a fact. `note` records that a lesson did not hold; `share` turns one into a
+ * GitHub issue for the maintainer (share.ts).
  */
-import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  type Entry,
+  findEntry,
+  guardValues,
+  newId,
+  oneLine,
+  parseEntries,
+  readEntries,
+  renderEntry,
+  today,
+  writeEntries,
+} from "./entryStore";
 import { ConfigError } from "./errors";
 import { REPO_ROOT, USER_STATE_DIR } from "./paths";
+import { type ShareDeps, shareEntry } from "./share";
 
 export const KNOWLEDGE_FILE = path.join(USER_STATE_DIR, "knowledge.md");
 export const SHARED_KNOWLEDGE_FILE = path.join(REPO_ROOT, "KNOWLEDGE.md");
@@ -25,15 +38,16 @@ export const FIELDS = [
   ["evidence", "Evidence"],
   ["vortex", "Vortex"],
   ["seen", "Seen"],
+  ["thirdParty", "Third-party"],
+  ["issue", "Issue"],
 ] as const;
 type Field = (typeof FIELDS)[number][0];
-const REQUIRED: Field[] = ["area", "symptom", "cause", "remedy", "scope", "evidence"];
+const REQUIRED: Field[] = ["area", "symptom", "cause", "remedy", "scope", "evidence", "vortex"];
+/** The fields `knowledge add` takes as flags (`--third-party` for thirdParty). */
+const INPUT: Field[] = [...REQUIRED, "thirdParty"];
+const flagName = (key: string): string => (key === "thirdParty" ? "third-party" : key);
 
-export interface Lesson {
-  id: string;
-  title: string;
-  fields: Partial<Record<Field, string>>;
-}
+export type Lesson = Entry<Field>;
 export interface Match {
   source: "local" | "shared";
   id?: string;
@@ -44,60 +58,16 @@ export interface Match {
 const HEADER =
   "# Local doodlebot knowledge\n\n" +
   "Lessons verified on this machine by `doodlebot knowledge add`. Each is a lead to recheck\n" +
-  "against the current code, not a fact. Share one that keeps holding as a pull request to\n" +
-  "doodlebot's KNOWLEDGE.md.\n";
-
-/**
- * Text that looks like a credential: a bearer header, or an unbroken run of 32 or more
- * base64-style characters mixing letters and digits. Hyphens, dots and slashes break a run, so
- * paths and slugs pass; pure hex (a commit SHA or digest) passes too.
- */
-function looksSecret(value: string): boolean {
-  if (/\bBearer\s+\S{8,}/i.test(value)) return true;
-  return (value.match(/[A-Za-z0-9+_=]{32,}/g) ?? []).some(
-    (run) => /\d/.test(run) && /[A-Za-z]/.test(run) && !/^[0-9a-fA-F]+$/.test(run),
-  );
-}
-
-const oneLine = (value: string): string => value.replace(/\s+/g, " ").trim();
+  "against the current code, not a fact. Share one that keeps holding with\n" +
+  "`doodlebot knowledge share <id>`.\n";
 
 export function parseLessons(markdown: string): Lesson[] {
-  const lessons: Lesson[] = [];
-  let current: Lesson | undefined;
-  for (const line of markdown.replace(/\r\n/g, "\n").split("\n")) {
-    const heading = /^## (.+)$/.exec(line);
-    if (heading) {
-      current = { id: "", title: heading[1]!.trim(), fields: {} };
-      lessons.push(current);
-      continue;
-    }
-    const field = /^- \*\*([A-Za-z]+):\*\* (.*)$/.exec(line);
-    if (!current || !field) continue;
-    if (field[1] === "Id") current.id = field[2]!.trim();
-    const known = FIELDS.find(([, label]) => label === field[1]);
-    if (known) current.fields[known[0]] = field[2]!.trim();
-  }
-  return lessons.filter((lesson) => lesson.id !== "");
+  return parseEntries(markdown, FIELDS);
 }
 
-function render(lesson: Lesson): string {
-  const lines = [`## ${lesson.title}`, "", `- **Id:** ${lesson.id}`];
-  for (const [key, label] of FIELDS)
-    if (lesson.fields[key] !== undefined) lines.push(`- **${label}:** ${lesson.fields[key]}`);
-  return lines.join("\n") + "\n";
-}
-
-function readLessons(file: string): Lesson[] {
-  return fs.existsSync(file) ? parseLessons(fs.readFileSync(file, "utf8")) : [];
-}
-
-function writeLessons(file: string, lessons: Lesson[]): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const body = lessons.map(render).join("\n");
-  const temp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temp, HEADER + (body ? `\n${body}` : ""));
-  fs.renameSync(temp, file);
-}
+const readLessons = (file: string): Lesson[] => readEntries(file, FIELDS);
+const writeLessons = (file: string, lessons: Lesson[]): void =>
+  writeEntries(file, HEADER, lessons, FIELDS);
 
 export function addLesson(
   values: { title: string } & Partial<Record<Field, string>>,
@@ -108,40 +78,55 @@ export function addLesson(
   if (missing.length > 0)
     throw new ConfigError(
       `knowledge add needs ${missing.map((key) => `--${key}`).join(", ")}. ` +
-        "Record only a lesson whose cause you checked; keep guesses in the run report.",
+        "Record only a lesson whose cause you checked, with the Vortex version it was confirmed " +
+        "on; keep guesses in the run report.",
     );
-  for (const [key, value] of Object.entries(values))
-    if (typeof value === "string" && looksSecret(value))
-      throw new ConfigError(
-        `--${key} looks like it holds a credential or token. Never store secrets in knowledge.`,
-      );
+  guardValues(
+    Object.fromEntries(Object.entries(values).map(([key, value]) => [flagName(key), value])),
+    "knowledge",
+  );
   const lessons = readLessons(file);
   const title = oneLine(values.title);
   if (lessons.some((lesson) => lesson.title.toLowerCase() === title.toLowerCase()))
     throw new ConfigError(
       `A local lesson titled "${title}" exists; remove it first or choose another title.`,
     );
-  const date = now.toISOString().slice(0, 10);
-  const lesson: Lesson = {
-    id: `k-${date.replace(/-/g, "")}-${randomBytes(3).toString("hex")}`,
-    title,
-    fields: {},
-  };
-  for (const [key] of FIELDS)
-    if (key !== "seen" && values[key]?.trim()) lesson.fields[key] = oneLine(values[key]!);
-  lesson.fields.seen = date;
+  const lesson: Lesson = { id: newId("k", now), title, fields: {}, notes: [] };
+  for (const key of INPUT) if (values[key]?.trim()) lesson.fields[key] = oneLine(values[key]!);
+  lesson.fields.seen = today(now);
   writeLessons(file, [...lessons, lesson]);
   return lesson;
 }
 
+const missingLesson = (id: string): string =>
+  `No local lesson with id ${id}; see doodlebot knowledge list.`;
+
 export function removeLesson(id: string, file = KNOWLEDGE_FILE): Lesson {
   const lessons = readLessons(file);
-  const found = lessons.find((lesson) => lesson.id === id);
-  if (!found) throw new ConfigError(`No local lesson with id ${id}; see doodlebot knowledge list.`);
+  const found = findEntry(lessons, id, missingLesson(id));
   writeLessons(
     file,
     lessons.filter((lesson) => lesson !== found),
   );
+  return found;
+}
+
+/**
+ * Append a dated note, such as "does not hold on 2.9.0 (<report>)". Removing the lesson stays
+ * the owner's decision.
+ */
+export function noteLesson(
+  id: string,
+  text: string,
+  file = KNOWLEDGE_FILE,
+  now = new Date(),
+): Lesson {
+  if (text.trim() === "") throw new ConfigError("knowledge note needs an id and the note's text.");
+  guardValues({ note: text }, "knowledge");
+  const lessons = readLessons(file);
+  const found = findEntry(lessons, id, missingLesson(id));
+  found.notes.push(`${today(now)}: ${oneLine(text)}`);
+  writeLessons(file, lessons);
   return found;
 }
 
@@ -183,7 +168,7 @@ export function searchKnowledge(
       source: "local" as const,
       id: lesson.id,
       title: lesson.title,
-      text: render(lesson).trim(),
+      text: renderEntry(lesson, FIELDS).trim(),
     }))
     .filter((match) => holds(match.text));
   const shared = sharedSections(files.shared ?? SHARED_KNOWLEDGE_FILE)
@@ -192,12 +177,21 @@ export function searchKnowledge(
   return [...local, ...shared];
 }
 
-const USAGE = "Use doodlebot knowledge add|search|list|remove|path (see doodlebot --help).";
+/** The fields a share publishes: everything but the third-party data and the issue link. */
+function shareable(lesson: Lesson): [string, string][] {
+  return FIELDS.filter(([key]) => key !== "thirdParty" && key !== "issue")
+    .filter(([key]) => lesson.fields[key] !== undefined)
+    .map(([key, label]) => [label, lesson.fields[key]!]);
+}
+
+const USAGE =
+  "Use doodlebot knowledge add|search|list|remove|note|share|path (see doodlebot --help).";
 
 export function knowledgeCommand(
   positional: string[],
   flags: Record<string, string | boolean>,
   files: { local?: string; shared?: string } = {},
+  deps: ShareDeps = {},
 ): string {
   const local = files.local ?? KNOWLEDGE_FILE;
   const json = flags.json === true;
@@ -211,7 +205,7 @@ export function knowledgeCommand(
       const lesson = addLesson(
         {
           title: value("title") ?? "",
-          ...Object.fromEntries(FIELDS.map(([key]) => [key, value(key)])),
+          ...Object.fromEntries(INPUT.map((key) => [key, value(flagName(key))])),
         },
         local,
       );
@@ -230,6 +224,36 @@ export function knowledgeCommand(
       if (!rest[0]) throw new ConfigError("knowledge remove needs a lesson id.");
       const lesson = removeLesson(rest[0], local);
       return `removed ${lesson.id}: ${lesson.title}`;
+    }
+    case "note": {
+      const [id, ...words] = rest;
+      if (!id) throw new ConfigError("knowledge note needs an id and the note's text.");
+      const lesson = noteLesson(id, words.join(" "), local);
+      return json
+        ? JSON.stringify(lesson, null, 2)
+        : `noted ${lesson.id}: ${lesson.notes[lesson.notes.length - 1]!}`;
+    }
+    case "share": {
+      if (!rest[0]) throw new ConfigError("knowledge share needs a lesson id.");
+      const lessons = readLessons(local);
+      const lesson = findEntry(lessons, rest[0], missingLesson(rest[0]));
+      return shareEntry(
+        "knowledge",
+        {
+          id: lesson.id,
+          title: lesson.title,
+          fields: shareable(lesson),
+          notes: lesson.notes,
+          thirdParty: lesson.fields.thirdParty,
+          issue: lesson.fields.issue,
+        },
+        flags,
+        (url) => {
+          lesson.fields.issue = url;
+          writeLessons(local, lessons);
+        },
+        deps,
+      );
     }
     case "search": {
       const matches = searchKnowledge(rest, { local, shared: files.shared });
