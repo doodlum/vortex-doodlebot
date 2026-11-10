@@ -842,7 +842,8 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 - Say which suite ran and disclose skips. Quote comma lists in PowerShell.
 - The core suite launches its own Vortex and refuses while a harness Vortex runs
   (`... before the core suite.`): run `doodlebot down` first.
-- See [TESTING.md](TESTING.md) for the core contract, pinned-release CI and opt-in scenarios.
+- See [TESTING.md](TESTING.md) for the core contract, running it on a released Vortex, and
+  opt-in scenarios. CI runs only the `ci` job; the core suite is a local gate.
   Feature regressions and performance scripts stay outside the default kit gate.
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (`plugins/doodlebot/resources/testing.md`

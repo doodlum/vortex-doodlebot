@@ -62,9 +62,14 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
    pnpm run lint:fix
    ```
 
-3. For a change to how doodlebot drives Vortex, also have the agent run the Playwright suite
-   with `doodlebot test core`. It starts its own Vortex with a disposable test game and no
-   account, so stop any running test Vortex first.
+   GitHub runs the same gate on every pull request. That's all GitHub runs: it never starts
+   Vortex.
+
+3. For a change to how doodlebot drives Vortex, also have the agent run the Playwright suite on
+   a released Vortex, with `doodlebot test core --release 2.8.0` (after
+   `doodlebot release get 2.8.0`). It starts its own Vortex with a disposable test game and no
+   account, so stop any running test Vortex first. CI doesn't run this suite, so it's yours to
+   run before a release.
 
 Say which checks you ran. Passing unit tests alone do not show that a Vortex flow works.
 

@@ -155,11 +155,13 @@ assertions time out in 60 seconds; cold worker fixtures have a separate four-min
 The lifecycle test sets its own four-minute limit. Restore modified window/DOM state even
 when assertions fail. Performance is not measured by these timings.
 
-CI runs this suite against official Vortex **2.8.0**, with a pinned SHA-256 installer, after
-the fast gate. Update the version, URL and checksum together when changing the supported
-baseline. Source builds run the same suite locally with the managed source checkout;
-`VORTEX_AI_INSTALLED=1` and `VORTEX_AI_EXE` explicitly select a release instead. A green source
-run alone does not establish compatibility with a released Vortex.
+CI does not run this suite. The `core-released` job that ran it on GitHub's Windows runner
+failed there from 12 October to 10 November 2026 (Vortex never exited cleanly after the first
+lifecycle test), while the same suite passed locally, so the owner removed it. Run it locally
+against a released Vortex before a release: `doodlebot release get 2.8.0`, then
+`doodlebot test core --release 2.8.0` (21 tests). Source builds run the same suite with the
+managed source checkout. A green source run alone does not establish compatibility with a
+released Vortex.
 
 ## Authentication and live services
 
