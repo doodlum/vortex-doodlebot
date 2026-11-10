@@ -203,15 +203,18 @@ export const KIT_CORE_PREFIXES = [
 
 /**
  * Whether a recorded kit-core command runs the whole core contract: one of the accepted prefixes
- * followed by nothing but an optional JSON reporter (a bare `--` is ignored). A filter (--grep,
- * a spec path, --project) or the removed package script for the core suite is refused.
+ * followed by nothing but an optional JSON reporter. A filter (--grep, a spec path, --project)
+ * or the removed package script for the core suite is refused. Only the Playwright prefix
+ * ignores a bare `--`; `doodlebot test core` passes every argument through verbatim, so a `--`
+ * there reaches Playwright, which reads what follows as a filter, and is refused.
  */
 export function isCompleteCoreCommand(argv: readonly string[]): boolean {
   const prefix = KIT_CORE_PREFIXES.find((candidate) =>
     candidate.every((part, index) => argv[index] === part),
   );
   if (prefix === undefined) return false;
-  const tail = argv.slice(prefix.length).filter((arg) => arg !== "--");
+  const rest = argv.slice(prefix.length);
+  const tail = prefix[0] === "pnpm" ? rest.filter((arg) => arg !== "--") : rest;
   return ["", "--reporter=json", "--reporter json"].includes(tail.join(" "));
 }
 

@@ -20,7 +20,10 @@ Rules:
   ordinary file commands. Never start Vortex any other way, never touch the person's own
   Vortex, and never edit source code.
 - Run `doodlebot up`, `doodlebot test` and `doodlebot install` in the background with a
-  log, and poll as "Commands that block" describes. For a fresh QA run start with
+  log, and wait as "Commands that block" describes: a launch is done when the background
+  process has exited and its log has the success line (`Vortex is up in` for `up`).
+  `doodlebot status` answering is only a liveness hint, because a cold start launches
+  Vortex up to three times on the same port. For a fresh QA run start with
   `doodlebot up --fresh` and the brief's flags.
 - When `doodlebot status` already reports MCP answering, reuse that instance only if
   `doodlebot call automation_status` shows a `userDataDir` under the configured cache;

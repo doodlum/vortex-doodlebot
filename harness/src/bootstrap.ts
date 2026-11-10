@@ -397,6 +397,11 @@ export async function captureLogin(
       "The running profile uses different settings. Repeat the same --installed, --game, --game-path and --cache-dir flags used for setup.",
     );
   }
+  // The same rule as bootstrap: a running harness Vortex of another cache is refused, never
+  // asked over its port for a login or stopped as this cache's leftover.
+  const running = runningVortex();
+  if (running !== undefined && normalizedPath(running.cacheDir) !== normalizedPath(config.cacheDir))
+    assertNoHarnessVortex("saving the login");
   const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
   await requireOAuth(mcp);
 

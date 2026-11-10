@@ -165,7 +165,7 @@ describe("update command sequence", () => {
     expect(sequence(calls)).toEqual([
       ["git", "status", "--porcelain"],
       ["git", "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/main"],
-      ["git", "ls-remote", "--exit-code", "--heads", "origin", "main"],
+      ["git", "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/main"],
       ["git", "fetch", "origin", "main"],
       ["git", "checkout", "--detach", "FETCH_HEAD"],
       ["pnpm", "install", "--frozen-lockfile", "(shell)"],
@@ -241,6 +241,17 @@ describe("update against a synthetic remote", () => {
     const { run } = realGit();
     update(root, "feature/x", run, { stateDir, ...quiet });
     expect(git(root, "rev-parse", "HEAD")).toBe(branchCommit);
+  });
+
+  it("matches a branch by its full name, never by a trailing part of another", () => {
+    const { run, pnpm } = realGit();
+    const before = git(root, "rev-parse", "HEAD");
+    // A bare `ls-remote --heads origin x` would match refs/heads/feature/x.
+    expect(() => update(root, "x", run, { stateDir, ...quiet })).toThrow(
+      "No tag or branch x on origin.",
+    );
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    expect(pnpm).toEqual([]);
   });
 
   it("reports a ref origin does not have", () => {

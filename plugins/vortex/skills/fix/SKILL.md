@@ -40,8 +40,9 @@ before building or changing the checkout.
    and `--checkout <checkout>`). Otherwise use `<workspace>/.vortex-src`; if
    `doodlebot source --where` shows none, follow `/doodlebot:source`. `<checkout>` below is
    whichever you use.
-2. **Reproduce on the base.** On the checkout's base (for example `upstream/master`),
-   build with `doodlebot build --checkout <checkout>`, start it with
+2. **Reproduce on the base.** Stop the test Vortex first, then put the checkout on its base:
+   `git -C <checkout> fetch upstream` and `git -C <checkout> switch --detach upstream/master`
+   (or the base the report names). Build with `doodlebot build --checkout <checkout>`, start it with
    `doodlebot up --dev-dir <checkout> --sandbox` (or the fixture the report needs: a real
    game copy, `--bethesda-sandbox`, a collection), and carry out the person's own scenario
    with `/vortex:drive`'s loop. Record the symptom you observe (screenshot, state, log
@@ -56,7 +57,11 @@ before building or changing the checkout.
    project folder (`pnpm exec vitest run <test-path>` in `<checkout>/src/renderer`), or a
    doodlebot regression test (`/vortex:ui-test`). Prove it fails on the base, for example
    with `doodlebot pr-preflight --checkout <checkout> --base upstream/master --test <test> --revert <file>`;
-   a reverted failure is inconclusive until you read its assertion.
+   a reverted failure is inconclusive until you read its assertion. That control diffs the
+   committed `HEAD` and refuses uncommitted changes, so it needs the fix and test committed:
+   ask the person whether you may make a local commit on the `fix-<topic>` branch
+   (`git -C <checkout> commit`, never a push). Without that permission, skip the control and
+   report the revert check as not run.
 6. **Verify the reported scenario.** Start the fixed build
    (`doodlebot up --dev-dir <checkout> --sandbox`, or the report's fixture) and repeat the
    person's exact scenario. Observe the result independently (UI, deployed files, state,
@@ -75,5 +80,7 @@ before building or changing the checkout.
 
 Report: the symptom on the base, the cause, the change (files), the failing-then-passing
 test, the reported scenario's result on the fix, the gates and their results, and anything
-not verified. Then offer `/vortex:pr`. Never commit, push or open a PR unless the person
-asks, and never open one before the person's own scenario passed on the fix.
+not verified, and whether you made the local commit on `fix-<topic>` for the control. Then
+offer `/vortex:pr`. Apart from that local commit, made only with the person's permission,
+never commit, push or open a PR unless the person asks, and never open one before the
+person's own scenario passed on the fix.

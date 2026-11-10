@@ -191,8 +191,25 @@ describe("perf-summary with fixed numbers", () => {
     );
     expect(summary.metrics[0]!.a).toEqual({ count: 3, median: 100.1, min: 100, max: 100.1 });
     expect(summary.metrics[0]!.b).toEqual({ count: 3, median: 200.3, min: 200.3, max: 200.4 });
-    expect(summary.metrics[0]!.differencePercent).toBe(100.2);
+    // From the shown medians: (200.3 − 100.1) / 100.1 × 100 = 100.0999… → 100.1 (the raw
+    // medians 100.06 and 200.31 would give 100.2, which the table could not reproduce).
+    expect(summary.metrics[0]!.differencePercent).toBe(100.1);
     expect(formatMarkdown(summary)).toContain("| A | 100.1 | 100.0 | 100.1 | 3 |  |  |");
+    expect(formatMarkdown(summary)).toContain(
+      "| B | 200.3 | 200.3 | 200.4 | 3 | +100.1% | Slower |",
+    );
+  });
+
+  it("decides verdicts from the rounded minimum and maximum the table shows", () => {
+    // Raw values do not overlap (B's 9.96 is below A's 10.04), but both show as 10.0.
+    expect(metricVerdict([10.04, 10.1, 10.2], [9.96, 9.9, 9.8])).toBe("No clear difference");
+    expect(metricVerdict([9.8, 9.9, 9.96], [10.04, 10.1, 10.2])).toBe("No clear difference");
+    const summary = summarise("mods-scroll", files([10.04, 10.1, 10.2]), files([9.96, 9.9, 9.8]));
+    const gap = summary.metrics[0]!;
+    expect(gap.a.min).toBe(10);
+    expect(gap.b!.max).toBe(10);
+    expect(gap.verdict).toBe("No clear difference");
+    expect(summary.verdict).toBe("No clear difference");
   });
 
   it("lists every run's evidence and its budget failures", () => {

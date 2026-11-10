@@ -98,8 +98,12 @@ from the workspace root.
   `No tag or branch <ref> on origin.`
 - `up`, `setup`, `test` and `install` can outlive an agent's tool timeout or wait on a dialog,
   and on Windows a captured `up` may never return (KNOWLEDGE.md). Run them in the background
-  with output to a log in `harness/.artifacts/runs/`, and poll `doodlebot status` until MCP is
-  answering or the command exits. For a command that may raise a dialog, poll
+  with output to a log in `harness/.artifacts/runs/`, and wait for the background process to
+  exit. A launch is done when that process has exited and its log has the success line
+  (`Vortex is up in` for `up`; `Ready:` for `setup`, or with `--oauth`
+  `Initial setup: click Log in` or `Existing OAuth login cached … Setup complete.`). A cold
+  start launches Vortex up to three times on the same port, so `doodlebot status` answering
+  is only a liveness hint, never completion. For a command that may raise a dialog, poll
   `doodlebot call ui_active_dialogs`, take `doodlebot snapshot` for the button's ref and answer
   with `doodlebot click --ref <ref>` (`install` times out after 300 s).
 
@@ -552,7 +556,9 @@ pass the same path as `--test-report` with `--test-format playwright`, and run
 `node bin/doodlebot.cjs test core --reporter=json` through `evidence run --runtime <runtime.json>`.
 Readiness's `kit-core` accepts exactly the command prefixes `node bin/doodlebot.cjs test core`
 and `pnpm exec playwright test --config harness/playwright.config.ts`, followed by nothing but an
-optional JSON reporter; a filter (`--grep`, a spec path, `--project`) is refused.
+optional JSON reporter; a filter (`--grep`, a spec path, `--project`) is refused. Only the
+Playwright prefix ignores a bare `--`; after `node bin/doodlebot.cjs test core` a `--` is passed
+to Playwright verbatim, which reads what follows as a filter, so it is refused.
 Core evidence must include the complete unfiltered suite with no skips.
 
 For example, in PowerShell 7, from the kit root (replace paths/version with the actual runtime):
@@ -912,9 +918,10 @@ doodlebot perf-summary --check mods-scroll --a <a1.json> --a <a2.json> --a <a3.j
   `download-churn`'s `persistDiffs.perMinute`; lower is better). A metric missing from a file is
   left out for that file.
 - Per metric: each side's median (the mean of the middle two for an even count), minimum,
-  maximum and count, and `(median B − median A) / median A × 100` (omitted when median A is 0),
-  to one decimal place.
-- Verdicts: **Blocked** if either side has fewer than three values (applied first); **Faster**
+  maximum and count, to one decimal place, and `(median B − median A) / median A × 100`
+  computed from those rounded medians (omitted when the rounded median A is 0), itself rounded.
+- Verdicts compare the rounded minimum and maximum the table shows, so they never contradict
+  it: **Blocked** if either side has fewer than three values (applied first); **Faster**
   if B's maximum is below A's minimum; **Slower** if B's minimum is above A's maximum;
   otherwise **No clear difference**. Overall: Blocked if either side has fewer than three runs
   or every metric is Blocked; else Slower if any metric is, else Faster if any is, else No clear

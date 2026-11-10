@@ -78,6 +78,17 @@ describes the model.
 2. Run `/plugin` and check that `egm` version `0.1.1` is enabled. Check the version number, not
    only the name.
 
+3. If `/plugin` shows a version newer than `0.1.1`, pin the release: uninstall `egm`, remove the
+   `egm` marketplace, add it again at the release tag and install it again:
+
+   ```text
+   /plugin marketplace add https://github.com/google/elephant-goldfish-model.git#v0.1.1
+   /plugin install egm@egm
+   ```
+
+   If your Claude Code does not accept a ref there, keep the newer version, note its number, and
+   bear in mind that doodlebot was checked with `0.1.1` only.
+
 A headless run (`claude -p`) cannot answer permission prompts. EGM's reviewers read their
 instructions from the plugin's folder in your user profile, so allow those reads in advance. Add
 these rules to `permissions.allow` in your own Claude Code settings, replacing `<you>` with your
@@ -110,6 +121,11 @@ The `//c/` prefix is the absolute path `C:\`.
 2. Note the version Codex reports. These commands are not pinned to a release; they install the
    current version. The agent records the EGM version at the top of every review report, so you
    can compare it with what you installed.
+
+3. If the version is newer than `0.1.1`, pin the release with a marketplace ref if your Codex
+   supports one (`codex plugin marketplace add --help` lists the options). Otherwise keep the
+   newer version, note its number, and bear in mind that doodlebot was checked with `0.1.1`
+   only.
 
 ### What EGM can guarantee in each agent
 

@@ -10,6 +10,12 @@ Specs live in `<workspace>/harness/src/tests/`. Each drives Vortex through the M
 tools and asserts through Playwright, a separate oracle: asserting an MCP tool's effect
 with the same tools would pass even if both were wrong together.
 
+The test lives in the doodlebot workspace, not in a Vortex pull request. It makes the
+workspace dirty, so `/doodlebot:update` refuses until the test is committed to a doodlebot
+branch or removed; say so when you finish. To guard a regression in Vortex itself, write a
+Vortex unit test in the Vortex checkout (`/vortex:fix`, step 5) or a spec in its
+`packages/e2e` suite instead, so the test travels with the Vortex change.
+
 ## Before you begin
 
 1. Run `doodlebot version --json`. It prints `{version, commit, dirty, workspace}`.
@@ -119,4 +125,5 @@ start with `doodlebot pr-checks <pr>`, which separates test failures from upload
 ## Finish
 
 Tell the person the spec's path, what it asserts, the proof it fails without the fix, and
-the core suite's counts.
+the core suite's counts. Remind them the test is a local change in the doodlebot workspace:
+`/doodlebot:update` refuses until it is committed to a doodlebot branch or removed.

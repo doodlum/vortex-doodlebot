@@ -19,13 +19,13 @@ describe("kit-core command", () => {
     ).toBe(true);
     expect(
       isCompleteCoreCommand([
-        "node",
-        "bin/doodlebot.cjs",
+        "pnpm",
+        "exec",
+        "playwright",
         "test",
-        "core",
-        "--",
-        "--reporter",
-        "json",
+        "--config",
+        "harness/playwright.config.ts",
+        "--reporter=json",
       ]),
     ).toBe(true);
     expect(
@@ -36,9 +36,26 @@ describe("kit-core command", () => {
         "test",
         "--config",
         "harness/playwright.config.ts",
-        "--reporter=json",
+        "--",
+        "--reporter",
+        "json",
       ]),
     ).toBe(true);
+  });
+
+  it("refuses a `--` after doodlebot test core, which Playwright reads as a filter", () => {
+    expect(
+      isCompleteCoreCommand([
+        "node",
+        "bin/doodlebot.cjs",
+        "test",
+        "core",
+        "--",
+        "--reporter",
+        "json",
+      ]),
+    ).toBe(false);
+    expect(isCompleteCoreCommand(["node", "bin/doodlebot.cjs", "test", "core", "--"])).toBe(false);
   });
 
   it("refuses the removed ai:test:core script", () => {

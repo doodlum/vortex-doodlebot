@@ -111,7 +111,8 @@ The site is built with MkDocs Material. Pages live in `docs/`, and the navigatio
    ```
 
    `docs:generate` refreshes the generated references: [Commands](reference/commands.md) from
-   the plugin skills, the [doodlebot CLI](reference/cli.md) and the
+   the plugin skills, the [doodlebot CLI](reference/cli.md) (the commands `cli.ts` dispatches,
+   plus those the launcher handles itself, such as `update`) and the
    [MCP tools](reference/mcp-tools.md). `docs:check` catches stale references and missing paired
    updates. `docs:test` tests the checks. `docs:build` runs a strict MkDocs build into `site/`.
    To use another Python, set `DOODLEBOT_DOCS_PYTHON` to its path.

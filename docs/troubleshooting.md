@@ -117,8 +117,8 @@ Current versions do not use them. Once no doodlebot Vortex is running, they can 
   `Legacy lease store`, and `/doodlebot:setup` offers to delete it;
 - `harness/.slots` in the workspace;
 - `.vortex-worktrees` in the workspace: commit or copy any work you still need from it, delete
-  the folder, then run `git -C .vortex-src worktree prune` so the Vortex clone forgets the deleted
-  checkouts. Their branches stay in `.vortex-src`.
+  the folder, then run `git -C <workspace>/.vortex-src worktree prune` so the Vortex clone
+  forgets the deleted checkouts. Their branches stay in `<workspace>/.vortex-src`.
 
 ## What's next
 

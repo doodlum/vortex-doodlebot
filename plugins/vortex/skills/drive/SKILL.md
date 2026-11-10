@@ -78,6 +78,14 @@ reused ref can act on the wrong mod. After anything that re-renders, snapshot ag
   with `requireActionable: false` through `doodlebot call ui_click`.
 - **Keys never reach an OS dialog.** Native file pickers and menus are out of reach: install
   archives with `doodlebot install <archive>` and use `vortex_dispatch` for actions.
+- **No archive given?** Make one: `doodlebot fixture mod --out <run folder>/probe.zip` writes
+  a mod with one file, `textures/automation-probe.txt`; in the sandbox it deploys to
+  `<gamePath>/Data/textures/`. Install it with `doodlebot install <run folder>/probe.zip`.
+- **Deploy** with `doodlebot deploy` and the instance's target and game flags (for the
+  sandbox, `doodlebot deploy --installed --sandbox`); it refuses while an install is running.
+- **Installing a Nexus collection** needs `/doodlebot:login` first. Run
+  `doodlebot collection <url>` in the background (see "Commands that block") and poll
+  `doodlebot call collection_install_state` until it finishes.
 - **Find dialogs by their own text.** A full snapshot of a big Mods page stops at its node
   limit before a modal, and dialog text is cut at 400 characters with buttons run together
   ("LaterInstall Now"). Scope the snapshot to the dialog (`--selector`) to get button refs.
@@ -114,8 +122,13 @@ capture open, so the command never returns. So:
    nohup <shim> <args> > <workspace>/harness/.artifacts/runs/<UTC time>-<command>.log 2>&1 &
    ```
 
-2. Poll `doodlebot status` every 10 seconds until MCP is `answering` or the command exits
-   (`$p.HasExited`, `kill -0 <pid>`). Read the log and the exit code.
+2. Note the pid (print `$p.Id` in the same call, or `echo $!` in Bash; the shell does not
+   keep `$p` between calls) and check every 10 seconds whether it still runs
+   (`Get-Process -Id <pid>`, `kill -0 <pid>`). A command is done when its process has exited
+   and its log has its success line: `Vortex is up in` for `up`; for `setup`, `Ready:` (or,
+   with `--oauth`, `Initial setup: click Log in` or the line ending `Setup complete.`). A cold
+   start launches Vortex up to three times on the same port, so `doodlebot status` answering
+   is only a liveness hint, never completion. Read the log, and the exit code when you can.
 3. For a command that may raise a dialog (for example installing an archive that is already
    installed), poll `doodlebot call ui_active_dialogs` every few seconds while it runs.
    When a dialog appears:

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { parseArgs } from "./cliArgs";
 import { REPO_ROOT } from "./paths";
 import { tsxCli } from "./processRunner";
 import { SUITES, UnknownSuiteError, suiteCommand, testCommand } from "./testCommand";
@@ -86,6 +87,18 @@ describe("doodlebot test", () => {
     await expect(
       testCommand([], { list: true }, [], { run, write: (l) => lines.push(l) }),
     ).resolves.toBe(0);
+    for (const suite of SUITES) expect(lines.join("\n")).toContain(`  ${suite.name} `);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each([["--help"], ["-h"]])("lists the suites with %s and exits 0", async (arg) => {
+    const { positional, flags, passthrough } = parseArgs(["test", arg], REPO_ROOT);
+    const lines: string[] = [];
+    const run = vi.fn(async () => 0);
+    await expect(
+      testCommand(positional, flags, passthrough, { run, write: (l) => lines.push(l) }),
+    ).resolves.toBe(0);
+    expect(lines.join("\n")).toContain("Suites (doodlebot test <suite> [args...]):");
     for (const suite of SUITES) expect(lines.join("\n")).toContain(`  ${suite.name} `);
     expect(run).not.toHaveBeenCalled();
   });

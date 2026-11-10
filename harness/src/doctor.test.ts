@@ -51,7 +51,7 @@ describe("doctor's advisory checks", () => {
   });
 
   it("reports a present baseline with its marker file", async () => {
-    const snapshot = snapshotDir(config, ANONYMOUS);
+    const snapshot = snapshotDir(config, ANONYMOUS, true);
     fs.mkdirSync(snapshot, { recursive: true });
     fs.writeFileSync(markerFile(snapshot), JSON.stringify({ createdAt: "2026-11-10T00:00:00Z" }));
     const report = await runDoctor(config, { skipGame: true, homeDir: home });
@@ -62,6 +62,20 @@ describe("doctor's advisory checks", () => {
     expect(formatDoctorReport(report)).toContain(
       `  [ok  ] Sandbox baseline\n         present: ${markerFile(snapshot)}`,
     );
+  });
+
+  it("checks the --no-game baseline only with --no-game, and the game's otherwise", async () => {
+    const game = snapshotDir(config, ANONYMOUS);
+    fs.mkdirSync(game, { recursive: true });
+    fs.writeFileSync(markerFile(game), JSON.stringify({ createdAt: "2026-11-10T00:00:00Z" }));
+    // A game baseline does not stand in for the separate --no-game one.
+    expect(
+      check(await runDoctor(config, { skipGame: true, homeDir: home }), "Sandbox baseline"),
+    ).toMatchObject({ ok: false, detail: "missing" });
+    expect(check(await runDoctor(config, { homeDir: home }), "Sandbox baseline")).toMatchObject({
+      ok: true,
+      detail: `present: ${markerFile(game)}`,
+    });
   });
 
   it("names the legacy lease store only when it exists, and never fails on it", async () => {

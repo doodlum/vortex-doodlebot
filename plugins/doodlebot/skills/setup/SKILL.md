@@ -105,7 +105,7 @@ Skip each step whose result already exists, and say which you skipped.
 9. **Baseline** (skip when doctor's `Sandbox baseline` detail starts with `present`): run
    `<shim> setup --installed --sandbox` (`doodlebot setup --installed --sandbox`) **in the
    background** with a log, as in "Commands that launch Vortex" below. Wait until the
-   process exits, then read the log. It must end without an error. If it refused because
+   process exits, then read the log. It must have the line `Ready:`. If it refused because
    "A harness Vortex is running", tell the person a test Vortex is already running and ask
    whether to stop it with `/doodlebot:stop`.
 10. **Stop.** `<shim> down` (`doodlebot down`). It must print `Vortex exited cleanly.` or
@@ -126,18 +126,22 @@ PowerShell:
 New-Item -ItemType Directory -Force <workspace>/harness/.artifacts/runs | Out-Null
 $log = "<workspace>/harness/.artifacts/runs/<UTC time>-setup.log"
 $p = Start-Process -FilePath <shim> -ArgumentList 'setup','--installed','--sandbox' -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+$p.Id
 ```
 
 Bash:
 
 ```bash
 mkdir -p <workspace>/harness/.artifacts/runs
-nohup <shim> setup --installed --sandbox > <workspace>/harness/.artifacts/runs/<UTC time>-setup.log 2>&1 &
+nohup <shim> setup --installed --sandbox > <workspace>/harness/.artifacts/runs/<UTC time>-setup.log 2>&1 & echo $!
 ```
 
-Check every 15 seconds whether the process has exited (`$p.HasExited`, or `kill -0 <pid>`),
-reading the log as you go. A first setup can take several minutes. If it exits with an
-error, show the person the last lines of the log and its `.err` file, and stop.
+Check every 15 seconds whether that pid still runs (`Get-Process -Id <pid>`, or
+`kill -0 <pid>`; the shell does not keep `$p` between calls), reading the log as you go.
+The setup is done when the process has exited and its log has the line `Ready:`. A first
+setup can take several minutes and launches Vortex up to three times on the same port, so
+`doodlebot status` answering is only a liveness hint, not completion. If it exits without
+that line, show the person the last lines of the log and its `.err` file, and stop.
 
 ## Finish
 

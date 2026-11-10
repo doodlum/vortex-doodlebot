@@ -11,7 +11,9 @@ skills link to the manuals for internals instead of copying them.
 Specialists share verified facts and explicit contracts; they do not maintain separate,
 competing copies of the same knowledge. Their task notes and hypotheses remain local to
 the task until promoted under [the workflow](AGENT-WORKFLOW.md#improve-from-verified-lessons).
-Full built-in CLI help belongs in the generated `harness/reference/cli.md`.
+Full built-in CLI help belongs in the generated `harness/reference/cli.md`; its command
+inventory is the commands `cli.ts` dispatches plus the `handledBy: "bin"` entries of
+`harness/src/commands.ts` (`update`), which `scripts/docs.cjs` reads from that list.
 
 ## Common context
 

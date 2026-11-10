@@ -137,6 +137,9 @@ round and a new approval.
    the boundary is either reverted, or the design is amended and approved again.
 3. It stops its test Vortex with `doodlebot down`.
 4. A fresh session checks the change with `/vortex:qa`, starting from `doodlebot up --fresh`.
+   Its `vortex-driver` starts checking only once that `up` has exited and its log shows
+   `Vortex is up in`; a first start launches Vortex up to three times, so an answering Vortex
+   alone does not mean the start has finished.
 5. The agent records its evidence and runs `doodlebot readiness`; see
    [Evidence and readiness](../concepts/evidence.md).
 

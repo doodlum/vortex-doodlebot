@@ -133,9 +133,9 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
 
 const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot (setup, start, stop, status), vortex
-(design, fix, drive, qa, ui-test, pr) and benchmark (measure, compare) plugins, whose
-commands run these.
+Used from Claude Code or Codex through the doodlebot (setup, login, baseline, start, stop,
+status, update, source), vortex (design, fix, drive, qa, ui-test, pr) and benchmark
+(measure, compare) plugins, whose commands run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
@@ -261,7 +261,7 @@ Driving a running instance
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
                          the suite is the suite's (core: Playwright's)
-  test --list            List the suites
+  test --list            List the suites (also test --help or test -h)
   perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
                          Medians, ranges and a verdict from performance-check evidence; one
                          side (no --b) has no verdict
@@ -300,7 +300,8 @@ async function main(): Promise<number> {
   const parsed = parseArgs(argv);
   const { command, flags, positional, lists, passthrough } = parsed;
 
-  if (command === "help" || flags.help === true) {
+  // `doodlebot test --help` (or `-h`) lists the suites; testCommand handles it.
+  if (command === "help" || (flags.help === true && command !== "test")) {
     log(HELP);
     return 0;
   }

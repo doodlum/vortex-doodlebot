@@ -60,9 +60,14 @@ on this profile.
    nohup <shim> up --installed --sandbox > <workspace>/harness/.artifacts/runs/<UTC time>-up.log 2>&1 &
    ```
 
-3. Poll `doodlebot status` with the same flags every 10 seconds until it reports MCP
-   `answering`, or the process exits with an error. A first start of a profile can take a
-   few minutes. On an error, show the last lines of the log and its `.err` file.
+3. Wait for that process to exit: note its pid (print `$p.Id` in the same call, or
+   `echo $!` in Bash; the shell does not keep `$p` between calls) and check every 10
+   seconds whether it still runs (`Get-Process -Id <pid>` in PowerShell, `kill -0 <pid>` in
+   Bash). The start is done when it has exited and its log has the line `Vortex is up in`;
+   Vortex keeps running after `up` exits. A first start of a profile can
+   take a few minutes and launches Vortex up to three times on the same port, so
+   `doodlebot status` answering is only a liveness hint, not completion. If it exited without
+   that line, show the last lines of the log and its `.err` file.
    - "A harness Vortex is running": another test Vortex runs; offer `/doodlebot:stop`.
    - A missing Vortex or checkout: the log says which; suggest `/doodlebot:setup` or
      `/doodlebot:source`.

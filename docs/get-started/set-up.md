@@ -81,6 +81,52 @@ doodlebot is already set up. It changes nothing.
 
 If setup stops with an error, see [Troubleshooting](../troubleshooting.md).
 
+## Update doodlebot
+
+The plugins and the workspace update separately.
+
+1. Update the plugins. In Claude Code, run `/plugin marketplace update doodlebot`, then restart
+   Claude Code. In Codex, refresh the
+   `doodlebot` marketplace with Codex's plugin marketplace command
+   (`codex plugin marketplace --help` lists it) and add the three plugins again with
+   `codex plugin add`.
+2. Update the workspace to match. Run:
+
+   ```text
+   /doodlebot:update
+   ```
+
+   The agent stops any test Vortex (it asks first) and moves the workspace to the release that
+   matches your plugins, then reinstalls its dependencies and rebuilds it. It refuses while the
+   workspace has local changes, such as a regression test you added; commit or remove them
+   first.
+
+The expected result: `/doodlebot:status` reports the same doodlebot version as your plugins.
+
+## Remove doodlebot
+
+1. Run `/doodlebot:stop`, so no test Vortex is left running.
+2. Uninstall the plugins. In Claude Code:
+
+   ```text
+   /plugin uninstall doodlebot@doodlebot
+   /plugin uninstall vortex@doodlebot
+   /plugin uninstall benchmark@doodlebot
+   /plugin marketplace remove doodlebot
+   ```
+
+   In Codex, remove the three plugins and the `doodlebot` marketplace with Codex's plugin
+   commands (`codex plugin --help` lists them).
+
+3. Delete the workspace folder (by default `%USERPROFILE%\doodlebot`). This also deletes its test
+   profiles, saved Nexus logins, reports and any Vortex source clone in it, so copy anything you
+   want to keep first.
+4. Delete the shim: `doodlebot.cmd` and `doodlebot` in the folder that `link` wrote them to
+   (`where.exe doodlebot` shows it).
+5. Delete `%USERPROFILE%\.doodlebot` (`~/.doodlebot`), which holds the instance record.
+
+Your own Vortex and its profile are not touched by any of these steps.
+
 ## What's next
 
 - Run [your first session](first-session.md).

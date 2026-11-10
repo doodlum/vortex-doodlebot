@@ -34,9 +34,9 @@ restores. Each target, game and game folder has its own. Refreshing it keeps the
 | A source build with fake Fallout 4 | `--dev-dir <checkout> --bethesda-sandbox`                |
 
 For a real game, `--game-path` must be a **copy** of the game folder that the person made
-for testing. Doodlebot copies it and never writes the game itself, but deploying writes
-into the folder it is given, so never pass the person's real installation. Ask for the
-copy's path if they have not given one.
+for testing. Doodlebot never copies the game; it deploys into the folder you give, so pass
+a disposable copy, never the person's real installation. Ask for the copy's path if they
+have not given one.
 
 ## Steps
 
@@ -54,9 +54,13 @@ copy's path if they have not given one.
 
    In Bash: `nohup <shim> up <flags> --rebuild-snapshot > <log> 2>&1 &`.
 
-3. Poll `doodlebot status` with the same flags every 10 seconds until MCP is `answering`,
-   or the process exits with an error (show the log's last lines and stop). Read the
-   `target:` line in the log and check it is the target the person asked for.
+3. Wait for that process to exit: note its pid (print `$p.Id` in the same call, or
+   `echo $!` in Bash; the shell does not keep `$p` between calls) and check every 10
+   seconds whether it still runs (`Get-Process -Id <pid>` in PowerShell, `kill -0 <pid>` in
+   Bash). The launch is done when it has exited and its log has the line `Vortex is up in`. A cold start launches Vortex up to three times on the same port, so
+   `doodlebot status` answering is only a liveness hint, not completion. If it exited without
+   that line, show the log's last lines and stop. Read the `target:` line in the log
+   and check it is the target the person asked for.
 4. Run `doodlebot down`, so no Vortex is left running.
 5. Run `doodlebot doctor <flags>` and read its `Sandbox baseline` check (for the sandbox
    flags it must start with `present`).

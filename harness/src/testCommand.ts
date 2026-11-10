@@ -123,8 +123,8 @@ export function formatSuites(): string {
 }
 
 /**
- * Run `doodlebot test`. Returns the exit code: the suite's own, 0 for `--list`, and 2 for a
- * missing or unknown suite (after listing the suites).
+ * Run `doodlebot test`. Returns the exit code: the suite's own, 0 for `--list`, `--help` or
+ * `-h` (which list the suites), and 2 for a missing or unknown suite (after listing them).
  */
 export async function testCommand(
   positional: string[],
@@ -136,7 +136,7 @@ export async function testCommand(
   } = {},
 ): Promise<number> {
   const write = options.write ?? ((text: string) => process.stdout.write(`${text}\n`));
-  if (flags.list === true) {
+  if (flags.list === true || flags.help === true || positional[0] === "-h") {
     write(formatSuites());
     return 0;
   }

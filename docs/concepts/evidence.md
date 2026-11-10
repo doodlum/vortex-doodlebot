@@ -47,7 +47,11 @@ At handoff, the agent lists the change's evidence in a readiness manifest and ru
 - the required kinds of evidence for the change are present and passing, including a control
   that shows the tests detect the change;
 - for a feature or refactor, the design is approved, its acceptance criteria are covered, and
-  every changed file is inside its boundary.
+  every changed file is inside its boundary;
+- a core-suite receipt ran the whole suite: `node bin/doodlebot.cjs test core`, optionally
+  followed by a JSON reporter (`--reporter=json`), and nothing else. A filter, such as a spec
+  path or `--grep`, is refused, and so is a `--` after `test core`, because doodlebot passes it
+  on to Playwright, which reads what follows as a filter.
 
 A ready result means the evidence is complete. It is not permission to publish, merge or release,
 and it does not judge whether the change is correct. An independent reviewer still inspects the

@@ -46,6 +46,7 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 - `test`
 - `tools`
 - `up`
+- `update`
 - `version`
 - `vortex-e2e`
 - `watch`
@@ -55,9 +56,9 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 ```text
 doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot (setup, start, stop, status), vortex
-(design, fix, drive, qa, ui-test, pr) and benchmark (measure, compare) plugins, whose
-commands run these.
+Used from Claude Code or Codex through the doodlebot (setup, login, baseline, start, stop,
+status, update, source), vortex (design, fix, drive, qa, ui-test, pr) and benchmark
+(measure, compare) plugins, whose commands run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
@@ -183,7 +184,7 @@ Driving a running instance
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
                          the suite is the suite's (core: Playwright's)
-  test --list            List the suites
+  test --list            List the suites (also test --help or test -h)
   perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
                          Medians, ranges and a verdict from performance-check evidence; one
                          side (no --b) has no verdict

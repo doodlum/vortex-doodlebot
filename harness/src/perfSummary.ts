@@ -75,7 +75,10 @@ export interface MetricResult {
   unit: Metric["unit"];
   a: SideStats;
   b?: SideStats;
-  /** (median B − median A) / median A × 100; absent with one side or when median A is 0. */
+  /**
+   * (median B − median A) / median A × 100 from the rounded medians the table shows; absent
+   * with one side or when that median A is 0.
+   */
   differencePercent?: number;
   verdict?: Verdict;
 }
@@ -124,12 +127,25 @@ function stats(values: number[]): SideStats {
   };
 }
 
-/** The verdict for one metric: lower is better, and B is compared with A. */
+/**
+ * The verdict for one metric: lower is better, and B is compared with A. The extremes are
+ * rounded to one decimal place first, as the table shows them, so a verdict never contradicts
+ * the minimum and maximum the report prints.
+ */
 export function metricVerdict(a: number[], b: number[]): Verdict {
   if (a.length < MINIMUM_RUNS || b.length < MINIMUM_RUNS) return "Blocked";
-  if (Math.max(...b) < Math.min(...a)) return "Faster";
-  if (Math.min(...b) > Math.max(...a)) return "Slower";
+  if (round1(Math.max(...b)) < round1(Math.min(...a))) return "Faster";
+  if (round1(Math.min(...b)) > round1(Math.max(...a))) return "Slower";
   return "No clear difference";
+}
+
+/**
+ * (median B − median A) / median A × 100 from the medians as the table shows them (rounded
+ * to one decimal place), itself rounded; undefined when the shown median A is 0.
+ */
+export function differencePercent(a: SideStats, b: SideStats): number | undefined {
+  if (a.median === null || b.median === null || a.median === 0) return undefined;
+  return round1(((b.median - a.median) / a.median) * 100);
 }
 
 export function overallVerdict(runsA: number, runsB: number, verdicts: Verdict[]): Verdict {
@@ -188,10 +204,8 @@ export function summarise(check: string, filesA: string[], filesB?: string[]): P
     if (sideB === undefined) return result;
     const b = values(sideB, metric);
     result.b = stats(b);
-    if (a.length > 0 && b.length > 0) {
-      const medianA = median(a);
-      if (medianA !== 0) result.differencePercent = round1(((median(b) - medianA) / medianA) * 100);
-    }
+    const difference = differencePercent(result.a, result.b);
+    if (difference !== undefined) result.differencePercent = difference;
     result.verdict = metricVerdict(a, b);
     return result;
   });

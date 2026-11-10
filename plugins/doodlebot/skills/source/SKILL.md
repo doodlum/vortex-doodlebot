@@ -27,9 +27,11 @@ searches the disk for another checkout. Every piece of work gets its own branch.
 
 1. Run `doodlebot status`. A test Vortex launched from `<workspace>/.vortex-src` blocks
    building it; if MCP is `answering`, ask to stop it and run `doodlebot down` on a yes.
-2. Run `doodlebot source --no-build`. It clones or reuses the fork without building. If it
-   cannot find a fork, tell the person to fork `Nexus-Mods/Vortex` on GitHub (and sign in
-   to `gh` if it asks), then run this command again.
+2. Run `doodlebot source --no-build`. It clones or reuses the fork without building. With
+   `--update`, run `doodlebot source --no-build --update` instead, which also fetches an
+   existing clone's remotes before you branch. If it cannot find a fork, tell the person to
+   fork `Nexus-Mods/Vortex` on GitHub (and sign in to `gh` if it asks), then run this
+   command again.
 3. Make the branch from the current upstream base (name it after the task, for example
    `fix-123`):
    1. `git -C <workspace>/.vortex-src fetch upstream`
@@ -41,7 +43,6 @@ searches the disk for another checkout. Every piece of work gets its own branch.
 4. Run `doodlebot source` to install and build the checkout. It can take 10 minutes or more:
    run it in the background with its output in
    `<workspace>/harness/.artifacts/runs/<UTC time>-source.log`, and wait for it to exit.
-   With `--update`, pass `doodlebot source --update` to refresh the clone first.
 5. Run `doodlebot source --where` to confirm the path.
 
 ## Finish

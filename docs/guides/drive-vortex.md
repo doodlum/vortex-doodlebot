@@ -38,8 +38,10 @@ of the window, acts on what it sees, and answers in the chat. No report is writt
 
 3. The driver:
 
-   1. reuses the running test Vortex if its profile belongs to the configured cache; otherwise
-      it starts one with `doodlebot up` in the background;
+   1. gets a test Vortex. If one is answering and its profile is under the configured cache,
+      the driver reuses it and leaves it running afterward. If the Vortex answering belongs to
+      another cache, the driver stops and tells you, and does not touch it. If nothing answers,
+      it starts one with `doodlebot up` in the background and stops it at the end;
    2. carries out the steps with the `doodlebot` command only, for example `doodlebot snapshot`
       to read the window, `doodlebot click --ref <ref>` to act, and `doodlebot install <archive>`
       to install a mod;
@@ -61,10 +63,26 @@ Its **Outcome** tells you at a glance whether the scenario worked.
 `doodlebot up`, `setup`, `test` and `install` can run longer than an agent's command timeout or
 wait on a dialog. On Windows, a command that launches Vortex can also hold its captured output
 open, so it never returns. The driver therefore runs these commands in the background with their
-output in a log file under `<workspace>/harness/.artifacts/runs/`, and polls `doodlebot status`.
-While a command that can raise a dialog runs, it polls `doodlebot call ui_active_dialogs` and
+output in a log file under `<workspace>/harness/.artifacts/runs/`. A launch is done when that
+process has exited and its log shows the success line, such as `Vortex is up in` for
+`doodlebot up`. A first start launches Vortex up to three times, so `doodlebot status` answering
+only shows that Vortex is alive, not that the start has finished. While a command that can raise a dialog runs, it polls `doodlebot call ui_active_dialogs` and
 answers the dialog with `doodlebot snapshot` and `doodlebot click --ref <ref>`. `install` gives
 up after 300 seconds, so the dialog must be answered before then.
+
+## Install a Nexus collection
+
+1. [Sign in to Nexus Mods](sign-in.md) with `/doodlebot:login`. Collections need the login;
+   unattended downloads also need Nexus Mods Premium.
+2. Ask for the install, naming the collection's page and the game:
+
+   ```text
+   /vortex:drive install the collection https://next.nexusmods.com/<game>/collections/<slug> and report anything odd
+   ```
+
+The agent runs `doodlebot collection <url>` in the background and follows the install with
+`doodlebot call collection_install_state` until it finishes. Deploy only into a disposable copy
+of the game (see [Use real games and baselines](games-and-baselines.md)).
 
 ## Check a change independently
 

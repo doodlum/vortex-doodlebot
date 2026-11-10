@@ -30,8 +30,9 @@ A bug fix needs no design. If you supply one anyway, the agent holds the change 
 4. The agent makes a branch of `.vortex-src` and fixes the bug there.
 
 5. The agent builds the branch with `doodlebot build --checkout <workspace>/.vortex-src`,
-   starts it with `doodlebot up --dev-dir <workspace>/.vortex-src`, and verifies that the
-   reported scenario now works.
+   starts it with `doodlebot up --dev-dir <workspace>/.vortex-src --sandbox` (or with the
+   fixture the report needs, such as a copy of a real game or `--bethesda-sandbox`), and
+   verifies that the reported scenario now works.
 
 6. The agent records evidence: the commands it ran, their results and the files they wrote.
 

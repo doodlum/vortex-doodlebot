@@ -17,9 +17,11 @@ Read-only: this command starts and stops nothing.
      `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or
      `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this
      `SKILL.md`). If they differ, suggest `/doodlebot:update`.
-2. Run `doodlebot status` (with the person's target and game flags, if they gave any). It
+2. Run `doodlebot status --installed --sandbox` by default, as doctor does, or
+   `doodlebot status` with the person's target and game flags when they gave any. It
    reports whether the MCP port is `answering`, the game, whether an API key is set, the
-   baseline snapshot and the working profile.
+   baseline snapshot and the working profile. The baseline and profile lines are for the
+   flags given: say which target and game they describe.
 3. Only when it reports MCP `answering`, run `doodlebot auth-status`. It prints booleans
    for the Nexus login, never secrets.
 4. When the person asks for a full check (or says "doctor"), run `doodlebot doctor` with
@@ -32,6 +34,7 @@ Summarize in plain words, a line each:
 - doodlebot version, commit and workspace, and whether the workspace has local changes
   (`dirty`) or needs `/doodlebot:update`;
 - whether a test Vortex is running (and if so whether it is signed in to Nexus Mods);
-- whether the baseline exists (the next start is warm or cold);
+- whether the baseline exists for the target and game checked (the next start with those
+  flags is warm or cold);
 - for a doctor run, each failing or advisory check and what fixes it (for example
   `/doodlebot:setup`, `/doodlebot:login` or `/doodlebot:baseline`).

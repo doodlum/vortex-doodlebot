@@ -321,6 +321,30 @@ describe("captureLogin", () => {
     expect(fs.existsSync(loginDir(config))).toBe(false);
   });
 
+  it("refuses while another cache's Vortex runs, before asking it for a login or stopping it", async () => {
+    const config = fakeConfig();
+    fs.mkdirSync(path.join(liveDir(config), "userData"));
+    const otherCache = path.join(os.tmpdir(), "another-workspace", "harness", ".cache");
+    const other = liveRecord(otherCache);
+    writeInstanceRecord(other);
+    await expect(captureLogin(config)).rejects.toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${otherCache}); run \`doodlebot down\` before saving the login.`,
+    );
+    expect(requireOAuth).not.toHaveBeenCalled();
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(fs.existsSync(loginDir(config))).toBe(false);
+    expect(readInstanceRecord()).toEqual(other);
+  });
+
+  it("saves the login of this cache's own running Vortex", async () => {
+    const config = fakeConfig();
+    fs.mkdirSync(path.join(liveDir(config), "userData"));
+    writeInstanceRecord(liveRecord(`${config.cacheDir}${path.sep}`));
+    await captureLogin(config);
+    expect(stopStaleInstance).toHaveBeenCalledWith(config);
+    expect(readMarker(loginDir(config))?.loginCaptured).toBe(true);
+  });
+
   it("preserves the previous login when clean shutdown fails", async () => {
     const config = fakeConfig();
     fs.mkdirSync(path.join(liveDir(config), "userData"));

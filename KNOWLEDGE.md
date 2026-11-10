@@ -667,11 +667,18 @@ On Windows, a command that launches Vortex (`doodlebot up`, and likewise `setup`
 run with its output captured, can keep the capture open so the command never returns: the agent's
 tool call hangs until its timeout, although `up` printed its endpoint and Vortex is answering.
 Observed with `up` from an agent's captured PowerShell call; which process keeps the capture
-open is not confirmed. Run it in the background with output to a log file, then poll
-`doodlebot status` until MCP is answering or the command exits:
+open is not confirmed. Run it in the background with output to a log file:
 
 - PowerShell: `Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`;
 - Bash: `nohup <shim> <args> > <log> 2>&1 &`.
+
+The launch is done when that background process has exited and its log has the success line:
+`Vortex is up in` for `up`; `Ready:` for `setup`, or with `--oauth`
+`Initial setup: click Log in` or `Existing OAuth login cached … Setup complete.`. Do not treat
+`doodlebot status` answering as completion: a cold start launches Vortex up to three times on
+the same port (see "Run and reset" in `harness/AGENTS.md`), so MCP can answer
+between launches. `status` is only a liveness hint. Agent shells keep no variables between
+calls, so record the background pid and check it (`Get-Process -Id <pid>`, `kill -0 <pid>`).
 
 Keep logs in `harness/.artifacts/runs/`. Scope: Windows agent shells; the plugin skills and the
 `vortex-driver` agent follow this procedure (`designs/agent-companion.md`, "Long-running and

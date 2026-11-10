@@ -37,6 +37,11 @@ only whether credentials are present, never the credentials themselves.
 
 - The login is saved per target, installed Vortex or source build, in the workspace's private
   cache. `/doodlebot:login` signs in the installed target.
+- To sign in a source build, name its checkout: `/doodlebot:login --dev-dir <path>`. The agent
+  uses `--dev-dir <path>` instead of `--installed` on every command, `setup` and `save-login`
+  included.
+- If the target already has a saved login that still works, the agent reports it and no click
+  is needed.
 - Fresh and rebuilt profiles of the same target inherit the login, but not mod lists or game
   paths.
 - A saved login does not prove Nexus still accepts it. If Nexus refuses it, run
@@ -45,5 +50,6 @@ only whether credentials are present, never the credentials themselves.
 
 ## What's next
 
+- [Install a Nexus collection](drive-vortex.md#install-a-nexus-collection) with `/vortex:drive`.
 - [Use real games and baselines](games-and-baselines.md).
 - [Security and privacy](../security.md) explains where credentials are stored.

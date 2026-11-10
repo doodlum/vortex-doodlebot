@@ -109,7 +109,17 @@ function cli() {
     if (ts.isVariableDeclaration(node) && node.name.getText(sf) === "HELP")
       help = evaluate(node.initializer, sf, {});
   });
-  const commands = dispatchedCommands(sf);
+  // Commands that bin/doodlebot.cjs handles before tsx loads (`handledBy: "bin"` in
+  // commands.ts, such as `update`) are not dispatched by cli.ts but are still commands.
+  const list = source("harness/src/commands.ts");
+  let entries;
+  visit(list, (node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(list) === "commands")
+      entries = evaluate(node.initializer, list, {});
+  });
+  if (!Array.isArray(entries)) throw new Error("harness/src/commands.ts lists no commands");
+  const bin = entries.filter((entry) => entry.handledBy === "bin").map((entry) => entry.name);
+  const commands = [...new Set([...dispatchedCommands(sf), ...bin])].sort();
   if (!help || commands.length === 0) throw new Error("CLI inventory is empty");
   return { help, commands };
 }
@@ -309,7 +319,7 @@ result(
   "docs/reference/mcp-tools.md",
   "# MCP tool reference\n\n" +
     banner(
-      "Use these contracts when calling tools directly or configuring an assistant. See [Drive Vortex and get a report](../guides/drive-vortex.md) for JSON files, results, errors and state checks.",
+      "Use these contracts when calling tools directly or configuring an assistant. To have the agent drive the Vortex UI for you, see [Drive Vortex and get a report](../guides/drive-vortex.md).",
     ) +
     mcpBody,
 );
@@ -327,7 +337,7 @@ result(
   "docs/reference/cli.md",
   "# CLI reference\n\n" +
     banner(
-      "Use [Your first session](../get-started/first-session.md) for your first test and [Set up doodlebot](../get-started/set-up.md) for the workspace, baselines and login. This inventory is generated from the CLI’s help and dispatch branches. Run lower-level commands with `doodlebot <command>`; `doodlebot help` shows their current syntax and flags. See [configuration](configuration.md) for environment options.",
+      "Use [Your first session](../get-started/first-session.md) for your first test, [Set up doodlebot](../get-started/set-up.md) for the workspace and baselines, and [Sign in to Nexus Mods](../guides/sign-in.md) for the login. This inventory is generated from the CLI’s help, its dispatch branches and the commands the launcher handles itself (`update`). Run lower-level commands with `doodlebot <command>`; `doodlebot help` shows their current syntax and flags. See [configuration](configuration.md) for environment options.",
     ) +
     cliInventory,
 );

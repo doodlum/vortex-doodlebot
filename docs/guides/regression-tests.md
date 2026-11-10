@@ -62,7 +62,17 @@ report to `<workspace>/harness/playwright-report` and keeps traces of failures.
 A regression test runs without an agent once it is written, so it is the cheapest way to keep a
 behavior from breaking again.
 
+## Where the test lives
+
+The test is a file in your doodlebot workspace, not part of a Vortex pull request. It leaves the
+workspace with a local change, so `/doodlebot:update` refuses until you commit the test to a
+doodlebot branch or remove it.
+
+To guard a fix in Vortex itself, ask for a Vortex unit test in the Vortex checkout (as
+[Fix a Vortex bug](fix-a-bug.md) does) or a spec in Vortex's own `packages/e2e` suite. Those
+travel with the Vortex change in its pull request.
+
 ## What's next
 
-- [Open a pull request](pull-requests.md) that includes the test.
+- [Open a pull request](pull-requests.md) for the Vortex change, with its own Vortex test.
 - [Drive Vortex and get a report](drive-vortex.md) for behavior that is hard to assert.

@@ -55,11 +55,18 @@ The build is the one the person names; without one, the released Vortex (`--inst
 - `plugins-page` needs a source build.
 
 Give the build its own new cache folder, for example
-`<workspace>/harness/.cache/bench-<UTC time>-a`, and set `VORTEX_AI_CACHE_DIR` to it for
-every `up`, check and `down`.
+`<workspace>/harness/.cache/bench-<UTC time>-a`, and use it for every `up`, `call`, check,
+`status` and `down`. Agent shells do not keep environment variables from one call to the
+next, so set `VORTEX_AI_CACHE_DIR` (and the build's `VORTEX_AI_EXE`, `VORTEX_AI_INSTALLED` or
+`VORTEX_AI_DEV_DIR`, below) inside each invocation, for example
+`$env:VORTEX_AI_CACHE_DIR = '<cache>'; doodlebot test …` in one PowerShell call or
+`VORTEX_AI_CACHE_DIR=<cache> doodlebot test …` in Bash, or pass `--cache-dir <cache>` to
+`up`, `call`, `status` and `down`.
+
+Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/` now.
 
 **Tombstone the cache before its first `up`,** so the runs are anonymous and do not
-inherit the person's Nexus login. Write this script to the report folder (step 3) as
+inherit the person's Nexus login. Write this script to the report folder as
 `tombstone.mts`:
 
 ```ts
@@ -77,22 +84,29 @@ console.log(`cacheDir: ${config.cacheDir}`);
 console.log(`target: ${config.target.kind}`);
 ```
 
-Then select the build through the environment, because `doodlebot script` passes only`n`--dev-dir`, `--cache-dir` and the port flags to the kit: for an executable set`n`VORTEX_AI_EXE=<path>` and `VORTEX_AI_INSTALLED=1`; for a source checkout set`n`VORTEX_AI_DEV_DIR=<path>`and unset both. With`VORTEX_AI_CACHE_DIR` set too, run`n`doodlebot script <report folder>/tombstone.mts`. Check that the printed
-`cacheDir` is that cache and `target` is the build's kind, and keep the tombstone path for
-the report.
+Then select the build through the environment, because `doodlebot script` passes only
+`--dev-dir`, `--cache-dir` and the port flags to the kit: for the released Vortex
+(`--installed`) set only `VORTEX_AI_INSTALLED=1`; for an executable set
+`VORTEX_AI_EXE=<path>` and `VORTEX_AI_INSTALLED=1`; for a source checkout set
+`VORTEX_AI_DEV_DIR=<path>` and unset both. In the same invocation, with
+`VORTEX_AI_CACHE_DIR` set to the build's cache too, run
+`doodlebot script <report folder>/tombstone.mts`. Check that the printed `cacheDir` is that
+cache and `target` is the build's kind, and keep the tombstone path for the report.
 
 ## 3. Run
 
-Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/`.
 Run the check five times by default, and never fewer than three. Keep each run's logs in
 the report folder.
 
-Each run is these four steps, with the build's `VORTEX_AI_CACHE_DIR`:
+Each run is these four steps, each with the build's cache (above):
 
 1. `doodlebot up <build flags> <game flags> --fresh`, in the background with a log
    (`Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`
-   in PowerShell, `nohup <shim> <args> > <log> 2>&1 &` in Bash). Poll `doodlebot status`
-   until MCP is `answering`. Check the `target:` line in the log names this build.
+   in PowerShell, `nohup <shim> <args> > <log> 2>&1 &` in Bash). The launch is done when
+   that process has exited (check its pid with `Get-Process -Id <pid>` or `kill -0 <pid>`)
+   and its log has the line `Vortex is up in`; an exit without that line is a failed run. A cold start launches Vortex up to three times on the same
+   port, so `doodlebot status` answering is only a liveness hint, not completion. Check the
+   `target:` line in the log names this build.
 2. `doodlebot call automation_status`, recording `vortexVersion` and `nodeEnv`. A source
    build must show `production`.
 3. `doodlebot test <check> <options>`, in the background with a log, waiting for it to

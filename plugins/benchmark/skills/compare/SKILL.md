@@ -46,21 +46,36 @@ For example, "the Mods table with 3,000 mods" is `doodlebot test mods-scroll --m
 
 ## 2. Fix the builds
 
-A build is an executable (`--exe <path>`) or a source checkout (`--dev-dir <path>`).
+A build is the installed Vortex (`--installed`), an executable (`--exe <path>`) or a source
+checkout (`--dev-dir <path>`).
 
+- A release version, such as "2.8.0": the installed Vortex (`--installed`) when that is the
+  version installed, otherwise `--exe <path to that release's Vortex.exe>` (ask the person
+  where it is). After its first `up`, confirm `automation_status.vortexVersion` is that
+  version; if it is not, stop and tell the person.
 - An executable: use `--exe <path to Vortex.exe>`.
 - A source checkout: build it in production mode first with
   `doodlebot build --checkout <dir> --production` (stop the test Vortex first), and launch
   it with `--dev-dir <dir> --production`, so it runs like a release.
+- Two source branches need two checkouts, one per build, never one `<workspace>/.vortex-src` switched
+  between runs: a second clone, or `git -C <checkout> worktree add <dir> <branch>`. Build
+  each one.
 - `plugins-page` needs source builds on both sides.
 
 Give each build its own new cache folder, `<cache A>` and `<cache B>`, for example
-`<workspace>/harness/.cache/bench-<UTC time>-a`. Set `VORTEX_AI_CACHE_DIR` to that build's
-cache for every `up`, check and `down` of that build. Baselines are keyed by target kind, so
-two builds of the same kind would otherwise share one.
+`<workspace>/harness/.cache/bench-<UTC time>-a`, and use that build's cache for every `up`,
+`call`, check, `status` and `down` of that build. Baselines are keyed by target kind, so two
+builds of the same kind would otherwise share one. Agent shells do not keep environment
+variables from one call to the next, so set `VORTEX_AI_CACHE_DIR` (and the build's
+`VORTEX_AI_EXE`, `VORTEX_AI_INSTALLED` or `VORTEX_AI_DEV_DIR`, below) inside each
+invocation, for example `$env:VORTEX_AI_CACHE_DIR = '<cache A>'; doodlebot test …` in one
+PowerShell call or `VORTEX_AI_CACHE_DIR=<cache A> doodlebot test …` in Bash, or pass
+`--cache-dir <cache>` to `up`, `call`, `status` and `down`.
+
+Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/` now.
 
 **Tombstone each cache before its first `up`,** so benchmark runs are anonymous and do not
-inherit the person's Nexus login. Write this script once to the report folder (step 3) as
+inherit the person's Nexus login. Write this script once to the report folder as
 `tombstone.mts`:
 
 ```ts
@@ -79,25 +94,28 @@ console.log(`target: ${config.target.kind}`);
 ```
 
 Then select the build through the environment, because `doodlebot script` passes only
-`--dev-dir`, `--cache-dir` and the port flags to the kit: for an executable set
+`--dev-dir`, `--cache-dir` and the port flags to the kit: for the installed Vortex
+(`--installed`) set only `VORTEX_AI_INSTALLED=1`; for an executable set
 `VORTEX_AI_EXE=<path>` and `VORTEX_AI_INSTALLED=1`; for a source checkout set
-`VORTEX_AI_DEV_DIR=<path>` and unset both. With `VORTEX_AI_CACHE_DIR` set to the build's
-cache too, run `doodlebot script <report folder>/tombstone.mts`. Check that the printed
-`cacheDir` is that cache and `target` is the build's kind, and keep the tombstone path for
-the report.
+`VORTEX_AI_DEV_DIR=<path>` and unset both. In the same invocation, with
+`VORTEX_AI_CACHE_DIR` set to the build's cache too, run
+`doodlebot script <report folder>/tombstone.mts`. Check that the printed `cacheDir` is that
+cache and `target` is the build's kind, and keep the tombstone path for the report.
 
 ## 3. Run alternately
 
-Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/`.
 Run A and B alternately (A, B, A, B, …), five times each by default and never fewer than
 three. Keep each run's logs in the report folder.
 
-Each run is these four steps, with that build's `VORTEX_AI_CACHE_DIR`:
+Each run is these four steps, each with that build's cache (above):
 
 1. `doodlebot up <build flags> <game flags> --fresh`, in the background with a log
    (`Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`
-   in PowerShell, `nohup <shim> <args> > <log> 2>&1 &` in Bash). Poll `doodlebot status`
-   until MCP is `answering`. Check the `target:` line in the log names this build.
+   in PowerShell, `nohup <shim> <args> > <log> 2>&1 &` in Bash). The launch is done when
+   that process has exited (check its pid with `Get-Process -Id <pid>` or `kill -0 <pid>`)
+   and its log has the line `Vortex is up in`; an exit without that line is a failed run. A cold start launches Vortex up to three times on the same
+   port, so `doodlebot status` answering is only a liveness hint, not completion. Check the
+   `target:` line in the log names this build.
 2. `doodlebot call automation_status`, recording `vortexVersion` and `nodeEnv`. A source
    build must show `production`.
 3. `doodlebot test <check> <options>`, in the background with a log, waiting for it to

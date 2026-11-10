@@ -21,10 +21,20 @@ function parseUpdateArgs(args) {
 /** The same lookup as harness/src/processes.ts: lower-cased image name, or undefined. */
 function defaultImageName(pid) {
   if (process.platform === "win32") {
-    const line = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], {
-      encoding: "utf8",
-      windowsHide: true,
-    }).trim();
+    let line;
+    try {
+      line = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], {
+        encoding: "utf8",
+        windowsHide: true,
+      }).trim();
+    } catch (err) {
+      throw new Error(
+        `Could not run tasklist to check whether process ${String(pid)} from the instance record ` +
+          `is a running Vortex (${err instanceof Error ? err.message : String(err)}). If no ` +
+          "doodlebot Vortex window is open, delete ~/.doodlebot/instance.json and retry.",
+        { cause: err },
+      );
+    }
     const match = /^"([^"]+)","(\d+)"/.exec(line);
     return match !== null && Number(match[2]) === pid ? match[1].toLowerCase() : undefined;
   }
@@ -117,7 +127,9 @@ function update(root, ref, run = defaultRun, deps = {}) {
     step("git", ["fetch", "origin", "tag", ref]);
     step("git", ["checkout", "--detach", `refs/tags/${ref}`]);
   } else if (
-    run("git", ["ls-remote", "--exit-code", "--heads", "origin", ref], { cwd: root }).status === 0
+    run("git", ["ls-remote", "--exit-code", "--heads", "origin", `refs/heads/${ref}`], {
+      cwd: root,
+    }).status === 0
   ) {
     log(`update: ${ref} is a branch on origin`);
     step("git", ["fetch", "origin", ref]);

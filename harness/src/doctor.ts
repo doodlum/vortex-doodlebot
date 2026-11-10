@@ -58,7 +58,7 @@ export async function runDoctor(
   checks.push(checkExtension());
   if (!options.skipGame) checks.push(checkGame(config));
   checks.push(checkCache(config));
-  checks.push(checkSandboxBaseline(config));
+  checks.push(checkSandboxBaseline(config, options.skipGame === true));
   checks.push(checkCapturedLogin(config));
   const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
   if (lease !== undefined) checks.push(lease);
@@ -82,10 +82,11 @@ function targetFailure(message: string): Check {
 
 /**
  * The baseline a start reseeds from, for these flags (`--sandbox` gives the sandbox's). Advisory:
- * the next `up` builds it. The same test `checkCache` and `status` use.
+ * the next `up` builds it. The same test `checkCache` and `status` use; `--no-game` has its own
+ * baseline, so `skipGame` selects it.
  */
-function checkSandboxBaseline(config: HarnessConfig): Check {
-  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS);
+function checkSandboxBaseline(config: HarnessConfig, skipGame: boolean): Check {
+  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS, skipGame);
   const present = readMarker(snapshot) !== undefined;
   return {
     name: "Sandbox baseline",

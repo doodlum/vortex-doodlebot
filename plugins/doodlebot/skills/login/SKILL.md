@@ -27,32 +27,43 @@ one in chat or a file.
 
 ## Steps
 
-The login is cached per target. Use `--installed` (the released Vortex) unless the person
-works on a source build, then `--dev-dir <checkout>`. Use the same flag on every command.
+The login is cached per target. `<target>` below is `--installed` (the released Vortex)
+unless the person works on a source build, then `--dev-dir <checkout>`. Use the same
+`<target>` on every command, `setup` and `save-login` included.
 
-1. Run `doodlebot status`. If it reports MCP `answering`, a test Vortex is running: ask
-   whether to stop it. On a yes run `doodlebot down`; on a no, stop here.
-2. Start the login profile **in the background** with a log, because it launches Vortex:
+1. Run `doodlebot status <target>`. If it reports MCP `answering`, a test Vortex is
+   running: ask whether to stop it. On a yes run `doodlebot down`; on a no, stop here.
+2. Start the login profile **in the background** with a log, because it launches Vortex
+   (for a source build, replace `'--installed'` with `'--dev-dir','<checkout>'`):
 
    ```powershell
    New-Item -ItemType Directory -Force <workspace>/harness/.artifacts/runs | Out-Null
    $log = "<workspace>/harness/.artifacts/runs/<UTC time>-login.log"
    $p = Start-Process -FilePath <shim> -ArgumentList 'setup','--oauth','--installed','--no-wait' -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+   $p.Id
    ```
 
-   In Bash: `nohup <shim> setup --oauth --installed --no-wait > <log> 2>&1 &`. The command
-   is `doodlebot setup --oauth --installed --no-wait`.
+   In Bash: `nohup <shim> setup --oauth <target> --no-wait > <log> 2>&1 & echo $!`. The
+   command is `doodlebot setup --oauth <target> --no-wait`.
 
-3. Poll `doodlebot status` every 10 seconds until MCP is `answering`, or the process exits
-   (then show the log's last lines and stop).
+3. Wait for that process to exit, checking every 10 seconds whether its pid still runs
+   (`Get-Process -Id <pid>` in PowerShell, `kill -0 <pid>` in Bash; the shell does not keep
+   `$p` between calls). With `--no-wait` it exits once the profile is ready, and an exit
+   with code 0 is success; a cold start launches Vortex up to three times on the same port,
+   so `doodlebot status` answering is only a liveness hint. Then read the log:
+   - `Existing OAuth login cached and present after a fresh restore. Setup complete.`: the
+     person is already signed in and nothing needs a click. Go to step 6.
+   - `Initial setup: click Log in in the isolated Vortex and complete the browser flow.`:
+     continue with step 4.
+   - Neither line (an error): show the log's last lines and its `.err` file, and stop.
 4. Tell the person: "A test Vortex window is open. Click **Log in** in it and finish signing
    in to Nexus Mods in your browser (password, two-factor code, captcha). Tell me when
    you are done."
-5. When they say so, run `doodlebot auth-status`. It prints booleans only. Continue when it
-   shows OAuth credentials present; otherwise ask them to finish and check again.
-6. Run `doodlebot save-login --installed`. It caches the credentials and checks that a
-   restored profile still has them.
-7. Run `doodlebot status`; if MCP is still `answering`, run `doodlebot down`.
+5. When they say so, run `doodlebot auth-status <target>`. It prints booleans only.
+   Continue when it shows OAuth credentials present; otherwise ask them to finish and check
+   again. Then run `doodlebot save-login <target>`. It caches the credentials and checks
+   that a restored profile still has them.
+6. Run `doodlebot status <target>`; if MCP is still `answering`, run `doodlebot down`.
 
 ## Finish
 
