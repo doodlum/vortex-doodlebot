@@ -287,6 +287,14 @@ Both reviewers' blockers were checked against the code:
      already includes Fallout 4).
    - A game not in the table can't be launched.
 
+4. **The `nxm://` link handler** (found by the step 1 spike). Every Vortex the kit launches
+   re-registers itself as the handler in `HKCU\Software\Classes\nxm`, extracted release or not.
+   - Before each launch the kit records the handler's `shell\open\command` value in the instance
+     record (or "absent").
+   - `down`, and the restart path after a clean stop, write it back. A crash leaves it in the
+     record, and the next `setup --check` or launch restores it first.
+   - Criterion `nxm-handler-unchanged` covers it.
+
 ### 4.4 Released builds
 
 The owner's rule: release builds must be testable. Today CI downloads the official installer,
@@ -305,8 +313,13 @@ and replace or uninstall the existing installation, so the kit never runs it.
    run.
    - 7-Zip is found on the PATH or under Program Files.
    - `setup --check` lists it as a prerequisite, with the install command.
-5. Checks that `Vortex.exe`'s version resource equals `<version>`, then registers the release in
-   `content.json`.
+5. Checks that `Vortex.exe`'s version resource equals `<version>` (`2.8.0.0` matches `2.8.0`),
+   then registers the release in `content.json`.
+
+The folder must stay outside the workspace. Under the repository, Node takes the workspace's
+`package.json` as the extracted app's package scope, and the renderer fails with
+`Cannot find module './common'`. The step 1 spike confirmed this (`KNOWLEDGE.md`, "Install paths
+that fail silently"). From `~/.doodlebot/releases/2.8.0`, `test core` passed 21 of 21.
 
 **Other release commands:**
 
