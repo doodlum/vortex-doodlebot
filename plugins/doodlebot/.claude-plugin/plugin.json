@@ -1,0 +1,13 @@
+{
+  "name": "doodlebot",
+  "displayName": "Doodlebot",
+  "version": "2.0.0",
+  "description": "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds.",
+  "author": {
+    "name": "doodlum"
+  },
+  "homepage": "https://doodlum.github.io/vortex-doodlebot/",
+  "repository": "https://github.com/doodlum/vortex-doodlebot",
+  "license": "GPL-3.0-only",
+  "icon": "./assets/icon.png"
+}

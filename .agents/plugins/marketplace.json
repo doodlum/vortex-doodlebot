@@ -1,0 +1,17 @@
+{
+  "name": "doodlebot",
+  "interface": {
+    "displayName": "Doodlebot"
+  },
+  "plugins": [
+    {
+      "name": "doodlebot",
+      "source": "./plugins/doodlebot",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

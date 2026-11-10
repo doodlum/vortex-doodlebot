@@ -5,7 +5,7 @@
  * each had to be scripted by hand: how many rows render, how responsive wheel scrolling
  * is, whether rows accumulate after a scroll-through, which way a row's dropdown opens
  * near the edge of the scroll area, whether a noShrink column keeps its width, and how
- * well the conflict editor virtualises. `ai:test:mods-scroll` runs them as a scenario.
+ * well the conflict editor virtualises. `doodlebot test mods-scroll` runs them as a scenario.
  *
  * Later QA added three more, each written by hand at least twice before: how many rows one
  * update gave a new data object and re-rendered (`measureRowIdentity`), blocking measured

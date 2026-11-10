@@ -15,19 +15,17 @@
  *     `etc/Dependency Report.md`, tracked files, which then make the checkout dirty and the next
  *     preflight refuse. Their bytes are saved first and put back when the build changed them.
  *
- * It holds the checkout's lock for the build, and refuses while a Vortex runs from the checkout:
- * the running app holds native modules open (KNOWLEDGE.md) and would be rebuilt underneath.
+ * It refuses while the harness Vortex runs from the checkout (its instance record): the running
+ * app holds native modules open (KNOWLEDGE.md) and would be rebuilt underneath.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import { ConfigError } from "./errors";
-import { withCheckoutOperation } from "./checkoutOperation";
-import { type OperationContext } from "./operations";
 import { abortOnSignals, runEvidenceProcess } from "./processRunner";
-import { type LeaseEnv } from "./lease";
 import { bundleModeOf, type BundleMode } from "./productionMode";
+import { assertNoVortexRunningFrom } from "./runningVortex";
 import {
   childEnv,
   missingBuildOutputs,
@@ -86,7 +84,7 @@ export function restoreChanged(dir: string, saved: SavedFile[]): string[] {
 export type BuildRunner = (
   command: string,
   args: string[],
-  options: { cwd: string; env: NodeJS.ProcessEnv; context?: OperationContext; leaseEnv?: LeaseEnv },
+  options: { cwd: string; env: NodeJS.ProcessEnv },
 ) => Promise<number>;
 
 /** Run with the output streamed: a Vortex build prints for minutes, captured it looks hung. */
@@ -106,8 +104,6 @@ export const streamingRunner: BuildRunner = async (command, args, options) => {
       env: options.env,
       shell,
       stdin: "inherit",
-      context: options.context,
-      leaseEnv: options.leaseEnv,
       signal: cancellation.signal,
       onOutput: (chunk) => process.stdout.write(chunk),
     });
@@ -118,14 +114,11 @@ export const streamingRunner: BuildRunner = async (command, args, options) => {
 };
 
 export interface BuildOptions {
-  context?: OperationContext;
   checkout: string;
   production: boolean;
-  owner?: string;
   /** The pnpm version on PATH, when known; default: asked (`pnpm --version`). */
   installedPnpm?: string;
   runner?: BuildRunner;
-  leaseEnv?: LeaseEnv;
   onProgress?: (message: string) => void;
 }
 
@@ -151,7 +144,7 @@ async function installedPnpmVersion(dir: string): Promise<string | undefined> {
   });
 }
 
-/** Build a checkout under its lock; see the module comment. */
+/** Build a checkout; see the module comment. */
 export async function buildCheckout(options: BuildOptions): Promise<BuildReport> {
   const dir = path.resolve(options.checkout);
   const manifestFile = path.join(dir, "package.json");
@@ -161,64 +154,50 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8")) as { packageManager?: string };
   const wanted = parsePnpmVersion(manifest.packageManager);
   const report = options.onProgress ?? ((): void => undefined);
-  return withCheckoutOperation(
-    dir,
-    options.owner,
-    "build checkout",
-    { context: options.context, leaseEnv: options.leaseEnv, rewriting: true },
-    async (context) => {
-      const pnpm = selectPnpmCommand(
-        wanted,
-        options.installedPnpm ?? (await installedPnpmVersion(dir)),
-      );
-      const args = [...pnpm.args, "run", "build"];
-      const command = [pnpm.cmd, ...args].join(" ");
-      const env = buildEnvironment(process.env, options.production);
-      report(
-        `building ${dir} with ${command} (NODE_ENV=${options.production ? "production" : "unset"}` +
-          `${pnpm.exact ? "" : `; pnpm on PATH is not ${wanted}`})`,
-      );
-      const saved = saveFiles(dir, GENERATED_FILES);
-      const started = Date.now();
-      let exitCode = 1;
-      let restored: string[] = [];
-      try {
-        exitCode = await (options.runner ?? streamingRunner)(pnpm.cmd, args, {
-          cwd: dir,
-          env,
-          context,
-          leaseEnv: options.leaseEnv,
-        });
-      } finally {
-        restored = restoreChanged(dir, saved);
-      }
-      if (restored.length > 0) report(`restored ${restored.join(", ")} (the build rewrote them)`);
-      // A build nx restored from cache can lack a worker @vortex/main doesn't declare as an
-      // output (KNOWLEDGE.md); Vortex then fails at its first install. Build main directly.
-      const missing = missingBuildOutputs(dir);
-      if (exitCode === 0 && missing.length > 0 && !missing.includes("main.cjs")) {
-        report(`the build left out ${missing.join(", ")}; running src/main/build.mjs`);
-        exitCode = await (options.runner ?? streamingRunner)("node", ["./build.mjs"], {
-          cwd: path.join(dir, "src", "main"),
-          env,
-          context,
-          leaseEnv: options.leaseEnv,
-        });
-        const still = missingBuildOutputs(dir);
-        if (exitCode === 0 && still.length > 0) {
-          report(`still missing after build.mjs: ${still.join(", ")}`);
-          exitCode = 1;
-        }
-      }
-      return {
-        checkout: dir,
-        command,
-        nodeEnv: options.production ? "production" : "unset",
-        exitCode,
-        elapsedMs: Date.now() - started,
-        restored,
-        bundleMode: bundleModeOf(dir),
-      };
-    },
+  assertNoVortexRunningFrom(dir, "building it");
+  const pnpm = selectPnpmCommand(
+    wanted,
+    options.installedPnpm ?? (await installedPnpmVersion(dir)),
   );
+  const args = [...pnpm.args, "run", "build"];
+  const command = [pnpm.cmd, ...args].join(" ");
+  const env = buildEnvironment(process.env, options.production);
+  report(
+    `building ${dir} with ${command} (NODE_ENV=${options.production ? "production" : "unset"}` +
+      `${pnpm.exact ? "" : `; pnpm on PATH is not ${wanted}`})`,
+  );
+  const saved = saveFiles(dir, GENERATED_FILES);
+  const started = Date.now();
+  let exitCode = 1;
+  let restored: string[] = [];
+  try {
+    exitCode = await (options.runner ?? streamingRunner)(pnpm.cmd, args, { cwd: dir, env });
+  } finally {
+    restored = restoreChanged(dir, saved);
+  }
+  if (restored.length > 0) report(`restored ${restored.join(", ")} (the build rewrote them)`);
+  // A build nx restored from cache can lack a worker @vortex/main doesn't declare as an
+  // output (KNOWLEDGE.md); Vortex then fails at its first install. Build main directly.
+  const missing = missingBuildOutputs(dir);
+  if (exitCode === 0 && missing.length > 0 && !missing.includes("main.cjs")) {
+    report(`the build left out ${missing.join(", ")}; running src/main/build.mjs`);
+    exitCode = await (options.runner ?? streamingRunner)("node", ["./build.mjs"], {
+      cwd: path.join(dir, "src", "main"),
+      env,
+    });
+    const still = missingBuildOutputs(dir);
+    if (exitCode === 0 && still.length > 0) {
+      report(`still missing after build.mjs: ${still.join(", ")}`);
+      exitCode = 1;
+    }
+  }
+  return {
+    checkout: dir,
+    command,
+    nodeEnv: options.production ? "production" : "unset",
+    exitCode,
+    elapsedMs: Date.now() - started,
+    restored,
+    bundleMode: bundleModeOf(dir),
+  };
 }

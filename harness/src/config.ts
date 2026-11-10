@@ -8,13 +8,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { findRelease } from "./content";
 import { ConfigError } from "./errors";
 import { peekDevElectron } from "./electronRuntime";
-import { resolveOwner } from "./lease";
-import { HARNESS_ROOT, REPO_ROOT } from "./paths";
-import { assignSlot, parseSlot, type SlotRequest, slotPaths } from "./slots";
+import { DEFAULT_ARTIFACT_DIR, DEFAULT_CACHE_DIR, HARNESS_ROOT, REPO_ROOT } from "./paths";
 
 export { ConfigError, REPO_ROOT };
+
+/** Port the extension's MCP server listens on, unless `--port` or VORTEX_MCP_PORT says otherwise. */
+export const DEFAULT_MCP_PORT = 3701;
+/** CDP port opened on Vortex, unless `--cdp-port` or VORTEX_AI_CDP_PORT says otherwise. */
+export const DEFAULT_CDP_PORT = 9222;
 
 // Loaded from harness/.env when present, so an operator can keep the API key out
 // of their shell profile. Gitignored.
@@ -88,26 +92,16 @@ export interface HarnessConfig {
    */
   production: boolean;
   /**
-   * Private stand-ins for the per-user folders a Bethesda game writes to: plugins.txt
-   * under LocalAppData, INI files under Documents. Set by the Bethesda sandbox; when set,
-   * Vortex must start with both redirected or not at all.
-   */
-  profileRedirect?: { localAppData: string; documents: string };
-  /**
-   * Who is using the kit, for the machine-wide instance lease (lease.ts). From `--owner`
-   * or VORTEX_AI_OWNER; unset means "anonymous".
-   */
-  owner?: string;
-  /**
-   * The instance slot (slots.ts) this configuration's defaults came from: 0 unless `--slot`
-   * or VORTEX_AI_SLOT asked for another. An explicit cache or port overrides its part.
-   */
-  slot: number;
-  /**
    * True when an API key is configured but deliberately not used: sandbox runs are
    * local-only, and a seeded key makes every local install wait on Nexus lookups.
    */
   apiKeyWithheld?: boolean;
+  /**
+   * Use the one shared Nexus login, `~/.doodlebot/login/oauth-<target>.json`, directly (login.ts).
+   * The default cache always does; any other cache has no login unless it opts in here. A logout
+   * in a shared-login cache signs the person out everywhere.
+   */
+  sharedLogin?: boolean;
 }
 
 /** An environment variable, with an empty one counted as unset. */
@@ -153,7 +147,13 @@ function installedVortexCandidates(): string[] {
  * somewhere" is not something it can reason about, build from, or push to.
  */
 function managedSourceDir(): string | undefined {
-  const dir = process.env.VORTEX_AI_SOURCE_DIR ?? path.join(REPO_ROOT, ".vortex-src");
+  const variable = process.env.VORTEX_AI_SOURCE_DIR;
+  if (variable === "") return undefined;
+  // A relative variable is the workspace's, explicitly: createRequire rejects a relative path.
+  const dir =
+    variable === undefined
+      ? path.join(REPO_ROOT, ".vortex-src")
+      : path.resolve(REPO_ROOT, variable);
   return fs.existsSync(path.join(dir, "src", "main", "package.json")) ? dir : undefined;
 }
 
@@ -171,25 +171,56 @@ export function findInstalledVortex(): string | undefined {
  * Vortex, so a clone it manages takes precedence once one exists.
  */
 export function resolveTarget(
-  overrides: { devDir?: string; exe?: string; preferInstalled?: boolean } = {},
+  overrides: { devDir?: string; exe?: string; preferInstalled?: boolean; release?: string } = {},
 ): VortexTarget {
+  // A registered official release (`doodlebot release get`), extracted outside the workspace.
+  if (overrides.release !== undefined) {
+    if (overrides.devDir !== undefined || overrides.exe !== undefined)
+      throw new ConfigError("Choose one of --release, --exe and --dev-dir.");
+    const release = findRelease(overrides.release);
+    if (release === undefined || !fs.existsSync(release.exe))
+      throw new ConfigError(
+        `Release ${overrides.release} is not registered. Get it with \`doodlebot release get ${overrides.release}\`.`,
+      );
+    return { kind: "installed", executable: release.exe, args: [], appName: "Vortex" };
+  }
   // Precedence: an explicit --dev-dir, then the clone this repo manages, then an
   // installed Vortex. The clone wins because if you have gone to the trouble of
   // cloning Vortex here, working on it is the whole point — but --installed
   // puts the released build back in front.
   const installed = overrides.preferInstalled === true || envFlag("VORTEX_AI_INSTALLED");
   const managed = installed || overrides.exe !== undefined ? undefined : managedSourceDir();
-  const devDir =
-    overrides.devDir ??
-    (installed || overrides.exe !== undefined
+  const explicit = overrides.devDir !== undefined && overrides.devDir !== "";
+  const variable = process.env.VORTEX_AI_DEV_DIR;
+  // An explicit --dev-dir is resolved against this process's directory (the CLI has already
+  // resolved it against the caller's); a relative VORTEX_AI_DEV_DIR is the workspace's. Either
+  // way createRequire, which rejects a relative path, only ever sees an absolute one.
+  const devDir = explicit
+    ? path.resolve(overrides.devDir!)
+    : overrides.devDir !== undefined || installed || overrides.exe !== undefined
       ? undefined
-      : (process.env.VORTEX_AI_DEV_DIR ?? managed));
+      : variable !== undefined && variable !== ""
+        ? path.resolve(REPO_ROOT, variable)
+        : managed;
   if (devDir !== undefined && devDir !== "") {
     const mainDir = path.join(devDir, "src", "main");
     const resolved = fs.existsSync(mainDir) ? mainDir : devDir;
+    let executable: string;
+    try {
+      executable = peekDevElectron(resolved);
+    } catch (error) {
+      // The first line: Node appends the require stack to a missing module's message.
+      const reason = (error instanceof Error ? error.message : String(error)).split(/\r?\n/)[0];
+      throw new ConfigError(
+        explicit
+          ? `--dev-dir ${devDir} is not a built Vortex checkout: ${reason}`
+          : `${devDir} is not a built Vortex checkout: ${reason}`,
+        { cause: error },
+      );
+    }
     return {
       kind: "dev",
-      executable: peekDevElectron(resolved),
+      executable,
       args: [resolved],
       appName: "@vortex/main",
       sourceDir: path.resolve(resolved, "..", ".."),
@@ -200,7 +231,7 @@ export function resolveTarget(
   if (exe === undefined) {
     throw new ConfigError(`No Vortex to drive.
 
-  Work on Vortex itself:     pnpm run ai:source
+  Work on Vortex itself:     doodlebot source
      (finds your GitHub fork, clones it into .vortex-src here, and builds it)
 
   Or drive a released build:  install it from
@@ -214,41 +245,41 @@ export function resolveTarget(
 /**
  * Config loading must not throw just because Vortex is missing — `doctor` exists
  * precisely to report that, and it can report nothing if building the config
- * blew up first.
+ * blew up first. An explicit `--dev-dir` that is not a built checkout is the
+ * exception: falling back to another Vortex would silently drive the wrong one,
+ * so its error is rethrown (the CLI hands it to `doctor` as its target error).
  */
 export function resolveTargetSafely(
   overrides: Parameters<typeof resolveTarget>[0] = {},
 ): VortexTarget {
   try {
     return resolveTarget(overrides);
-  } catch {
+  } catch (error) {
+    const explicit =
+      (overrides.devDir !== undefined && overrides.devDir !== "") ||
+      overrides.release !== undefined;
+    if (explicit && error instanceof ConfigError) throw error;
     return { kind: "installed", executable: "", args: [], appName: "Vortex" };
   }
 }
 
-export type ConfigOverrides = Partial<Omit<HarnessConfig, "slot">> & { slot?: SlotRequest };
+export type ConfigOverrides = Partial<HarnessConfig>;
 
+/** Flags (as overrides) first, then the environment, then the defaults. */
 export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig {
-  const { slot: slotOverride, ...rest } = overrides;
-  const owner = rest.owner ?? process.env.VORTEX_AI_OWNER;
-  const request = slotOverride ?? parseSlot(process.env.VORTEX_AI_SLOT);
-  const slot = request === "auto" ? assignSlot(resolveOwner(owner)) : (request ?? 0);
-  const defaults = slotPaths(slot);
   const config: HarnessConfig = {
     apiKey: process.env.VORTEX_AI_NEXUS_API_KEY ?? process.env.NEXUS_API_KEY,
     mcpToken: process.env.VORTEX_MCP_TOKEN ?? defaultToken(),
-    mcpPort: Number(envValue("VORTEX_MCP_PORT") ?? defaults.mcpPort),
-    cdpPort: Number(envValue("VORTEX_AI_CDP_PORT") ?? defaults.cdpPort),
+    mcpPort: Number(envValue("VORTEX_MCP_PORT") ?? DEFAULT_MCP_PORT),
+    cdpPort: Number(envValue("VORTEX_AI_CDP_PORT") ?? DEFAULT_CDP_PORT),
     gameId: process.env.VORTEX_AI_GAME_ID ?? "fallout4",
     gamePath: process.env.VORTEX_AI_GAME_PATH,
-    cacheDir: envValue("VORTEX_AI_CACHE_DIR") ?? defaults.cacheDir,
-    artifactDir: envValue("VORTEX_AI_ARTIFACT_DIR") ?? defaults.artifactDir,
+    cacheDir: envValue("VORTEX_AI_CACHE_DIR") ?? DEFAULT_CACHE_DIR,
+    artifactDir: envValue("VORTEX_AI_ARTIFACT_DIR") ?? DEFAULT_ARTIFACT_DIR,
     target: resolveTargetSafely(),
     headless: envFlag("VORTEX_AI_HEADLESS"),
     production: envFlag("VORTEX_AI_PRODUCTION"),
-    owner,
-    ...rest,
-    slot,
+    ...overrides,
   };
   for (const port of [config.mcpPort, config.cdpPort]) {
     if (!Number.isInteger(port) || port < 1 || port > 65535)

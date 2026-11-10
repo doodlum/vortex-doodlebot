@@ -1,16 +1,14 @@
 #!/usr/bin/env -S node --experimental-strip-types
 /**
- * `doodlebot` — the operator-facing entry point to the AI harness.
+ * `doodlebot` — the companion's command line, run through bin/doodlebot.cjs (the `doodlebot`
+ * shim) by the doodlebot plugin's commands.
  *
- * Two audiences, one binary. A human runs `doctor`/`up`/`watch` to get a driven
- * Vortex running; an agent then talks to that instance over MCP and only comes
- * back here for things MCP cannot do (start a process, rebuild a bundle). The
- * one-shot commands (`snapshot`, `click`, `responsive`, ...) exist so the whole
- * thing is usable from a plain shell before any MCP client is wired up — which
- * is also how you tell a broken harness from a broken MCP config.
+ * An agent runs `up` to get a driven Vortex running, then drives that instance over MCP or
+ * with the one-shot commands here (`snapshot`, `click`, `call`, ...), and comes back for what
+ * MCP cannot do (start a process, rebuild a bundle, run a suite). commands.ts lists every
+ * command; commands.test.ts keeps that list and this dispatcher equal.
  */
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -27,16 +25,9 @@ import {
 import { runDoctor, formatDoctorReport } from "./doctor";
 import { parseJson, stripBom } from "./jsonFile";
 import { RendererEvalRefused, evalInRenderer } from "./rendererEval";
-import { assertStandaloneWatch, watchAndReload } from "./hotReload";
-import { abortOnSignals } from "./processRunner";
-import { LIVE_COMMANDS, withLiveOperation } from "./liveOperation";
-import { inheritedOperation, type OperationContext } from "./operations";
-import {
-  attachedLeaseResources,
-  authCacheFile,
-  ensureExtensionBuilt,
-  stopStaleInstance,
-} from "./instance";
+import { watchAndReload } from "./hotReload";
+import { abortOnSignals, callerCwd, runInteractive, tsxCli } from "./processRunner";
+import { ensureExtensionBuilt, stopRunningInstance } from "./instance";
 import { VortexMcpClient } from "./mcpClient";
 import { requireRunning } from "./runningProfile";
 import { formatReport, runResponsiveSweep, viewportList } from "./responsive";
@@ -48,7 +39,6 @@ import {
   pullRequestChecksPassed,
 } from "./prChecks";
 import { PreflightError, formatPreflightReport, runPreflight } from "./prPreflight";
-import { readinessFromFile } from "./readiness";
 import {
   captureCheckoutIdentity,
   collectCommandEvidence,
@@ -59,78 +49,94 @@ import { buildCheckout } from "./vortexBuild";
 import { captureLogin } from "./bootstrap";
 import { requireOAuth, waitForOAuth, type AuthStatus } from "./auth";
 import { localOnlyConfig, sandboxConfig } from "./sandbox";
-import { bethesdaSandboxConfig, isolateUserFolders } from "./bethesdaSandbox";
+import { bethesdaSandboxConfig } from "./bethesdaSandbox";
 import { installLocalMod } from "./localMod";
 import { runSlowDownloads } from "./slowDownload";
 import { installCollection } from "./collections";
 import { deployMods, needsDeployment, purgeGame } from "./deployment";
 import { runE2e } from "./e2e";
+import { versionCommand } from "./versionCommand";
+import { formatLink, link } from "./linkCommand";
+import { testCommand } from "./testCommand";
+import { fixtureCommand } from "./fixtureCommand";
+import { knowledgeCommand } from "./knowledgeCommand";
+import { logCommand, vortexLogFile } from "./logCommand";
+import { perfSummaryCommand } from "./perfSummary";
+import { gameCommand } from "./gameCommand";
+import { inventoryCommand } from "./inventory";
+import { qaCommand } from "./qaCatalog";
+import { cleanCommand } from "./diskUse";
+import { checkCommand } from "./checkCommand";
+import { recordCollection } from "./content";
+import { releaseCli, windowsProductVersion } from "./releaseFetch";
+import { assertNoHarnessVortex, runningVortex } from "./runningVortex";
+import { settlePendingRestores } from "./userFolders";
+import { waitForCollectionCompletion } from "./collectionCompletion";
 import {
-  acquireLeases,
-  checkoutResource,
-  formatLeaseStates,
-  listLeases,
-  readLease,
-  releaseLease,
-  releaseOwnerLeases,
-  resolveOwner,
-  requireNamedOwner,
-  renewLease,
-  waitForLease,
-  type LeaseState,
-  type ReleaseResult,
-} from "./lease";
-import { runUnderLease } from "./leaseCommand";
-import { kitLockHolder, lockKit, pushKit, syncKit, unlockKit } from "./kitLock";
-import { formatSlots, instanceResource, listSlots, parseSlot } from "./slots";
-import { addWorktree, listWorktrees, removeWorktree, worktreeDir } from "./worktree";
-import { importLogin } from "./loginImport";
-import { e2eExitCode, formatE2eReport, playwrightRunner, runVortexE2e } from "./vortexE2e";
-import {
+  NO_FORK_NOTE,
   buildVortexSource,
+  commandEnv,
+  cutWorkBranch,
   detectGitHubUser,
   ensureVortexSource,
   hasVortexSource,
   resolveVortexRepo,
   vortexSourceDir,
+  type ForkInfo,
 } from "./source";
+import { gapCommand } from "./gapCommand";
+import { prBranchCommand } from "./prPush";
 
-function configFrom(flags: ParsedArgs["flags"]): HarnessConfig {
+/**
+ * The configuration the flags select. An explicit `--dev-dir` that is not a built checkout
+ * throws its ConfigError, except for `doctor`, which reports it as its failing Vortex check
+ * (`targetError`) against an empty installed target.
+ */
+function configFrom(
+  flags: ParsedArgs["flags"],
+  command: string,
+): { config: HarnessConfig; targetError?: string } {
   const overrides: ConfigOverrides = {};
+  let targetError: string | undefined;
   if (typeof flags.game === "string") overrides.gameId = flags.game;
   if (typeof flags["game-path"] === "string") overrides.gamePath = flags["game-path"];
-  if (typeof flags.worktree === "string" && typeof flags["dev-dir"] === "string")
-    throw new ConfigError("Choose one of --worktree and --dev-dir.");
-  const devDir =
-    typeof flags.worktree === "string"
-      ? worktreeDir(flags.worktree)
-      : typeof flags["dev-dir"] === "string"
-        ? flags["dev-dir"]
-        : undefined;
-  if (devDir !== undefined || typeof flags.exe === "string" || flags.installed === true) {
-    overrides.target = resolveTargetSafely({
-      devDir,
-      exe: typeof flags.exe === "string" ? flags.exe : undefined,
-      preferInstalled: flags.installed === true,
-    });
+  const devDir = typeof flags["dev-dir"] === "string" ? flags["dev-dir"] : undefined;
+  const release = typeof flags.release === "string" ? flags.release : undefined;
+  if (
+    devDir !== undefined ||
+    typeof flags.exe === "string" ||
+    flags.installed === true ||
+    release !== undefined
+  ) {
+    try {
+      overrides.target = resolveTargetSafely({
+        devDir,
+        exe: typeof flags.exe === "string" ? flags.exe : undefined,
+        preferInstalled: flags.installed === true,
+        ...(release === undefined ? {} : { release }),
+      });
+    } catch (error) {
+      if (!(error instanceof ConfigError) || command !== "doctor") throw error;
+      targetError = error.message;
+      overrides.target = { kind: "installed", executable: "", args: [], appName: "Vortex" };
+    }
   }
   if (typeof flags.port === "string") overrides.mcpPort = Number(flags.port);
   if (typeof flags["cdp-port"] === "string") overrides.cdpPort = Number(flags["cdp-port"]);
   if (typeof flags["cache-dir"] === "string") overrides.cacheDir = path.resolve(flags["cache-dir"]);
   if (flags.headless === true) overrides.headless = true;
   if (flags.production === true) overrides.production = true;
-  if (typeof flags.owner === "string") overrides.owner = flags.owner;
-  if (typeof flags.slot === "string") overrides.slot = parseSlot(flags.slot);
   const config = loadConfig(overrides);
   if (flags.sandbox === true && flags["bethesda-sandbox"] === true) {
     throw new ConfigError("Choose one of --sandbox and --bethesda-sandbox.");
   }
   const keepKey = flags["with-api-key"] === true;
+  const result = (chosen: HarnessConfig) =>
+    targetError === undefined ? { config: chosen } : { config: chosen, targetError };
   if (flags["bethesda-sandbox"] === true) {
-    return localOnlyConfig(bethesdaSandboxConfig(config), keepKey);
+    return result(localOnlyConfig(bethesdaSandboxConfig(config), keepKey));
   }
-  const chosen = flags.sandbox === true ? localOnlyConfig(sandboxConfig(config), keepKey) : config;
-  return flags["isolate-user-folders"] === true ? isolateUserFolders(chosen) : chosen;
+  return result(flags.sandbox === true ? localOnlyConfig(sandboxConfig(config), keepKey) : config);
 }
 
 function log(message: string): void {
@@ -142,14 +148,16 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
   return new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 }
 
-const HELP = `doodlebot — automation for stock Vortex and Vortex development
+const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-First run (no account or installed game required)
-  pnpm install
-  pnpm run build
-  pnpm run ai -- doctor --installed --sandbox
-  pnpm run ai -- setup --installed --sandbox
-  pnpm run ai:test
+Used from Claude Code or Codex through the doodlebot plugin, whose eight commands
+(/doodlebot:setup, source, try, investigate, fix, qa, measure and pr) run these.
+
+The companion itself
+  version [--json]       This workspace's version, commit and path
+  link [--bin-dir <dir>] Write the doodlebot shims into a folder on the PATH
+  update --ref <ref>     Move this workspace to a tag or branch of origin, then install
+                         and build (refuses while a harness Vortex runs or with local changes)
 
 Initial account setup (only for Nexus collections)
   setup --oauth          Open isolated Vortex, wait for browser login, cache OAuth
@@ -157,29 +165,73 @@ Initial account setup (only for Nexus collections)
     --no-wait            Return with login pending; finish with save-login
   auth-status            Print presence booleans only; never print credentials
   save-login             Verify OAuth, stop cleanly, capture the current baseline
-  login-import --from <cache-dir>
-                         Reuse the saved login of another cache dir (default: the
-                         harness cache) in --cache-dir; --force replaces one
+                         The login is one file, ~/.doodlebot/login/oauth-<target>.json,
+                         used directly by the default cache only; other caches are
+                         signed out. Nothing copies it. Lost or expired: setup --oauth
 
 Instance lifecycle
   doctor                 Report prerequisites and actionable fixes
+  check [--json]         The read-only status table /doodlebot:setup --check prints: the
+                         workspace, doctor, EGM, .vortex-src, the inventory, the login,
+                         the copy folder, pending restores, open kit gaps, local lessons
+                         KNOWLEDGE.md now holds, and disk use (warns below 10 GB free)
   up                     Start/restart the matching working profile
     --fresh              Reset working state from its baseline; reuse current OAuth
     --no-game            Global UI without managing a game
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
   bootstrap              Build/reset baseline and launch (--no-game supported)
-  down                   Quit this cache's Vortex and wait for clean exit
+  down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
+                         then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
-  source                 Find your fork, clone to .vortex-src and build Vortex
-    --update             Fetch origin and upstream in an existing clone
+
+Game copies and released builds (registered in ~/.doodlebot/content.json)
+  game copy <gameId> [--to <folder>] [--new]
+                         Copy the Steam install into <folder>/<gameId> and register it;
+                         reuses a registered copy of the same version unless --new
+  game register <gameId> <dir>
+                         Register an existing copy (never a store install)
+  game restore <gameId>  List the user-folder files changed since the last backup;
+    --all | --keep | --file <path>   restore them all, keep them all, or restore some
+  game folder [<dir>]    Store the folder game copy copies into (asked once); without a
+                         folder, print the stored one
+  release get <version>  Download an official release, check its published SHA-256 and
+                         extract it with 7-Zip into ~/.doodlebot/releases (never runs
+                         the installer); use it with --release <version>
+  release list [--json]  The registered releases
+  inventory [--json]     What doodlebot can test against (builds, games, snapshots,
+                         sandboxes, collections, login); each item not ready names the
+                         exact command that makes it ready. Reads only; never launches
+    --need <need>        Repeatable: instead, the content chosen for these needs (sandbox,
+                         sandbox:fallout4, game, game:<id>, collection, collection:offline,
+                         collection:nexus, login): each item with its flag and why, or each
+                         unmet need with the command that meets it
+  clean [--older-than <days>] [--dry-run] [--yes]
+                         List what disk use to free (default 30 days): binaries in old
+                         run, QA and benchmark folders (each report.md and files under
+                         1 MB stay), unused baselines and caches, releases content.json
+                         no longer names; deletes only with --yes. Never touches game
+                         copies, the login, pending restores or the running instance
+  source                 Clone your fork (origin) and Nexus-Mods/Vortex (upstream) to
+                         .vortex-src and build it; without a fork, clone upstream alone
+                         (enough to build and test; pushing needs a fork)
+    --update             Fetch every remote of an existing clone (adds a missing upstream)
+    --branch <name>      Cut a new work branch from upstream/<default branch>
     --no-build           Clone only
     --where              Print managed source path
+  pr-branch <topic>      Build pr/<topic> from the merge-base with upstream: every commit
+                         except docs(design) ones (a non-design commit touching
+                         docs/designs/ is refused)
+    --design-commit <sha>  The approved design commit: tag it design/<topic>; a tag already
+                         on an earlier approval is kept as design/<topic>-v<n>. Without it
+                         no tag is set or moved (never tag an unapproved revision)
+    --checkout <dir>     Vortex checkout (default: .vortex-src)
+    --base <ref>         Base (default: upstream/<default branch>)
+    --push               Push both to origin, only after gh shows origin is your own fork
+                         of Nexus-Mods/Vortex (or the VORTEX_AI_VORTEX_REPO fork you can
+                         push to)
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
-  readiness              Evaluate strict revision-bound task evidence; never runs gates
-    --manifest <json>   Required task/evidence manifest (schema version 2)
-    --json              Print the readiness report; exit 0 ready, 1 incomplete
   evidence identity --checkout <dir> --base <ref>
                          Print current subject and kit identities, including local diff
   evidence runtime --kind installed|source --label <version> <binary> [bundle...]
@@ -192,7 +244,7 @@ Instance lifecycle
                          Newly produced JSON reporter output, required for test counts
   pr-preflight           Mechanical checks on a Vortex branch before pushing: size,
                          callers outside the diff, revert check (negative control),
-                         measurements in comments, PR description
+                         measurements in comments, design kept out, PR description
     --checkout <dir>     Vortex checkout (default: .vortex-src)
     --base <ref>         Base to diff from (default: upstream/master, via merge-base)
     --head <ref>         Compare this ref without checking it out (no revert check)
@@ -205,59 +257,11 @@ Instance lifecycle
     --skip-revert        Skip the revert check
     --pr <number|url>    Also lint that PR's title and description (--repo as above)
     --json               Machine-readable report; exit code 1 on any failure
-  build                  Build a Vortex checkout with its pinned pnpm under its lock:
+  build                  Build a Vortex checkout with its pinned pnpm:
     --checkout <dir>     (default .vortex-src)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
-  vortex-e2e             Run Vortex's own E2E suite (packages/e2e, CI=1, one worker, no
-                         retries) under the instance lease, with the kit's fixture
-                         patches applied for the run and restored byte-identically, and
-                         account specs left out when their credentials are absent
-    --checkout <dir>     Vortex checkout (default: .vortex-src)
-    --spec <file>        Spec to run, relative to packages/e2e or src/tests; repeatable
-    --grep <re> --grep-invert <re>   Playwright title filters
-    --compare <json>     Diff against an earlier report: regressions vs pre-existing
-    --json               Print the report as JSON (Playwright's output goes to stderr)
-
-Parallel sessions
-  kit lock               Take the global kit lock before changing doodlebot itself (knowledge,
-                         skills, harness, docs): --owner <name> [--ttl <min>, default 30]
-                         [--wait <min>]. Take it again to renew.
-  kit sync               Under the lock: switch to main and fast-forward to origin/main
-  kit push               Under the lock: rebase main onto origin/main and push it
-  kit renew              Renew the original live lock: --acquisition <id> [--ttl <min>]
-  kit unlock             Release your original lock: --acquisition <id>; --force is inspected recovery
-  kit status             Show who holds it; --json includes its acquisition ID
-  --slot <n|auto>        Instance slot: its own cache, artifacts, ports and instance lease.
-                         0 (default) is harness/.cache on 3701/9222; n uses harness/.slots/<n>
-                         on 3701+10n/9222+10n. auto: this owner's own slot, kept across
-                         commands (needs --owner). Or VORTEX_AI_SLOT. Pass it to every command.
-  slots                  Every slot: who was given it, whether its Vortex runs (--json)
-  worktree add <name>    A Vortex worktree of .vortex-src for one session's work, in
-                         .vortex-worktrees/<name>: [--base <ref>, default upstream/master]
-                         [--branch <name>, default <name>] [--no-build] [--no-install]
-                         [--ref <branch|sha>: that ref detached, e.g. to review a branch
-                         another worktree has checked out]
-  worktree list          The worktrees and their branches
-  worktree remove <name> Remove one (refuses uncommitted changes without --force)
-  --worktree <name>      Use that worktree as the target, like --dev-dir
-
-Leases (one harness Vortex per cache; several agents may share the kit)
-  lease status           Who holds what, live or stale (--json)
-  lease acquire          Hold the instance lease: --owner <name> [--purpose <text>]
-                         [--ttl <minutes>, default 60; 0 = none] [--pid <n>] [--wait <min>]
-                         [--checkout <dir>: that checkout's lock AS WELL, all or nothing;
-                         --checkout-only: just the checkout]. Re-run to renew.
-  lease release          --owner <name>: every lease that owner holds (instance and
-                         checkouts). [--checkout <dir>: only that checkout] [--force]
-  lease run [flags] [--] <cmd...>
-                         Hold the lease (and --checkout's) while <cmd> runs; exit code
-                         propagated. --owner <name> [--wait <minutes>] [--purpose <text>]
-                         Flags go before the command, which starts at its first word.
-  Commands that start or stop Vortex take the lease implicitly and refuse while another
-  owner holds it; up keeps it until down. Vortex run from a checkout also locks that
-  checkout until it exits. Owner: --owner, else VORTEX_AI_OWNER, else "anonymous".
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -272,10 +276,10 @@ Driving a running instance
     eval <file.js>       renderer over CDP and print the JSON result (refuses any Vortex
                          whose profile is not in this cache). Promises are awaited.
   script <file.mts> [args...]
-                         Run a scratch script with the kit's tsx under the instance lease.
-                         --owner, --wait and the instance flags (--slot, --worktree, --dev-dir,
-                         --cache-dir, --port, --cdp-port) are the kit's anywhere, even after the
-                         file; every other argument (and all after --) is the script's.
+                         Run a scratch script with the kit's tsx. The instance flags
+                         (--dev-dir, --cache-dir, --port, --cdp-port) are the kit's anywhere,
+                         even after the file; every other argument (and all after --) is the
+                         script's.
                          VORTEX_AI_KIT holds the import URL of harness/src/kit.ts
   record                 Save WebM; --ffmpeg <path> --seconds <1-60> --label <name>
   install <archive>      Install local ZIP/7z through Vortex; no account needed
@@ -289,37 +293,86 @@ Driving a running instance
   purge                  Remove files recorded in this game's deployment manifest
   e2e <collection>       Fresh start, install, verify, deploy, launch real game
     --runs <n> --keep --purge; --no-launch for installation/deployment only
+  log                    The running instance's Vortex log, filtered
+    --level info|warn|error  Lowest level kept (default warn); Vortex's INFO, WARN
+                         and ERRO codes rank as info, warn and error
+    --tail <n>           Last n entries (default 50)
+    --since <ISO time>   Entries at or after this time
+    --json               LogEntry[] with continuation lines in each message
+  fixture mod --out <zip> [--name <text>]
+                         A one-file mod archive (textures/<name>.txt) for install checks
+
+Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
+  knowledge search <words...> [--json]
+                         Local lessons and the workspace's KNOWLEDGE.md holding every word
+  knowledge add --title <t> --area <a> --symptom <s> --cause <c> --remedy <r>
+                --scope <s> --evidence <e> --vortex <version> [--third-party <text>] [--json]
+                         Record a lesson whose cause you checked (never credentials)
+  knowledge note <id> <text>   Append a dated note, e.g. "does not hold on <version>"
+  knowledge list [--json] | knowledge remove <id> | knowledge path
+  knowledge share <id>   Print the redacted lesson for a GitHub issue on
+                         doodlum/vortex-doodlebot; publishes nothing without --yes
+    --yes                Publish (after the person confirmed the printed text); an open
+                         issue with the same title gets a comment instead
+    --print              Only the text, to paste into an issue by hand (no gh)
+    --include-third-party  Include data marked third-party (confirmed separately)
+    --nexus-user <name>  Your Nexus user name, redacted too (or VORTEX_AI_NEXUS_USER)
+
+Kit gaps (what the kit should have done and didn't, in ~/.doodlebot/gaps.md)
+  gap add --title <t> --command <c> --needed <x> --happened <x> --blocked yes|no
+          [--workaround <x>] [--third-party <text>] [--json]
+                         Same command and title: counts it again; a wontfix gap is not
+                         recorded; a gap closed --by a commit re-opens only when this kit
+                         contains that commit
+  gap list [--all] [--json]    Open gaps (--all: closed too; --json always lists all)
+  gap close <id> --by <commit> | --wontfix
+  gap share <id> [--yes] [--print] [--include-third-party]   As knowledge share
 
 Testing and iteration
+  test <suite> [args...] Run a suite or check from the workspace root; every argument after
+                         the suite is the suite's (core: Playwright's)
+  test --list            List the suites (also test --help or test -h)
+  qa list [--touching <paths...>] [--allow-logout] [--json]
+                         The QA catalogue (harness/qa/catalog.json): checks Vortex's own
+                         e2e suite lacks. With --touching (paths relative to the Vortex
+                         root), the entries whose guards match, the others with the
+                         reason, and the files no entry guards. --json gives each selected
+                         entry its content (the inventory items chosen for its needs, or
+                         each unmet need with the command that meets it) and its verdict
+                         rule. --allow-logout also selects entries that log out of the
+                         account (only with the person's go-ahead)
+  qa check               Validate the catalogue; with .vortex-src, also list specs added
+                         since its recorded commit and guards that match no file
+  perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
+                         Medians, ranges and a verdict from performance-check evidence; one
+                         side (no --b) has no verdict
   responsive             Scan width AND height changes; persist JSON evidence
     --viewports 1024x720,1280x720,1280x1080,1920x1080   (quote the list in PowerShell)
     --screenshots        Save PNG per viewport
     --strict             Nonzero exit for viewport-dependent findings or overflow
   watch                  Watch doodlebot source; finite build/copy/reload cycles
-                         Needs an existing owned app; run directly, outside command wrappers
   build-extension        Force extension build
 
 Target and isolation (repeat the same flags for all commands)
   --installed            Use released Vortex even when .vortex-src exists
   --exe <path>           Explicit Vortex.exe
+  --release <version>    A release registered by release get
   --dev-dir <path>       Explicit source checkout
   --sandbox              Disposable test game for local install/deploy tests
-  --bethesda-sandbox     Fake Fallout 4 (plugins, LOOT, masters) with private
-                         LocalAppData and Documents; no game install needed
+  --bethesda-sandbox     Fake Fallout 4 (plugins, LOOT, masters); no game install needed.
+                         The real Fallout 4 user folders are backed up and restored at down
   --with-api-key         Seed harness/.env's API key into a sandbox profile too (off by
                          default: with a key, every local install waits on a Nexus lookup)
-  --isolate-user-folders Give any game private LocalAppData and Documents folders
-  --game <id> --game-path <dir>   Real game integration; use a disposable copy
+  --game <id> --game-path <dir>   Real game integration: a registered copy only
   --cache-dir <dir>      Profiles and private OAuth cache
   --port <n> --cdp-port <n>      MCP/CDP endpoints (3701/9222 by default)
-  --owner <name>         Required live/provisioning worker (or VORTEX_AI_OWNER)
   --headless             Hide the window; screenshots/layout may differ
   --production           Run a source build as releases run (production React);
                          use for any timing meant to reflect users' experience.
                          up fails unless the renderer loaded production React
 
 Without a target flag: .vortex-src if present, otherwise installed Vortex.
-Human guides: https://doodlum.github.io/vortex-doodlebot/
+Relative paths you type are yours: they resolve against the directory you run doodlebot in.
 For Vortex changes follow its contribution rules and task-specific documentation.
 `;
 async function main(): Promise<number> {
@@ -328,7 +381,8 @@ async function main(): Promise<number> {
   const parsed = parseArgs(argv);
   const { command, flags, positional, lists, passthrough } = parsed;
 
-  if (command === "help" || flags.help === true) {
+  // `doodlebot test --help` (or `-h`) lists the suites; testCommand handles it.
+  if (command === "help" || (flags.help === true && command !== "test")) {
     log(HELP);
     return 0;
   }
@@ -342,18 +396,6 @@ async function main(): Promise<number> {
     );
     log(flags.json === true ? JSON.stringify(report, null, 2) : formatPullRequestChecks(report));
     return pullRequestChecksPassed(report) ? 0 : 1;
-  }
-
-  if (command === "readiness") {
-    if (typeof flags.manifest !== "string")
-      throw new ConfigError("readiness needs --manifest <json>.");
-    const report = readinessFromFile(flags.manifest);
-    log(
-      flags.json === true
-        ? JSON.stringify(report, null, 2)
-        : `${report.ready ? "EVIDENCE COMPLETE" : "INCOMPLETE"}: ${report.taskId} at ${report.subject.headSha}\n${report.meaning}\n${report.issues.join("\n")}`,
-    );
-    return report.ready ? 0 : 1;
   }
 
   if (command === "evidence") {
@@ -402,7 +444,6 @@ async function main(): Promise<number> {
       checkout,
       base,
       cwd: text("cwd") ?? checkout,
-      owner: requireNamedOwner(text("owner")),
       command: passthrough,
       out: text("out")!,
       runtime:
@@ -433,7 +474,6 @@ async function main(): Promise<number> {
         pr: text("pr"),
         repo: text("repo"),
         onProgress: (message) => process.stderr.write(`${message}\n`),
-        owner: text("owner"),
       });
     } catch (err) {
       if (err instanceof PreflightError) throw new ConfigError(err.message);
@@ -443,40 +483,11 @@ async function main(): Promise<number> {
     return report.passed ? 0 : 1;
   }
 
-  // This suite owns its own disposable instances; never load the operator's app/profile config.
-  if (command === "vortex-e2e") {
-    const text = (name: string): string | undefined =>
-      typeof flags[name] === "string" ? flags[name] : undefined;
-    const owner = requireNamedOwner(text("owner"));
-    const report = await runVortexE2e({
-      checkout: text("checkout") ?? vortexSourceDir(),
-      owner,
-      artifactDir: text("artifact-dir") ?? path.join(REPO_ROOT, "harness", ".artifacts"),
-      specs: [...(lists.spec ?? []), ...positional],
-      grep: text("grep"),
-      grepInvert: text("grep-invert"),
-      compare: text("compare"),
-      runner: playwrightRunner(flags.json === true ? process.stderr : process.stdout),
-      onProgress: (message) => process.stderr.write(`${message}\n`),
-    });
-    log(flags.json === true ? JSON.stringify(report, null, 2) : formatE2eReport(report));
-    return e2eExitCode(report);
-  }
-
-  if (command === "lease") return leaseCommand(positional, flags, passthrough);
-  if (command === "slots") {
-    log(formatSlots(listSlots(), flags.json === true));
-    return 0;
-  }
-  if (command === "worktree") return worktreeCommand(positional, flags);
-  if (command === "kit") return kitCommand(positional, flags);
-
   if (command === "build") {
     const checkout = typeof flags.checkout === "string" ? flags.checkout : vortexSourceDir();
     const report = await buildCheckout({
       checkout,
       production: flags.production === true,
-      owner: typeof flags.owner === "string" ? flags.owner : undefined,
       onProgress: (message) => log(`[build] ${message}`),
     });
     log(
@@ -493,16 +504,114 @@ async function main(): Promise<number> {
     return report.exitCode === 0 ? 0 : 1;
   }
 
-  if (
-    LIVE_COMMANDS.has(command) ||
-    command === "watch" ||
-    command === "build-extension" ||
-    (command === "source" && flags.where !== true)
-  )
-    requireNamedOwner(typeof flags.owner === "string" ? flags.owner : undefined);
-  const config = configFrom(flags);
-  const dispatch = async (context?: OperationContext): Promise<number> => {
+  if (command === "version") {
+    log(versionCommand(flags));
+    return 0;
+  }
+
+  if (command === "link") {
+    const result = link(typeof flags["bin-dir"] === "string" ? { binDir: flags["bin-dir"] } : {});
+    log(formatLink(result));
+    return 0;
+  }
+
+  if (command === "test") {
+    return testCommand(positional, flags, passthrough);
+  }
+
+  if (command === "fixture") {
+    log(fixtureCommand(positional, flags));
+    return 0;
+  }
+
+  if (command === "knowledge") {
+    log(knowledgeCommand(positional, flags));
+    return 0;
+  }
+
+  if (command === "gap") {
+    log(gapCommand(positional, flags));
+    return 0;
+  }
+
+  if (command === "pr-branch") {
+    const result = prBranchCommand(positional, flags, {
+      checkout: typeof flags.checkout === "string" ? flags.checkout : vortexSourceDir(),
+      onProgress: (message) => log(`  ${message}`),
+    });
+    log(result);
+    return 0;
+  }
+
+  if (command === "perf-summary") {
+    log(perfSummaryCommand(flags, lists));
+    return 0;
+  }
+
+  if (command === "game") {
+    if (positional[0] === "restore") assertNoHarnessVortex("restoring user folders");
+    const result = await gameCommand(positional, flags, lists, {
+      fileVersion: windowsProductVersion,
+    });
+    log(result.text);
+    return result.code;
+  }
+
+  if (command === "release") {
+    log(await releaseCli(positional, flags));
+    return 0;
+  }
+
+  if (command === "inventory") {
+    log(inventoryCommand(flags, {}, lists));
+    return 0;
+  }
+
+  if (command === "qa") {
+    const result = qaCommand(positional, flags, lists, { vortexDir: vortexSourceDir() });
+    log(result.text);
+    return result.code;
+  }
+
+  if (command === "check") {
+    // Doctor for the installed target and the sandbox unless the person named others.
+    const targeted = ["installed", "exe", "dev-dir", "release"].some((name) => name in flags);
+    const gamed = ["sandbox", "bethesda-sandbox", "game", "no-game"].some((name) => name in flags);
+    const doctorFlags = {
+      ...flags,
+      ...(targeted ? {} : { installed: true }),
+      ...(gamed ? {} : { sandbox: true }),
+    };
+    log(
+      await checkCommand(flags, {
+        doctor: async () => {
+          const { config, targetError } = configFrom(doctorFlags, "doctor");
+          const report = await runDoctor(config, {
+            skipGame: flags["no-game"] === true,
+            ...(targetError === undefined ? {} : { targetError }),
+          });
+          return report.checks;
+        },
+      }),
+    );
+    return 0;
+  }
+
+  if (command === "clean") {
+    const result = cleanCommand(flags);
+    log(result.text);
+    return result.code;
+  }
+
+  const { config, targetError } = configFrom(flags, command);
+  const dispatch = async (): Promise<number> => {
     switch (command) {
+      case "log": {
+        const mcp = await requireRunning(config);
+        const status = await mcp.call<{ userDataDir: string }>("automation_status");
+        log(logCommand(vortexLogFile(status.userDataDir), flags));
+        return 0;
+      }
       case "install": {
         const file = positional[0];
         if (!file) throw new ConfigError("install needs the path to a local mod archive.");
@@ -523,7 +632,6 @@ async function main(): Promise<number> {
       }
       case "setup": {
         const result = await bootstrap(config, {
-          context,
           skipGame: flags.oauth === true || flags["no-game"] === true,
           onProgress: log,
         });
@@ -533,9 +641,8 @@ async function main(): Promise<number> {
         }
         const auth = await result.instance.mcp.call<AuthStatus>("nexus_auth_status");
         if (auth.oauthPresent && auth.oauthRefreshable) {
-          await captureLogin(config, { context, onProgress: log });
+          await captureLogin(config, { onProgress: log });
           const restored = await bootstrap(config, {
-            context,
             skipGame: true,
             fresh: true,
             onProgress: log,
@@ -554,14 +661,13 @@ async function main(): Promise<number> {
         }
         log("Initial setup: click Log in in the isolated Vortex and complete the browser flow.");
         if (flags["no-wait"] === true) {
-          log("Then run `pnpm run ai -- save-login` with these same configuration flags.");
+          log("Then run `doodlebot save-login` with these same configuration flags.");
           return 0;
         }
         log("Waiting up to 10 minutes; OAuth login will be cached automatically.");
         await waitForOAuth(result.instance.mcp);
-        await captureLogin(config, { context, onProgress: log });
+        await captureLogin(config, { onProgress: log });
         const restored = await bootstrap(config, {
-          context,
           skipGame: true,
           fresh: true,
           onProgress: log,
@@ -594,14 +700,16 @@ async function main(): Promise<number> {
         return 0;
       }
       case "doctor": {
-        const report = await runDoctor(config, { skipGame: flags["no-game"] === true });
+        const report = await runDoctor(config, {
+          skipGame: flags["no-game"] === true,
+          ...(targetError === undefined ? {} : { targetError }),
+        });
         log(formatDoctorReport(report));
         return report.ok ? 0 : 1;
       }
 
       case "bootstrap": {
         const result = await bootstrap(config, {
-          context,
           skipGame: flags["no-game"] === true,
           rebuildSnapshot: flags["rebuild-snapshot"] === true,
           rebuildExtension: flags["rebuild-extension"] === true,
@@ -618,7 +726,6 @@ async function main(): Promise<number> {
 
       case "up": {
         const result = await bootstrap(config, {
-          context,
           fresh: flags.fresh === true,
           rebuildSnapshot: flags["rebuild-snapshot"] === true,
           skipGame: flags["no-game"] === true,
@@ -629,7 +736,6 @@ async function main(): Promise<number> {
           `\nVortex is up in ${String(Math.round(result.elapsedMs / 1000))}s (${result.tier} start).`,
         );
         log(`  MCP:  ${result.instance.mcp.url}`);
-        if (config.slot !== 0) log(`  Slot: ${String(config.slot)} (${config.cacheDir})`);
         log(`  Game: ${result.game.gameId} (${result.game.gamePath})`);
         log(`\nConnect an agent:`);
         log(
@@ -641,11 +747,12 @@ async function main(): Promise<number> {
       }
 
       case "down": {
-        log(
-          (await stopStaleInstance(config, { context }))
-            ? "Vortex exited cleanly."
-            : "Nothing is running.",
-        );
+        const live = runningVortex() !== undefined;
+        const stopped = await stopRunningInstance(config);
+        log(stopped ? "Vortex exited cleanly." : "Nothing is running.");
+        // After the confirmed exit, the run's user folders go back; after an unclean end the
+        // changed files are listed for `game restore` instead.
+        await settlePendingRestores({ clean: live || stopped, write: log });
         return 0;
       }
 
@@ -736,10 +843,9 @@ async function main(): Promise<number> {
       }
 
       case "watch": {
-        assertStandaloneWatch();
         const cancellation = abortOnSignals();
         try {
-          const mcp = await withLiveOperation(config, "watch attach", () => requireRunning(config));
+          const mcp = await requireRunning(config);
           log("Watching doodlebot source; finite build/copy/reload cycles. Ctrl-C to stop.");
           await watchAndReload(mcp, config, {
             liveDir: liveDir(config),
@@ -759,9 +865,6 @@ async function main(): Promise<number> {
                   break;
                 case "reloaded":
                   log("  reloaded in " + String(event.elapsedMs) + "ms");
-                  break;
-                case "waiting":
-                  log("  waiting for resources: " + event.message);
                   break;
                 case "error":
                   log("  " + event.message);
@@ -820,28 +923,38 @@ async function main(): Promise<number> {
         }
 
         if (!hasVortexSource() || flags.update === true) {
+          let resolveRepo: (() => Promise<ForkInfo | undefined>) | undefined;
           if (!hasVortexSource()) {
             const user = await detectGitHubUser();
             log(`GitHub user: ${user ?? "(unknown)"}`);
             const repo = await resolveVortexRepo();
-            log(`Fork:        ${repo.fullName}`);
+            log(`Fork:        ${repo?.fullName ?? "(none; cloning upstream)"}`);
+            resolveRepo = async () => repo;
           }
           const source = await ensureVortexSource({
-            owner: config.owner,
             update: flags.update === true,
             onProgress: (m) => log(`  ${m}`),
+            ...(resolveRepo === undefined ? {} : { resolveRepo }),
           });
           log(source.cloned ? `Cloned to ${source.dir}` : `Using existing clone at ${source.dir}`);
+          if (!source.hasFork && !source.cloned) log(`  ${NO_FORK_NOTE}`);
         } else {
           log(`Clone already present at ${vortexSourceDir()}`);
         }
 
+        if (typeof flags.branch === "string") {
+          const cut = await cutWorkBranch(vortexSourceDir(), flags.branch, {
+            onProgress: (m) => log(`  ${m}`),
+          });
+          log(`On ${cut.branch}, cut from ${cut.from}.`);
+        }
+
         if (flags.build !== false && flags["no-build"] !== true) {
-          await buildVortexSource({ owner: config.owner, onProgress: (m) => log(`  ${m}`) });
+          await buildVortexSource({ onProgress: (m) => log(`  ${m}`) });
         }
 
         log("");
-        log("Ready. `pnpm run ai:up` will now drive this clone.");
+        log("Ready. `doodlebot up` will now drive this clone.");
         return 0;
       }
 
@@ -866,8 +979,6 @@ async function main(): Promise<number> {
             onProgress: (m) => log(`  ${m}`),
             verifyCompletion: async (modId, timeoutMs) => {
               renderer = await attachToRenderer(config);
-              const { waitForCollectionCompletion } =
-                await import("../benchmarks/collectionCompletion");
               await waitForCollectionCompletion(renderer.page, modId, {
                 timeoutMs,
                 onObservation: () => undefined,
@@ -889,6 +1000,8 @@ async function main(): Promise<number> {
           }
         }
         if (rendererCleanupFailure) throw rendererCleanupFailure.error;
+        // Recorded so content choice (inventory) and `test nexus` can use it later.
+        if (result.complete) recordCollection(result.ref);
         log("");
         log(`Installed collection ${result.ref.slug} (${result.ref.gameId})`);
         if (result.warnings.length > 0) log(`  Passed with ${result.warnings.length} warning(s)`);
@@ -930,17 +1043,8 @@ async function main(): Promise<number> {
         return 0;
       }
 
-      case "login-import": {
-        const from =
-          typeof flags.from === "string" ? flags.from : path.join(REPO_ROOT, "harness", ".cache");
-        const source = importLogin(from, authCacheFile(config), flags.force === true);
-        log(`Saved login imported from ${source} into ${config.cacheDir}.`);
-        log("Takes effect on the next start (`up --fresh` or a restart).");
-        return 0;
-      }
-
       case "save-login": {
-        const snapshot = await captureLogin(config, { context, onProgress: (m) => log(`  ${m}`) });
+        const snapshot = await captureLogin(config, { onProgress: (m) => log(`  ${m}`) });
         log("");
         log("Login captured. `up --fresh` will now start already signed in.");
         log(`  ${snapshot}`);
@@ -964,7 +1068,6 @@ async function main(): Promise<number> {
           log(`=== run ${String(run)} of ${String(runs)} ===`);
           try {
             const result = await runE2e(config, {
-              context,
               collection: target,
               fresh: flags.keep !== true,
               purge: flags.purge === true,
@@ -1020,7 +1123,9 @@ async function main(): Promise<number> {
         if (file === undefined) {
           throw new ConfigError("script needs a file: doodlebot script <file.mts> [its args...]");
         }
-        const abs = path.resolve(file);
+        // The script runs in the caller's directory, so a relative path is read from there too.
+        const cwd = callerCwd();
+        const abs = path.resolve(cwd, file);
         if (!fs.existsSync(abs)) throw new ConfigError(`${abs} does not exist.`);
         const insideRepo = !path.relative(REPO_ROOT, abs).startsWith("..");
         if (!/\.(?:mts|mjs)$/.test(abs) && !insideRepo) {
@@ -1030,21 +1135,13 @@ async function main(): Promise<number> {
           );
         }
         const kit = pathToFileURL(path.join(REPO_ROOT, "harness", "src", "kit.ts")).href;
-        const owner = resolveOwner(config.owner);
-        // --owner, --wait and the instance flags are the kit's wherever they appear (cliArgs.ts).
-        log(`script: ${abs} as owner "${owner}" (VORTEX_AI_KIT=${kit})`);
-        return runUnderLease({
-          context,
-          command: process.execPath,
-          args: [tsxCli(), abs, ...passthrough],
-          owner,
-          // The running Vortex's checkout too, so nobody rebuilds it under the script.
-          resources: attachedLeaseResources(config),
-          purpose: `script ${path.basename(abs)}`,
-          waitMs: (typeof flags.wait === "string" ? Number(flags.wait) : 0) * 60_000,
-          shell: false,
+        // The instance flags are the kit's wherever they appear (cliArgs.ts).
+        log(`script: ${abs} (VORTEX_AI_KIT=${kit})`);
+        return runInteractive(process.execPath, [tsxCli(), abs, ...passthrough], {
+          cwd,
           // The script's loadConfig() then sees the same instance this command was given.
           env: {
+            ...commandEnv(cwd),
             VORTEX_AI_KIT: kit,
             VORTEX_AI_CACHE_DIR: config.cacheDir,
             VORTEX_AI_ARTIFACT_DIR: config.artifactDir,
@@ -1052,12 +1149,11 @@ async function main(): Promise<number> {
             VORTEX_AI_CDP_PORT: String(config.cdpPort),
             VORTEX_MCP_TOKEN: config.mcpToken,
           },
-          onWaiting: (err) => log(`Waiting for the lease:\n${err.message}\n`),
         });
       }
 
       case "build-extension": {
-        const root = await ensureExtensionBuilt({ rebuild: true, owner: config.owner });
+        const root = await ensureExtensionBuilt({ rebuild: true });
         log(`Built the extension at ${root}`);
         return 0;
       }
@@ -1068,277 +1164,13 @@ async function main(): Promise<number> {
         return 1;
     }
   };
-  return LIVE_COMMANDS.has(command)
-    ? withLiveOperation(config, command, dispatch, {
-        context: inheritedOperation(requireNamedOwner(config.owner)),
-      })
-    : dispatch();
-}
-
-async function kitCommand(positional: string[], flags: ParsedArgs["flags"]): Promise<number> {
-  const owner = resolveOwner(typeof flags.owner === "string" ? flags.owner : undefined);
-  const minutes = (name: string): number | undefined => {
-    if (typeof flags[name] !== "string") return undefined;
-    const value = Number(flags[name]);
-    if (!Number.isFinite(value) || value < 0) throw new ConfigError(`--${name} must be minutes.`);
-    return value;
-  };
-  switch (positional[0]) {
-    case "lock": {
-      const result = await waitForLease(
-        () => lockKit(owner, { ttlMinutes: minutes("ttl") }),
-        (minutes("wait") ?? 0) * 60_000,
-        (err) => log(`Waiting for the kit lock:\n${err.message}\n`),
-      );
-      log(
-        `${result.joined ? "Renewed" : "Took"} the kit lock for "${owner}" until ` +
-          `${result.lease.expiresAt ?? "released"}. Now: kit sync, edit, pnpm run ci, commit, ` +
-          `kit push, kit unlock --acquisition ${result.lease.acquisitionId}.`,
-      );
-      return 0;
-    }
-    case "unlock": {
-      const result = unlockKit(owner, {
-        force: flags.force === true,
-        acquisitionId: typeof flags.acquisition === "string" ? flags.acquisition : undefined,
-        repo: REPO_ROOT,
-      });
-      log(
-        result.released ? "Released the kit lock." : `Not released: ${result.reason ?? "unknown"}.`,
-      );
-      return result.released || result.reason === "not held" ? 0 : 1;
-    }
-    case "status":
-    case undefined: {
-      const holder = kitLockHolder();
-      if (flags.json === true) {
-        const state = readLease("kit");
-        log(JSON.stringify(state === undefined ? [] : [state], null, 2));
-        return 0;
-      }
-      log(holder === undefined ? "The kit lock is free." : `The kit lock is held by "${holder}".`);
-      return 0;
-    }
-    case "renew": {
-      if (typeof flags.acquisition !== "string")
-        throw new ConfigError("kit renew requires --acquisition from kit status --json.");
-      const lease = renewLease("kit", owner, flags.acquisition, minutes("ttl") ?? 30);
-      log(`Renewed ${lease.acquisitionId} until ${lease.expiresAt}.`);
-      return 0;
-    }
-    case "sync": {
-      const sha = await syncKit({ owner, onProgress: (m) => log(`  ${m}`) });
-      log(`The kit is at ${sha.slice(0, 9)}.`);
-      return 0;
-    }
-    case "push": {
-      const sha = await pushKit({ owner, onProgress: (m) => log(`  ${m}`) });
-      log(
-        `Pushed the kit at ${sha.slice(0, 9)}. Release the lock: kit unlock --owner ${owner} --acquisition <original-id>`,
-      );
-      return 0;
-    }
-    default:
-      throw new ConfigError("kit takes lock, renew, unlock, status, sync or push.");
-  }
-}
-
-async function worktreeCommand(positional: string[], flags: ParsedArgs["flags"]): Promise<number> {
-  const name = positional[1];
-  switch (positional[0]) {
-    case "add": {
-      if (name === undefined) throw new ConfigError("worktree add needs a name.");
-      const worktree = await addWorktree({
-        owner: requireNamedOwner(typeof flags.owner === "string" ? flags.owner : undefined),
-        name,
-        base: typeof flags.base === "string" ? flags.base : undefined,
-        branch: typeof flags.branch === "string" ? flags.branch : undefined,
-        ref: typeof flags.ref === "string" ? flags.ref : undefined,
-        install: flags["no-install"] !== true,
-        build: flags["no-build"] !== true,
-        onProgress: (m) => log(`  ${m}`),
-      });
-      log(`
-Worktree ${worktree.name} on ${worktree.branch ?? "a detached HEAD"}: ${worktree.dir}`);
-      log(`  Run it:  pnpm run ai -- up --worktree ${worktree.name} --slot auto --owner <you>`);
-      return 0;
-    }
-    case "list": {
-      const worktrees = await listWorktrees();
-      if (flags.json === true) log(JSON.stringify(worktrees, null, 2));
-      else if (worktrees.length === 0) log("No worktrees. Make one with `worktree add <name>`.");
-      else
-        for (const w of worktrees)
-          log(`${w.name}: ${w.branch ?? "(detached)"} at ${w.head.slice(0, 9)}  ${w.dir}`);
-      return 0;
-    }
-    case "remove": {
-      if (name === undefined) throw new ConfigError("worktree remove needs a name.");
-      log(
-        `Removed ${await removeWorktree(name, flags.force === true, requireNamedOwner(typeof flags.owner === "string" ? flags.owner : undefined))}; any branch it had is kept.`,
-      );
-      return 0;
-    }
-    default:
-      throw new ConfigError("worktree takes add <name>, list or remove <name>.");
-  }
-}
-
-async function leaseCommand(
-  positional: string[],
-  flags: ParsedArgs["flags"],
-  passthrough: string[],
-): Promise<number> {
-  const text = (name: string): string | undefined =>
-    typeof flags[name] === "string" ? flags[name] : undefined;
-  const minutes = (name: string, fallback: number): number => {
-    const raw = text(name);
-    const value = raw === undefined ? fallback : Number(raw);
-    if (!Number.isFinite(value) || value < 0) {
-      throw new ConfigError(`--${name} must be a number of minutes.`);
-    }
-    return value;
-  };
-  const owner =
-    positional[0] === "status" ? resolveOwner(text("owner")) : requireNamedOwner(text("owner"));
-  const checkout = text("checkout");
-  // The instance of the slot (or cache) these flags pick, as every other command sees it.
-  const instance = instanceResource(configFrom(flags).cacheDir);
-  // `lease run` and `lease acquire` hold the instance and, with --checkout, that checkout too
-  // (`acquire --checkout-only`: just the checkout).
-  const resources =
-    checkout === undefined
-      ? [instance]
-      : flags["checkout-only"] === true
-        ? [checkoutResource(checkout)]
-        : [instance, checkoutResource(checkout)];
-  const onReclaim = (state: LeaseState): void =>
-    log(
-      `Reclaimed a stale ${state.lease.resource} lease from "${state.lease.owner}" (${state.reason}).`,
-    );
-
-  switch (positional[0]) {
-    case "status": {
-      const states = listLeases();
-      log(flags.json === true ? JSON.stringify(states, null, 2) : formatLeaseStates(states));
-      return 0;
-    }
-    case "acquire": {
-      const pid = text("pid") === undefined ? undefined : Number(text("pid"));
-      if (pid !== undefined && (!Number.isInteger(pid) || pid <= 0))
-        throw new ConfigError("--pid must be a process id.");
-      const ttl = minutes("ttl", 60);
-      // All or nothing: refused one, none newly taken is left held.
-      const results = await waitForLease(
-        () =>
-          acquireLeases(resources, owner, {
-            mode: "explicit",
-            purpose: text("purpose"),
-            ttlMinutes: ttl,
-            boundPid: pid,
-          }),
-        minutes("wait", 0) * 60_000,
-        (err) =>
-          log(`Waiting for the lease:
-${err.message}
-`),
-      );
-      for (const result of results) {
-        if (result.reclaimed !== undefined) onReclaim(result.reclaimed);
-        const until =
-          result.lease.expiresAt === undefined
-            ? "with no expiry"
-            : `until ${result.lease.expiresAt}`;
-        log(
-          `${result.joined ? "Renewed" : "Acquired"} the ${result.lease.resource} lease for "${owner}" ${until}` +
-            (pid === undefined ? "" : `, while pid ${String(pid)} runs`) +
-            ".",
-        );
-      }
-      log(
-        `Renew by acquiring again; release everything "${owner}" holds with \`lease release --owner ${owner}\`.`,
-      );
-      return 0;
-    }
-    case "release": {
-      // --checkout: that checkout only. Otherwise every lease the owner holds, instance and
-      // checkouts alike, so one call ends a session.
-      // `--force` with neither --owner nor --checkout clears the instance lease, whoever holds it.
-      const one = (resource: string): ReleaseResult & { resource: string } => ({
-        resource,
-        ...releaseLease(resource, owner, { force: flags.force === true }),
-      });
-      const released: Array<ReleaseResult & { resource: string }> =
-        checkout !== undefined
-          ? [one(checkoutResource(checkout))]
-          : flags.force === true && text("owner") === undefined
-            ? [one(instance)]
-            : releaseOwnerLeases(owner, { force: flags.force === true });
-      if (released.length === 0) {
-        log(`"${owner}" holds no leases.`);
-        return 0;
-      }
-      let code = 0;
-      for (const result of released) {
-        const { resource } = result;
-        if (!result.released) {
-          log(`${resource}: not released: ${result.reason ?? "unknown"}.`);
-          if (result.reason !== "not held") code = 1;
-        } else if (result.keptForRunning === true) {
-          log(
-            `${resource}: released your hold, but it stays locked while Vortex (pid ` +
-              `${result.stillRunning.join(", ")}) runs from it. \`down\` ends that; --force clears it.`,
-          );
-        } else {
-          log(`${resource}: released.`);
-          if (result.stillRunning.length > 0) {
-            log(
-              `  A harness Vortex (pid ${result.stillRunning.join(", ")}) is still running; the next ` +
-                "owner's up or down will stop it. Run `down` first to stop it yourself.",
-            );
-          }
-        }
-      }
-      return code;
-    }
-    case "run": {
-      const [cmd, ...args] = passthrough;
-      if (cmd === undefined) {
-        throw new ConfigError(
-          "lease run needs a command after --, e.g. lease run --owner qa -- pnpm run verify",
-        );
-      }
-      return runUnderLease({
-        command: cmd,
-        args,
-        owner,
-        resources,
-        purpose: text("purpose"),
-        waitMs: minutes("wait", 0) * 60_000,
-        onWaiting: (err) => log(`Waiting for the lease:\n${err.message}\n`),
-        onReclaim,
-      });
-    }
-    default:
-      throw new ConfigError(
-        "lease needs acquire, release, status or run. See help, or harness/AGENTS.md.",
-      );
-  }
+  return dispatch();
 }
 
 function targetFrom(flags: ParsedArgs["flags"]): Record<string, unknown> {
   if (typeof flags.ref === "string") return { ref: flags.ref };
   if (typeof flags.selector === "string") return { selector: flags.selector };
   throw new ConfigError("Provide --ref <e12> (from `doodlebot snapshot`) or --selector <css>.");
-}
-
-/** tsx's CLI in this repo's node_modules, run with this Node. */
-function tsxCli(): string {
-  try {
-    return createRequire(import.meta.url).resolve("tsx/cli");
-  } catch {
-    return path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
-  }
 }
 
 function parseViewports(

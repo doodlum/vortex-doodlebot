@@ -2,21 +2,46 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bootstrap, captureLogin, liveDir, loginDir, readMarker, snapshotDir } from "./bootstrap";
+import {
+  bootstrap,
+  buildChanged,
+  captureLogin,
+  liveDir,
+  loginDir,
+  readLastBuild,
+  readMarker,
+  snapshotDir,
+} from "./bootstrap";
+import { assertNoOwnVortex, windowsOnlyWarning } from "./ownVortex";
+import { assertGamePathAllowed } from "./gameCommand";
+import { protectUserFolders, settlePendingRestores, userFoldersOf } from "./userFolders";
+import { bethesdaSandboxPaths } from "./bethesdaSandbox";
 import type { HarnessConfig } from "./config";
 import { requireOAuth } from "./auth";
 import { authCacheFile, launchVortex, stopStaleInstance } from "./instance";
 import { ensureGameManaged, waitForGameStartup } from "./gameSetup";
+import { USER_STATE_DIR } from "./paths";
+import { INSTANCE_RECORD, readInstanceRecord, writeInstanceRecord } from "./runningVortex";
 
-vi.mock("./liveOperation", () => ({
-  withLiveOperation: (
-    _config: unknown,
-    _name: string,
-    run: (context: unknown) => Promise<unknown>,
-  ) => run(undefined),
+// The one instance record lives in ~/.doodlebot; keep it in a temporary folder, and let this
+// process stand in for a running Vortex.
+vi.mock("./paths", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./paths")>();
+  const nodeFs = await import("node:fs");
+  const nodeOs = await import("node:os");
+  const nodePath = await import("node:path");
+  return {
+    ...actual,
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "bootstrap-state-")),
+  };
+});
+vi.mock("./processes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./processes")>()),
+  processImageName: vi.fn(() => "electron.exe"),
 }));
+
 vi.mock("./gameSetup", () => ({
   ensureGameManaged: vi.fn(
     async (_mcp: unknown, gameId: string, { gamePath }: { gamePath: string }) => ({
@@ -27,6 +52,20 @@ vi.mock("./gameSetup", () => ({
     }),
   ),
   waitForGameStartup: vi.fn(async () => true),
+}));
+
+// The protections reach the machine (its processes, the owner's folders, content.json); their
+// own tests cover them. Here only their place in the launch is checked.
+vi.mock("./ownVortex", () => ({
+  assertNoOwnVortex: vi.fn(),
+  windowsOnlyWarning: vi.fn((): string | undefined => undefined),
+}));
+vi.mock("./gameCommand", () => ({ assertGamePathAllowed: vi.fn() }));
+vi.mock("./userFolders", () => ({
+  protectUserFolders: vi.fn(async () => undefined),
+  settlePendingRestores: vi.fn(async () => undefined),
+  userFolderRoots: vi.fn(() => ({ documents: "", localAppData: "", roamingAppData: "" })),
+  userFoldersOf: vi.fn(() => []),
 }));
 
 vi.mock("./auth", () => ({
@@ -73,7 +112,120 @@ function fakeConfig(): HarnessConfig {
 
 afterEach(() => {
   vi.clearAllMocks();
+  fs.rmSync(INSTANCE_RECORD, { force: true });
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+afterAll(() => fs.rmSync(USER_STATE_DIR, { recursive: true, force: true }));
+
+function liveRecord(cacheDir: string, exe = "C:/Vortex/Vortex.exe") {
+  return {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    cacheDir,
+    userDataDir: path.join(cacheDir, "live"),
+    mcpPort: 3701,
+    exe,
+  };
+}
+
+describe("one harness Vortex per machine", () => {
+  it("refuses while another cache's Vortex runs, before stopping or launching anything", async () => {
+    const config = fakeConfig();
+    const otherCache = path.join(os.tmpdir(), "another-workspace", "harness", ".cache");
+    const other = liveRecord(otherCache);
+    writeInstanceRecord(other);
+    await expect(bootstrap(config, { fresh: true })).rejects.toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${otherCache}); run \`doodlebot down\` before starting Vortex.`,
+    );
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(launchVortex).not.toHaveBeenCalled();
+    expect(readInstanceRecord()).toEqual(other);
+  });
+
+  it("restarts this cache's own running Vortex as before", async () => {
+    const config = fakeConfig();
+    // The same cache spelled differently still counts as the same.
+    writeInstanceRecord(liveRecord(`${config.cacheDir}${path.sep}`));
+    const result = await bootstrap(config, { fresh: true });
+    expect(stopStaleInstance).toHaveBeenCalledWith(config);
+    expect(launchVortex).toHaveBeenCalled();
+    await result.instance.stop();
+  });
+
+  it("refuses to stop this cache's leftover of another build, naming it", async () => {
+    const config = fakeConfig();
+    const other = liveRecord(config.cacheDir, "C:/releases/2.7.1/app/Vortex.exe");
+    writeInstanceRecord(other);
+    await expect(bootstrap(config, { fresh: true })).rejects.toThrow(
+      `A harness Vortex of another build is running from C:/releases/2.7.1/app/Vortex.exe (pid ${String(process.pid)}); run \`doodlebot down\` before starting Vortex.`,
+    );
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(readInstanceRecord()).toEqual(other);
+  });
+
+  it("checks the game, restores the leftover's folders, then checks for the owner's Vortex, then backs up", async () => {
+    const config = fakeConfig();
+    writeInstanceRecord(liveRecord(config.cacheDir));
+    const progress: string[] = [];
+    // Off Windows the launch says the protections are Windows-only (the mock plays Linux).
+    vi.mocked(windowsOnlyWarning).mockReturnValueOnce(
+      "warning: on linux doodlebot cannot see your own Vortex",
+    );
+    const result = await bootstrap(config, { fresh: true, onProgress: (m) => progress.push(m) });
+    expect(progress).toContain("warning: on linux doodlebot cannot see your own Vortex");
+    const order = (mock: unknown) => vi.mocked(mock as () => void).mock.invocationCallOrder[0]!;
+    expect(order(assertGamePathAllowed)).toBeLessThan(order(stopStaleInstance));
+    expect(order(stopStaleInstance)).toBeLessThan(order(settlePendingRestores));
+    expect(settlePendingRestores).toHaveBeenCalledWith(expect.objectContaining({ clean: true }));
+    expect(order(settlePendingRestores)).toBeLessThan(order(assertNoOwnVortex));
+    expect(order(assertNoOwnVortex)).toBeLessThan(order(protectUserFolders));
+    expect(order(protectUserFolders)).toBeLessThan(order(launchVortex));
+    await result.instance.stop();
+  });
+
+  it("backs up the fake Fallout 4's real folders on a released build, then writes its INI files", async () => {
+    const config = fakeConfig();
+    const fake = { ...config, gamePath: bethesdaSandboxPaths(config.cacheDir).gamePath };
+    const myGames = path.join(config.cacheDir, "real", "My Games", "Fallout4");
+    vi.mocked(userFoldersOf).mockReturnValueOnce([myGames, path.join(config.cacheDir, "local")]);
+    vi.mocked(protectUserFolders).mockImplementationOnce(async (gameId) => {
+      expect(fs.existsSync(myGames)).toBe(false);
+      return { gameId, backupDir: path.join(config.cacheDir, "backup"), startedAt: "now" };
+    });
+    const result = await bootstrap(fake, { fresh: true });
+    expect(protectUserFolders).toHaveBeenCalledWith("fallout4", config.cacheDir);
+    expect(fs.readdirSync(myGames).toSorted()).toEqual(
+      ["Fallout4.ini", "Fallout4Custom.ini", "Fallout4Prefs.ini"].toSorted(),
+    );
+    expect(vi.mocked(protectUserFolders).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(launchVortex).mock.invocationCallOrder[0]!,
+    );
+    await result.instance.stop();
+  });
+
+  it("settles a dead leftover's restore as unclean", async () => {
+    const config = fakeConfig();
+    await bootstrap(config, { fresh: true });
+    expect(settlePendingRestores).toHaveBeenCalledWith(expect.objectContaining({ clean: false }));
+  });
+
+  it("starts fresh when the build differs from the last launch on this cache", async () => {
+    const config = fakeConfig();
+    await bootstrap(config, { fresh: true });
+    expect(readLastBuild(config.cacheDir)).toBe("C:/Vortex/Vortex.exe");
+    expect(buildChanged(readLastBuild(config.cacheDir), "C:\\Vortex\\Vortex.exe")).toBe(false);
+    expect(buildChanged(readLastBuild(config.cacheDir), "C:/releases/2.8.0/Vortex.exe")).toBe(true);
+    expect(buildChanged(undefined, "C:/Vortex/Vortex.exe")).toBe(false);
+    const messages: string[] = [];
+    await bootstrap(
+      { ...config, target: { ...config.target, executable: "C:/releases/2.8.0/Vortex.exe" } },
+      { onProgress: (m) => messages.push(m) },
+    );
+    expect(messages).toContain(
+      "the build changed since the last launch on this cache (C:/Vortex/Vortex.exe); starting fresh",
+    );
+    expect(messages).toContain("seeding the working directory from the snapshot");
+  });
 });
 
 describe("cold game management", () => {
@@ -97,6 +249,8 @@ describe("cold game management", () => {
     );
     expect(config.target.args).toEqual([]);
     expect(readMarker(snapshotDir(config, "test-key"))?.gameId).toBe("fallout4");
+    // The marker names the build it was made with, for the inventory.
+    expect(readMarker(snapshotDir(config, "test-key"))?.build).toBe("C:/Vortex/Vortex.exe");
     await result.instance.stop();
   });
 
@@ -197,6 +351,34 @@ describe("cold game management", () => {
   });
 });
 
+describe("the Nexus login of a cache", () => {
+  it("never seeds a test cache: it starts with no login, and the shared login is untouched", async () => {
+    const config = fakeConfig();
+    const sharedDir = path.join(USER_STATE_DIR, "login");
+    fs.mkdirSync(sharedDir, { recursive: true });
+    const sharedFile = path.join(sharedDir, path.basename(authCacheFile(config)));
+    fs.writeFileSync(sharedFile, JSON.stringify({ token: "t", refreshToken: "r" }));
+    try {
+      expect(authCacheFile(config)).toBe(path.join(config.cacheDir, path.basename(sharedFile)));
+      const result = await bootstrap(config, { fresh: true });
+      expect(fs.existsSync(authCacheFile(config))).toBe(false);
+      expect(fs.readFileSync(sharedFile, "utf8")).toBe(
+        JSON.stringify({ token: "t", refreshToken: "r" }),
+      );
+      await result.instance.stop();
+    } finally {
+      fs.rmSync(sharedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("puts a test cache's signed-out marker in that cache only", () => {
+    const config = fakeConfig();
+    fs.writeFileSync(authCacheFile(config), "null");
+    expect(fs.readdirSync(config.cacheDir)).toContain(path.basename(authCacheFile(config)));
+    expect(fs.existsSync(path.join(USER_STATE_DIR, "login"))).toBe(false);
+  });
+});
+
 describe("real copied game preservation", () => {
   it.each([false, true])(
     "preserveGameFixture=%s retains masters only when explicitly requested",
@@ -270,6 +452,30 @@ describe("captureLogin", () => {
     await expect(captureLogin(config)).rejects.toThrow("OAuth setup incomplete");
     expect(stopStaleInstance).not.toHaveBeenCalled();
     expect(fs.existsSync(loginDir(config))).toBe(false);
+  });
+
+  it("refuses while another cache's Vortex runs, before asking it for a login or stopping it", async () => {
+    const config = fakeConfig();
+    fs.mkdirSync(path.join(liveDir(config), "userData"));
+    const otherCache = path.join(os.tmpdir(), "another-workspace", "harness", ".cache");
+    const other = liveRecord(otherCache);
+    writeInstanceRecord(other);
+    await expect(captureLogin(config)).rejects.toThrow(
+      `A harness Vortex is running (pid ${String(process.pid)}, cache ${otherCache}); run \`doodlebot down\` before saving the login.`,
+    );
+    expect(requireOAuth).not.toHaveBeenCalled();
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(fs.existsSync(loginDir(config))).toBe(false);
+    expect(readInstanceRecord()).toEqual(other);
+  });
+
+  it("saves the login of this cache's own running Vortex", async () => {
+    const config = fakeConfig();
+    fs.mkdirSync(path.join(liveDir(config), "userData"));
+    writeInstanceRecord(liveRecord(`${config.cacheDir}${path.sep}`));
+    await captureLogin(config);
+    expect(stopStaleInstance).toHaveBeenCalledWith(config);
+    expect(readMarker(loginDir(config))?.loginCaptured).toBe(true);
   });
 
   it("preserves the previous login when clean shutdown fails", async () => {

@@ -1,5 +1,5 @@
 /**
- * Opt-in measurement of what concurrent downloads cost Vortex: pnpm run ai:test:download-churn.
+ * Opt-in measurement of what concurrent downloads cost Vortex: doodlebot test download-churn.
  *
  * LAZ-1168: during large collection installs, persistence ran constantly on tiny diffs —
  * download progress and speed land in the persisted `persistent.downloads` hive — and the
@@ -17,7 +17,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { startDownloadServer } from "../downloadServer";
 import { VortexMcpClient } from "../mcpClient";
 import { markLog, readSince, summariseLog } from "../vortexLog";
@@ -31,8 +30,6 @@ const seconds = Number(flag("seconds") ?? 60);
 const bytesPerSecond = 512 * 1024;
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:download-churn", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const status = await mcp.call<{ userDataDir: string | null }>("automation_status");

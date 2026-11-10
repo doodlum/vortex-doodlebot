@@ -1,0 +1,201 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  LOW_DISK_BYTES,
+  checkCommand,
+  checkRows,
+  formatCheck,
+  type CheckDeps,
+  type CheckRow,
+} from "./checkCommand";
+import { updateContent } from "./content";
+import { addGap } from "./gapCommand";
+import { addLesson } from "./knowledgeCommand";
+
+let root: string;
+let deps: CheckDeps & { contentFile: string; gapsFile: string };
+
+const LESSON = {
+  area: "collections",
+  symptom: "s",
+  cause: "c",
+  remedy: "r",
+  scope: "sc",
+  evidence: "e",
+  vortex: "2.8.0",
+};
+
+beforeEach(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "check-command-"));
+  const settings = path.join(root, "settings.json");
+  fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { "egm@egm": true } }));
+  fs.writeFileSync(
+    path.join(root, "shared-knowledge.md"),
+    "# Knowledge\n\n## Collections\n\n### Review stays open after Resume\n\nText.\n",
+  );
+  deps = {
+    version: () => ({ version: "2.0.0", commit: "abcdef1234567", dirty: false, workspace: root }),
+    doctor: () =>
+      Promise.resolve([
+        { name: "Vortex (installed)", ok: true, detail: "C:/Vortex/Vortex.exe" },
+        {
+          name: "7-Zip",
+          ok: false,
+          advisory: true,
+          detail: "not found",
+          fix: "winget install 7zip.7zip",
+        },
+        { name: "Nexus login captured", ok: false, advisory: true, detail: "missing" },
+      ]),
+    inventory: () => ({
+      items: [
+        { id: "sandbox", kind: "sandbox", ready: true, label: "the fake game" },
+        { id: "login", kind: "login", ready: false, next: "x", label: "no Nexus login cached" },
+      ],
+    }),
+    contentFile: path.join(root, "content.json"),
+    gapsFile: path.join(root, "gaps.md"),
+    knowledge: {
+      local: path.join(root, "knowledge.md"),
+      shared: path.join(root, "shared-knowledge.md"),
+    },
+    settingsFiles: [settings],
+    installedPluginsFile: path.join(root, "installed_plugins.json"),
+    source: () => ({
+      dir: path.join(root, ".vortex-src"),
+      remotes: { upstream: "https://github.com/Nexus-Mods/Vortex.git" },
+      branch: "master",
+      built: false,
+    }),
+    artifactDir: path.join(root, "artifacts"),
+    cacheDir: path.join(root, "cache"),
+    releasesDir: path.join(root, "releases"),
+    sizeOf: (dir) => (dir.endsWith("artifacts") ? 3 * 1024 ** 3 : undefined),
+    freeBytes: () => 50 * 1024 ** 3,
+  };
+});
+afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+const row = (rows: CheckRow[], item: string): CheckRow | undefined =>
+  rows.find((r) => r.item === item);
+
+describe("doodlebot check", () => {
+  it("prints one row per item: ready, missing with the exact next command, or blocked", async () => {
+    const rows = await checkRows(deps);
+    expect(row(rows, "doodlebot")).toMatchObject({ status: "ready", area: "workspace" });
+    expect(row(rows, "doodlebot")?.detail).toContain("2.0.0 (abcdef1234");
+    expect(row(rows, "7-Zip")).toMatchObject({
+      status: "advisory",
+      next: "winget install 7zip.7zip",
+    });
+    // The login is its own row, not doctor's.
+    expect(row(rows, "Nexus login captured")).toBeUndefined();
+    expect(row(rows, "Nexus login")).toMatchObject({
+      status: "missing",
+      next: "/doodlebot:setup --login",
+    });
+    expect(row(rows, "EGM (Elephant-Goldfish Model)")?.status).toBe("ready");
+    expect(row(rows, ".vortex-src")).toMatchObject({
+      status: "missing",
+      next: `doodlebot build --checkout ${path.join(root, ".vortex-src")}`,
+    });
+    expect(row(rows, ".vortex-src")?.detail).toMatch(/upstream https:.*no fork as origin.*master/);
+    expect(row(rows, "sandbox")?.status).toBe("ready");
+    expect(row(rows, "copy folder")).toMatchObject({
+      status: "missing",
+      next: "doodlebot game folder <dir>",
+    });
+    expect(row(rows, "pending restores")).toMatchObject({ status: "ready", detail: "none" });
+    expect(row(rows, "open kit gaps")).toMatchObject({ status: "info", detail: "none" });
+    expect(row(rows, "harness/.artifacts")?.detail).toMatch(/^3\.0 GB/);
+    expect(row(rows, "harness/.cache")?.detail).toContain("absent");
+    expect(row(rows, "free space")).toMatchObject({ status: "ready" });
+    for (const r of rows)
+      if (r.status === "missing" || r.status === "blocked") expect(r.next, r.item).toBeDefined();
+  });
+
+  it("lists a pending restore with doodlebot game restore <id>, and each registered copy's size", async () => {
+    updateContent((content) => {
+      content.copyFolder = path.join(root, "copies");
+      content.games.push({
+        gameId: "stardewvalley",
+        path: path.join(root, "copies", "stardewvalley"),
+        sizeBytes: 2 * 1024 ** 3,
+        registeredAt: "2026-11-10T00:00:00.000Z",
+      });
+      content.pendingRestores.push({
+        gameId: "stardewvalley",
+        backupDir: path.join(root, "cache", "backup"),
+        startedAt: "2026-11-10T01:00:00.000Z",
+      });
+    }, deps.contentFile);
+    const rows = await checkRows(deps);
+    expect(row(rows, "copy folder")).toMatchObject({ status: "ready" });
+    expect(row(rows, "pending restore: stardewvalley")).toMatchObject({
+      status: "blocked",
+      next: "doodlebot game restore stardewvalley",
+    });
+    expect(row(rows, "game copy stardewvalley")?.detail).toMatch(/^2\.0 GB recorded/);
+  });
+
+  it("warns below 10 GB free and names doodlebot clean", async () => {
+    deps.freeBytes = () => LOW_DISK_BYTES - 1;
+    const free = row(await checkRows(deps), "free space");
+    expect(free?.status).toBe("advisory");
+    expect(free?.detail).toContain("below 10 GB");
+    expect(free?.next).toContain("doodlebot clean");
+  });
+
+  it("counts open kit gaps and offers to remove local lessons KNOWLEDGE.md now holds", async () => {
+    addGap(
+      {
+        title: "No tool reads the Downloads queue",
+        command: "/doodlebot:try",
+        needed: "the queue",
+        happened: "nothing",
+        blocked: "no",
+      },
+      { file: deps.gapsFile, kit: () => "abc", isAncestor: () => false },
+    );
+    const duplicate = addLesson(
+      { title: "review stays open after resume", ...LESSON },
+      deps.knowledge!.local,
+    );
+    addLesson({ title: "Something only local", ...LESSON }, deps.knowledge!.local);
+    const rows = await checkRows(deps);
+    expect(row(rows, "open kit gaps")).toMatchObject({
+      detail: "1: No tool reads the Downloads queue",
+      next: "doodlebot gap list",
+    });
+    const lessons = rows.filter((r) => r.item.startsWith("local lesson "));
+    expect(lessons).toEqual([
+      expect.objectContaining({
+        item: `local lesson ${duplicate.id}`,
+        next: `doodlebot knowledge remove ${duplicate.id}`,
+      }),
+    ]);
+  });
+
+  it("reports EGM missing with the install step when no settings file enables it", async () => {
+    deps.settingsFiles = [path.join(root, "absent.json")];
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "missing",
+      next: expect.stringContaining("/plugin install egm@egm"),
+    });
+  });
+
+  it("suggests cloning when there is no .vortex-src, and prints a table or JSON", async () => {
+    deps.source = () => undefined;
+    const text = await checkCommand({}, deps);
+    expect(text).toContain("[MISSING ] .vortex-src: not cloned");
+    expect(text).toContain("next: doodlebot source");
+    expect(text).toMatch(/item\(s\) missing or blocked/);
+    const json = JSON.parse(await checkCommand({ json: true }, deps)) as { rows: CheckRow[] };
+    expect(row(json.rows, ".vortex-src")?.next).toBe("doodlebot source");
+    expect(formatCheck([])).toContain("Nothing missing.");
+  });
+});

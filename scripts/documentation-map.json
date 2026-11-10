@@ -1,27 +1,21 @@
 {
   "groups": [
     {
-      "name": "Human benchmark SDK and proposal cases",
-      "sources": ["^harness/benchmarks/", "^benchmarks/"],
+      "name": "Plugins and commands",
+      "sources": ["^plugins/", "^\\.claude-plugin/", "^\\.agents/plugins/"],
       "human": [
-        "docs/getting-started/setup.md",
-        "docs/reference/collections.md",
-        "docs/getting-started/first-session.md",
-        "docs/testing/benchmarks.md",
-        "docs/testing/adding-benchmarks.md",
-        "docs/testing/proposal.md",
-        "docs/testing/results.md",
-        "docs/testing/table-fixtures.md"
+        "docs/reference/commands.md",
+        "docs/get-started/install.md",
+        "docs/guides/use-cases.md"
       ],
-      "ai": ["harness/reference/script-api.md", "harness/reference/package-scripts.md"]
+      "ai": ["AGENTS.md", "harness/AGENTS.md"]
     },
     {
       "name": "MCP and renderer tools",
       "sources": ["^src/.*\\.ts$"],
       "human": [
         "docs/reference/mcp-tools.md",
-        "docs/guides/calling-tools.md",
-        "docs/guides/ui-automation.md",
+        "docs/guides/try-vortex.md",
         "docs/security.md",
         "docs/troubleshooting.md"
       ],
@@ -34,23 +28,25 @@
     },
     {
       "name": "CLI and configuration",
-      "sources": ["^harness/src/(cli|cliArgs|config|doctor|paths|slots)\\.ts$"],
+      "sources": [
+        "^bin/",
+        "^harness/src/(cli|cliArgs|commands|config|doctor|paths|versionCommand|linkCommand|testCommand|fixtureCommand|logCommand|perfSummary)\\.ts$"
+      ],
       "human": [
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
-        "docs/getting-started/first-session.md",
-        "docs/guides/parallel-sessions.md"
+        "docs/get-started/set-up.md"
       ],
       "ai": ["harness/reference/cli.md", "harness/AGENTS.md"]
     },
     {
       "name": "Lifecycle and authentication",
       "sources": [
-        "^harness/src/(instance|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
+        "^harness/src/(instance|runningVortex|processes|bootstrap|auth|login|runningProfile|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
       ],
       "human": [
-        "docs/reference/sessions.md",
-        "docs/getting-started/setup.md",
+        "docs/concepts/one-test-vortex.md",
+        "docs/guides/sign-in.md",
         "docs/security.md",
         "docs/troubleshooting.md"
       ],
@@ -61,34 +57,23 @@
       "sources": [
         "^harness/src/(kit|mcpClient|cdp|uiDriver|uiSession|localMod|deployment|collections|largeLibrary|tableProbes|collectionScale|offlineCollection|profiling|recording|slowDownload|downloadServer|vortexLog|jsonFile)\\.ts$"
       ],
-      "human": [
-        "docs/reference/index.md",
-        "docs/getting-started/first-session.md",
-        "docs/guides/mod-workflows.md",
-        "docs/testing/benchmarks.md"
-      ],
+      "human": ["docs/guides/try-vortex.md", "docs/guides/benchmark.md"],
       "ai": ["harness/reference/script-api.md", "harness/AGENTS.md", "harness/TESTING.md"]
     },
     {
-      "name": "Coordination, builds and evidence",
+      "name": "Builds and evidence",
       "sources": [
-        "^harness/src/(lease|leaseCommand|operations|checkoutOperation|liveOperation|processRunner|kitLock|source|worktree|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|readiness|prChecks|prPreflight|vortexE2e)\\.ts$"
+        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|prChecks|prPreflight|prPush)\\.ts$"
       ],
       "human": [
-        "docs/guides/parallel-sessions.md",
         "docs/guides/source-development.md",
-        "docs/guides/evidence.md",
+        "docs/concepts/evidence.md",
         "docs/contributing.md"
       ],
-      "ai": [
-        "harness/AGENT-WORKFLOW.md",
-        "harness/WORKFLOWS.md",
-        "harness/TESTING.md",
-        "harness/AGENTS.md"
-      ]
+      "ai": ["harness/AGENTS.md", "harness/PULL-REQUESTS.md", "harness/TESTING.md"]
     },
     {
-      "name": "Checks and benchmarks",
+      "name": "Checks",
       "sources": [
         "^harness/src/tests/",
         "\\.test\\.ts$",
@@ -96,25 +81,32 @@
         "^vitest\\.config\\.ts$",
         "^package\\.json$"
       ],
+      "human": ["docs/guides/regression-tests.md", "docs/contributing.md"],
+      "ai": ["harness/TESTING.md"]
+    },
+    {
+      "name": "Knowledge, kit gaps and sharing",
+      "sources": ["^harness/src/(knowledgeCommand|gapCommand|share|entryStore)\\.ts$"],
+      "human": ["docs/concepts/knowledge.md"],
+      "ai": ["harness/AGENTS.md", "KNOWLEDGE.md"]
+    },
+    {
+      "name": "Inventory, QA catalogue and disk use",
+      "sources": ["^harness/qa/", "^harness/src/(inventory|qaCatalog|diskUse|gameCommand)\\.ts$"],
       "human": [
-        "docs/testing/running.md",
-        "docs/testing/integration.md",
-        "docs/testing/unit.md",
-        "docs/testing/benchmarks.md",
-        "docs/reference/package-scripts.md"
+        "docs/reference/qa-catalog.md",
+        "docs/concepts/evidence.md",
+        "docs/guides/games-and-baselines.md"
       ],
-      "ai": ["harness/TESTING.md", "harness/reference/package-scripts.md"]
+      "ai": ["harness/AGENTS.md", "harness/TESTING.md"]
     },
     {
       "name": "Harness implementation coverage",
       "sources": ["^harness/src/[^/]+\\.ts$"],
       "human": [
-        "docs/reference/index.md",
         "docs/reference/cli.md",
         "docs/reference/configuration.md",
-        "docs/reference/sessions.md",
-        "docs/guides/parallel-sessions.md",
-        "docs/testing/running.md"
+        "docs/concepts/how-it-works.md"
       ],
       "ai": [
         "harness/reference/script-api.md",
@@ -124,6 +116,16 @@
       ]
     },
     {
+      "name": "Design-first workflow",
+      "sources": ["^plugins/doodlebot/(resources|agents)/", "^designs/SITEMAP\\.md$"],
+      "human": [
+        "docs/guides/design-a-feature.md",
+        "docs/concepts/design-first.md",
+        "docs/guides/use-cases.md"
+      ],
+      "ai": ["AGENTS.md", "harness/AGENTS.md"]
+    },
+    {
       "name": "Documentation maintenance",
       "sources": [
         "^scripts/docs",
@@ -131,8 +133,8 @@
         "^mkdocs\\.yml$",
         "^requirements-docs\\.txt$"
       ],
-      "human": ["docs/maintaining-documentation.md"],
-      "ai": ["AGENTS.md", "harness/KNOWLEDGE-ROUTES.md", "harness/AGENT-WORKFLOW.md"]
+      "human": ["docs/contributing.md"],
+      "ai": ["AGENTS.md", "harness/AGENTS.md"]
     }
   ]
 }

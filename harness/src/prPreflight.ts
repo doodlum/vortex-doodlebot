@@ -24,9 +24,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 
-import { checkoutResource } from "./lease";
-import { withCheckoutOperation } from "./checkoutOperation";
-import type { OperationOptions } from "./operations";
+import { assertNoVortexRunningFrom } from "./runningVortex";
 import {
   abortOnSignals,
   captureCheckoutIdentity,
@@ -36,6 +34,7 @@ import {
   type CheckoutIdentity,
 } from "./evidence";
 import { UPSTREAM, childEnv } from "./source";
+import { DESIGNS_DIR, isDesignSubject } from "./prPush";
 import { REPO_ROOT } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -43,7 +42,7 @@ const execFileAsync = promisify(execFile);
 export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "inconclusive";
 
 export interface CheckResult {
-  id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "description";
+  id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "design" | "description";
   title: string;
   status: CheckStatus;
   summary: string;
@@ -1859,10 +1858,7 @@ export function completeNativeTestRun(run: Pick<TestRunResult, "code" | "reporte
 export type TestRunner = (
   cwd: string,
   tests: string[],
-  options: OperationOptions & {
-    signal: AbortSignal;
-    checkout: string;
-  },
+  options: { signal: AbortSignal },
 ) => Promise<TestRunResult>;
 
 /** Vitest's default output retains the assertion oracle; JSON establishes completeness. */
@@ -1873,7 +1869,7 @@ export const vitestRunner: TestRunner = async (cwd, tests, options) => {
   const reportFile = path.join(directory, "report.json");
   try {
     const result = await runEvidenceProcess({
-      ...options,
+      signal: options.signal,
       executable: process.execPath,
       args: [
         cli,
@@ -1886,7 +1882,6 @@ export const vitestRunner: TestRunner = async (cwd, tests, options) => {
       ],
       cwd,
       env: childEnv(),
-      persistentResources: [checkoutResource(options.checkout)],
     });
     options.signal.throwIfAborted();
     const json = fs.existsSync(reportFile) ? fs.readFileSync(reportFile, "utf8") : undefined;
@@ -1973,7 +1968,7 @@ export function negativeFailureKind(
   return "unclassified";
 }
 
-export interface RevertOptions extends OperationOptions {
+export interface RevertOptions {
   signal: AbortSignal;
   tests: string[];
   projectDir?: string;
@@ -2103,7 +2098,7 @@ async function revertCheck(
         `[pr-preflight] ${label}: vitest run ${group.join(" ")} (in ${where}; paths relative to it)`,
       );
       options.signal.throwIfAborted();
-      const run = await options.runner(cwd, group, { ...options, checkout: dir });
+      const run = await options.runner(cwd, group, { signal: options.signal });
       options.signal.throwIfAborted();
       runs.push({ cwd: where, tests: group, code: run.code, reporter: run.reporter });
       output += run.output;
@@ -2267,7 +2262,7 @@ async function revertCheck(
     ...revertResult(
       failureKind === "unclassified" ? "inconclusive" : "fail",
       failureKind === "unclassified"
-        ? "branch passes and reverted run fails; inspect the output and identify the intended assertion before readiness"
+        ? "branch passes and reverted run fails; inspect the output and identify the intended assertion before relying on it"
         : `reverted run failed during ${failureKind}; this does not prove the intended assertion`,
       details,
     ),
@@ -2282,7 +2277,7 @@ async function revertCheck(
 // Orchestration
 // ---------------------------------------------------------------------------
 
-export interface PreflightOptions extends OperationOptions {
+export interface PreflightOptions {
   signal?: AbortSignal;
   handleSignals?: boolean;
   checkout: string;
@@ -2301,10 +2296,6 @@ export interface PreflightOptions extends OperationOptions {
   runner?: TestRunner;
   fetchPullRequest?: (pr: string, repo: string) => Promise<PullRequestText>;
   onProgress?: (message: string) => void;
-  /** Named owner required for checkout mutation. */
-  owner?: string;
-  /** Lease directory override, for tests. */
-  leaseDir?: string;
 }
 
 export async function fetchPullRequestText(pr: string, repo: string): Promise<PullRequestText> {
@@ -2318,24 +2309,13 @@ export async function fetchPullRequestText(pr: string, repo: string): Promise<Pu
 
 export async function runPreflight(options: PreflightOptions): Promise<PreflightReport> {
   if (options.skipRevert || options.head !== undefined) return runPreflightInside(options);
-  return withCheckoutOperation(
-    path.resolve(options.checkout),
-    options.owner,
-    "pr-preflight",
-    {
-      context: options.context,
-      leaseEnv: options.leaseEnv ?? { dir: options.leaseDir },
-      rewriting: true,
-    },
-    async (context) => {
-      const cancellation = abortOnSignals(options.signal, options.handleSignals !== false);
-      try {
-        return await runPreflightInside({ ...options, context, signal: cancellation.signal });
-      } finally {
-        cancellation.dispose();
-      }
-    },
-  );
+  assertNoVortexRunningFrom(path.resolve(options.checkout), "reverting it");
+  const cancellation = abortOnSignals(options.signal, options.handleSignals !== false);
+  try {
+    return await runPreflightInside({ ...options, signal: cancellation.signal });
+  } finally {
+    cancellation.dispose();
+  }
 }
 
 async function runPreflightInside(options: PreflightOptions): Promise<PreflightReport> {
@@ -2399,8 +2379,6 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
   } else {
     checks.push(
       await revertCheck(dir, files, mergeBase, {
-        context: options.context,
-        leaseEnv: options.leaseEnv ?? { dir: options.leaseDir },
         signal: options.signal!,
         tests: options.tests ?? [],
         projectDir: options.projectDir,
@@ -2413,6 +2391,7 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
   }
 
   checks.push(commentCheck(files));
+  checks.push(await designCheck(dir, files, mergeBase, headSha));
 
   if (options.pr !== undefined) {
     const fetch = options.fetchPullRequest ?? fetchPullRequestText;
@@ -2458,6 +2437,70 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
     passed:
       kitUnchanged &&
       checks.every((check) => check.status !== "fail" && check.status !== "inconclusive"),
+  };
+}
+
+/** Each commit of `range` with its subject and the files it touches. */
+async function commitsIn(
+  dir: string,
+  range: string,
+): Promise<{ sha: string; subject: string; files: string[] }[]> {
+  const shas = (await git(dir, ["rev-list", range])).split("\n").filter(Boolean);
+  return Promise.all(
+    shas.map(async (sha) => ({
+      sha,
+      subject: (await git(dir, ["log", "-1", "--format=%s", sha])).trim(),
+      files: (await git(dir, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha]))
+        .split("\n")
+        .filter(Boolean),
+    })),
+  );
+}
+
+/**
+ * The design stays out of a Vortex PR: FAIL when a `docs/designs/` file of this branch's
+ * `docs(design)` commits is in the diff or in any commit of the range. The design commits are the
+ * range's own and those behind the local `design/<topic>` tags (`doodlebot pr-branch`).
+ */
+export async function designCheck(
+  dir: string,
+  files: FileDiff[],
+  mergeBase: string,
+  headSha: string,
+): Promise<CheckResult> {
+  const range = await commitsIn(dir, `${mergeBase}..${headSha}`);
+  const designCommits = range.filter((commit) => isDesignSubject(commit.subject));
+  const tags = (await git(dir, ["for-each-ref", "--format=%(objectname)", "refs/tags/design/"]))
+    .split("\n")
+    .filter(Boolean);
+  for (const tag of tags) {
+    if (!(await gitOk(dir, ["merge-base", "--is-ancestor", mergeBase, tag]))) continue;
+    designCommits.push(
+      ...(await commitsIn(dir, `${mergeBase}..${tag}`)).filter((c) => isDesignSubject(c.subject)),
+    );
+  }
+  const designFiles = new Set(
+    designCommits.flatMap((commit) => commit.files.filter((file) => file.startsWith(DESIGNS_DIR))),
+  );
+  const details: string[] = [];
+  for (const file of files)
+    if (designFiles.has(file.path)) details.push(`in the diff: ${file.path}`);
+  for (const commit of range) {
+    const touched = commit.files.filter((file) => designFiles.has(file));
+    if (touched.length > 0)
+      details.push(`${commit.sha.slice(0, 7)} ${commit.subject}: ${touched.join(", ")}`);
+  }
+  return {
+    id: "design",
+    title: "Design kept out of the PR",
+    status: details.length > 0 ? "fail" : "pass",
+    summary:
+      details.length > 0
+        ? "the branch carries its design; push pr/<topic> from `doodlebot pr-branch <topic>` instead"
+        : designFiles.size > 0
+          ? "no design file in the diff or its commits"
+          : "no docs(design) commits",
+    details,
   };
 }
 

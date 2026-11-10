@@ -1,11 +1,47 @@
 # Vortex pull requests: titles, descriptions and review
 
-[WORKFLOWS.md](WORKFLOWS.md#before-a-vortex-pull-request-is-ready) defines applicable submission
-gates; [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md) defines scope, delegation, evidence and human
-responsibility. Vortex's current `CONTRIBUTING.md` takes precedence. Keep one logical change,
-link the issue and report platform/checks. Its approximate 400-line/10-file guidance is not
-a substitute for assessing blast radius; discuss large or multi-extension work with maintainers
-before implementing it. The submitter must understand every line.
+`/doodlebot:pr` follows this file; `/doodlebot:fix` and `/doodlebot:qa` produce the evidence it
+cites. Vortex's current `CONTRIBUTING.md` takes precedence. Keep one logical change, link the
+issue and report platform and checks. Its approximate 400-line/10-file guidance is not a
+substitute for assessing blast radius; discuss large or multi-extension work with maintainers
+before implementing it. The person submitting must understand every line.
+
+A feature or refactor PR implements an approved EGM design. The design lives on the Vortex
+branch as `docs/designs/<topic>.md`, committed as `docs(design): <topic>`; `doodlebot pr-branch`
+leaves those commits out of `pr/<topic>` and, given `--design-commit <sha>`, tags the approved
+design commit `design/<topic>` (an earlier approval stays as `design/<topic>-v<n>`; an
+unapproved revision is never tagged), so the description links the design without the PR
+carrying it.
+
+## Never publish an untested change
+
+A fix is untested until it has been tested the way the person asked: their collection, mod,
+game or steps. A substitute (a hand-built fixture, an offline collection, unit tests alone,
+reading the uploaded data, or the fix's own path in some other scenario) does not count. Run
+the person's scenario on the base and confirm the reported symptom (`/doodlebot:fix`'s "before"
+run report), then on the fixed build and confirm it is gone (the "after" run report). If a step
+cannot be run (no access, a real upload, a missing login), stop and report the exact missing
+step. Do not open a draft that lists the gap under Not covered: a draft PR is still
+publication, and authorization to open one does not waive the testing.
+
+## Gates
+
+| Change or claim                                    | Evidence                                                                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Every Vortex submission                            | Vortex's full `pnpm run verify` on the exact final commit, a clean tree afterwards, `doodlebot pr-preflight`, independent review |
+| Bug fix                                            | The before and after run reports of the person's scenario; the regression test's revert control (fails without the fix)          |
+| Feature                                            | The approved design; `/doodlebot:qa --design <file>`: each acceptance criterion proved with its negative control                 |
+| Equivalence refactor                               | The approved design; invariants and affected consumers covered, including failure and cancellation paths                         |
+| Touched areas Vortex's e2e suite does not cover    | The QA catalogue entries `doodlebot qa list --touching <files>` selects, run on base and head; files no entry guards, listed     |
+| UI or interaction                                  | The relevant states, widths and heights and input modes, with before and after evidence; clips when motion matters               |
+| Performance claim or affected performance contract | `/doodlebot:measure --a <base> --b <head>` benchmark report: production builds, idle machine, at least three runs per side       |
+| Documentation                                      | Factual, link and command checks                                                                                                 |
+| Vortex's e2e suite, when asked                     | Base and head reports with complete selection and classified outcomes                                                            |
+
+Mark an inapplicable gate with a reason grounded in the actual diff. A gate blocked by
+authorization, a login, a service or tooling stays blocked; never disguise it as not
+applicable. For rendering, scrolling and input changes, measure frame gaps and long tasks in
+the affected interactions: a UI fix that adds visible lag is incomplete.
 
 ## Title
 
@@ -28,6 +64,11 @@ Link the issue or user report. Label uncertainty instead of inventing a version 
 
 The resulting behavior and the relevant implementation decisions.
 
+Design: the design's Overview and acceptance criteria, verbatim, then
+"Design approved by <owner> on <date>; design at
+<fork>/blob/design/<topic>/docs/designs/<topic>.md". Or "None" for a bug fix, documentation
+or test-only change without a design.
+
 ## Behaviour changes
 
 What users and extension consumers can observe, including failure/cancellation paths.
@@ -35,12 +76,14 @@ Write "None" only after inspecting affected consumers.
 
 ## Evidence
 
-- Revision/platform: final head, baseline, runtime/build identity and fixture.
-- Scoped tests and task-appropriate control: command, result, intended assertion or invariant.
-- App/UI: applicable scenario and independently observed outcome, or justified N/A.
-- Performance: if applicable, production base/head runs, workload, spread and artifacts.
+- Revision/platform: final head, base, build and content ("Tested against" from the run reports).
+- Before and after: the person's scenario on the base and on the change (run report outcomes).
+- Regression test and control: its path, what it asserts, and the revert control's result.
+- Acceptance criteria (with a design): each criterion and its negative control, from the QA report.
+- QA catalogue: each selected entry's result on base and head; files no entry guards.
+- Performance: if applicable, the benchmark report's medians, ranges and verdict.
 - `pnpm run verify`: exact-head result and clean tree afterward; concrete blockers if any.
-- E2E: requested selection and comparable outcomes, or "not requested; outside this task's gates".
+- Vortex e2e: requested selection and comparable outcomes, or "not requested".
 - CI: current state/link when available; distinguish test and infrastructure failures.
 
 ## Review
@@ -70,91 +113,69 @@ description and affected evidence when the head changes.
 ## Author and mechanical checks
 
 Before implementation, identify affected callers, exported extension contracts, changed state
-readers, success/failure/cancel/re-entry paths and observable behavior changes. Use
-[knowledge routes](KNOWLEDGE-ROUTES.md) for specialist sources and relevant review lessons.
-Write the task-appropriate control described in AGENT-WORKFLOW.md.
+readers, success/failure/cancel/re-entry paths and observable behavior changes. For a feature
+or refactor, that analysis belongs in the approved design. Read the relevant review lessons
+below.
 
-Run scoped tests and applicable `pr-preflight` before independent QA. It discovers potential
-callers/readers/dispatchers, inspects size/comments/description and can revert selected
-non-test changes for a negative control. Discovery is heuristic: manually inspect unrecognized
-imports, indirect consumers and false matches. Give each meaningful warning a disposition.
+Run scoped tests and `pr-preflight` before independent QA. It discovers potential
+callers/readers/dispatchers, inspects size/comments/description, keeps the design out, and can
+revert selected non-test changes for a negative control. Discovery is heuristic: manually
+inspect unrecognized imports, indirect consumers and false matches. Give each meaningful
+warning a disposition.
 
 A positive exit without the fix is a failed negative control. An import/setup/compile error
 is inconclusive. When the reverted run fails, inspect the assertion and show it exercises the
 reported mechanism; the command cannot decide that causal question. Use `--skip-revert` when
-another task-appropriate control applies and explain why. Source mutation must be authorized,
-and no app may be using that checkout during a revert check.
+another control applies and explain why. Source mutation must be authorized, and no app may be
+using that checkout during a revert check: run `doodlebot down` first, or the check refuses
+with "A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before
+reverting it."
 
 Classify useful findings as missing/mechanically missed checks, author omissions, newly
-discovered reusable lessons, or judgment requiring independent review. These classifications
-help improve prevention; fewer findings alone is not a quality metric. Keep uncertain lessons
-in the task report and promote verified ones through the canonical workflow.
-
-### Author brief
-
-Fill in the canonical worker brief, then add Vortex-specific details:
-
-```text
-Implement <neutral issue> in <checkout>, owner <name>, base <sha/ref>.
-User-authorized actions: <accurate scope, including commit/push/PR if granted>.
-Excluded repositories/actions: <explicit constraints>.
-Acceptance and affected contracts: <criteria and required evidence>.
-
-Read the checkout's AGENTS.md, relevant nested instructions and docs index, plus the
-applicable knowledge routes and review lessons. Establish the reproduction or acceptance
-control, inspect consumers and exit paths, implement the smallest complete change and run
-scoped checks. Use applicable preflight; disposition its warnings.
-
-Use only your owned checkout/app/slot. Stop the app before rewriting checkout output.
-Report the identified diff or actual commit, commands/results, controls, consumer/behavior
-analysis, artifacts, remaining uncertainty and candidate kit lessons. Stop or explicitly
-hand off the processes/resources you created. Publish only within the user's authorization.
-```
+discovered reusable lessons, or judgment requiring independent review. Keep uncertain lessons
+in the task report; record verified ones as `plugins/doodlebot/resources/knowledge.md` says.
 
 ## Independent review and QA
 
-Start a fresh reviewer with `fork_turns="none"` or equivalent. Provide the neutral issue,
-criteria, scope, exact revision and primary source entry points before the author's diagnosis.
-Preserve relevant failed evidence and known constraints. Give driving QA its own checkout
-and slot; read-only reviewers need neither. They may inspect but not edit the author's tree.
+`/doodlebot:qa <PR or branch>` is the review: a fresh context, after the author's `down`, from
+`up --fresh`, base build then PR build, each claim proved only when base and PR differ as
+claimed, and the catalogue entries the diff selects. Give a human or agent reviewer the neutral
+issue, criteria, scope, exact revision and primary sources before the author's diagnosis:
 
 ```text
-Review <neutral issue> at head <sha or identified local diff>, base <sha>.
-You did not author it. Allowed: read, scoped checks, and <authorized disposable app actions>.
+Review <neutral issue> at head <sha>, base <sha>.
+Design: <docs/designs/<topic>.md at the design/<topic> tag>, or none.
+You did not author it. Allowed: read, scoped checks, and <authorized test Vortex actions>.
 No production edits or publication. Constraints: <scope, including any read-only checkout>.
-Read the relevant repository instructions and AGENT-WORKFLOW.md report contract.
 
-Independently inspect the actual diff and acceptance/gate applicability. Reproduce the issue
-or acceptance behavior using a scenario derived from the task. Exercise affected consumers
-and relevant cancellation, error, re-entry, data and UI boundaries. Use independent observations.
-Run task-appropriate scoped checks/control; run app checks only where applicable and authorized.
+Independently inspect the actual diff and which gates apply. With a design, check every
+acceptance criterion has its proof and negative control. Reproduce the issue or acceptance
+behavior with /doodlebot:try's report procedure, from a fresh profile. Exercise affected
+consumers and relevant cancellation, error, re-entry, data and UI boundaries. Run the QA
+catalogue entries the diff selects (doodlebot qa list --touching <files>).
 
-Then compare author claims/artifacts at <path>. Verify the claimed mechanism, test-fake
-constraints, current revision/runtime, selection/skips and prepared PR description.
+Then compare the author's run reports at <path>. Verify the claimed mechanism, test-fake
+constraints, current revision and build, selection and skips, and the prepared PR description.
 Report confirmed findings with file:line and evidence, what held, and uncertainty. Do not pad
-with hypothetical defects. Save the authorized report at <path>, or return it in chat if
-writes are excluded. Include process/resource cleanup and candidate lessons.
+with hypothetical defects. Save the report at <path>, or return it in chat if writes are
+excluded. Include cleanup (`doodlebot down`) and candidate lessons or kit gaps.
 ```
 
-Useful commands for an authorized Vortex review, with the reviewer's app stopped before
-checks that rewrite output:
+Useful commands for a review of the author's branch, checked out at the identified head in
+`.vortex-src` or a `--dev-dir` checkout. The reviewer stops its own test Vortex before checks
+that rewrite output or record evidence in that checkout:
 
 ```powershell
-pnpm run ai -- worktree add qa-topic --owner qa-topic --ref origin/<branch>
-pnpm run ai -- up --owner qa-topic --worktree qa-topic --slot auto --sandbox
-pnpm run ai -- down --owner qa-topic --worktree qa-topic --slot auto
-pnpm run ai -- evidence run --owner qa-topic --checkout <qa-checkout> --base <base-sha> --out <new-evidence.json> -- pnpm run verify
-pnpm run ai:preflight -- --owner qa-topic --checkout <qa-checkout> --base <base-sha>
+doodlebot up --dev-dir <qa-checkout> --sandbox --fresh      # in the background, with a log
+doodlebot down
+doodlebot qa list --touching <changed files>
+doodlebot evidence run --checkout <qa-checkout> --base <base-sha> --out <new-evidence.json> -- pnpm run verify
+doodlebot pr-preflight --checkout <qa-checkout> --base <base-sha>
 ```
 
 Resolve confirmed findings, identify the resulting revision and renew affected QA. Verify that
 test-only follow-ups really contain no production behavior change. Run expensive final gates
-after scoped checks and review; do not keep restarting a reviewer while the design is changing.
-Never release another worker's lease or take timings while another task occupies the machine.
-
-Save authorized reports promptly and link them from the next brief. Transcripts are not a
-knowledge base. A report needs concrete findings and evidence, not hidden model reasoning.
-The accountable owner integrates changes and produces the final handoff.
+after scoped checks and review. Never take timings while another task occupies the machine.
 
 ## Review lessons
 
@@ -171,7 +192,7 @@ source incident and applicable source/test evidence rather than copying entire r
    container also sets dropdown bounds.)
 3. **A regression assertion must detect the claimed fix, including its wiring.** A test of only
    a new helper may miss an unconnected call site. For bugs, inspect the intended failure
-   without the fix. Features/refactors use the task-appropriate control in AGENT-WORKFLOW.md.
+   without the fix. Features use each criterion's negative control, refactors their invariants.
    (#24281, #24282.)
 4. **Fakes must enforce the real rule.** A stand-in that records calls without the constraint the
    real code applies passes broken orderings. (#24282: re-runs must be emitted after the hold is
@@ -240,7 +261,7 @@ source incident and applicable source/test evidence rather than copying entire r
     collection, test that collection, not a fixture that resembles it. Unit tests, an offline
     collection and reading the uploaded revision are leads, not the test. Without the user's
     scenario reproduced on the base and passing on the fix, there is no PR, draft included
-    (WORKFLOWS.md, "Before a Vortex pull request is ready"). (Nexus-Mods/Vortex#24782, closed:
+    ("Never publish an untested change" above). (Nexus-Mods/Vortex#24782, closed:
     a binary-patching export fix opened as a draft after unit tests and synthetic installs. The
     reporter's collection had never been installed, and the export fix had never run in the app.)
 21. **Test a layout that shares space at its limits, and again after each fix.** Take it to the

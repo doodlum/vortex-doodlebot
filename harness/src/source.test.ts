@@ -1,11 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import {
   ForkError,
+  NO_FORK_NOTE,
   commandEnv,
+  cutWorkBranch,
+  ensureVortexSource,
   missingBuildOutputs,
   nestedPath,
   needsShell,
@@ -74,6 +78,107 @@ describe("Vortex source package manager", () => {
   });
 });
 
+const git = (cwd: string, ...args: string[]): string =>
+  execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+
+describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
+  let root: string;
+  let upstream: string;
+  let fork: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-clone-"));
+    const work = path.join(root, "work");
+    fs.mkdirSync(path.join(work, "src", "main"), { recursive: true });
+    git(work, "init", "-q", "-b", "master");
+    git(work, "config", "user.email", "t@example.test");
+    git(work, "config", "user.name", "T");
+    fs.writeFileSync(path.join(work, "src", "main", "package.json"), "{}\n");
+    git(work, "add", "-A");
+    git(work, "commit", "-q", "-m", "upstream");
+    upstream = path.join(root, "upstream.git");
+    git(root, "clone", "-q", "--bare", work, upstream);
+    // The fork's default branch carries its own work, as doodlum's `linux` does.
+    git(work, "checkout", "-q", "-b", "linux");
+    fs.writeFileSync(path.join(work, "fork-only.txt"), "fork\n");
+    git(work, "add", "-A");
+    git(work, "commit", "-q", "-m", "fork work");
+    fork = path.join(root, "fork.git");
+    git(root, "clone", "-q", "--bare", work, fork);
+    git(fork, "symbolic-ref", "HEAD", "refs/heads/linux");
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const remotes = (dir: string): string[] =>
+    git(dir, "remote").split("\n").filter(Boolean).toSorted();
+
+  it("clones upstream alone, as `upstream` with no origin, when there is no fork", async () => {
+    const dir = path.join(root, "src-nofork");
+    const messages: string[] = [];
+    const source = await ensureVortexSource({
+      dir,
+      upstreamUrl: upstream,
+      resolveRepo: async () => undefined,
+      onProgress: (m) => messages.push(m),
+    });
+    expect(source).toMatchObject({ cloned: true, hasFork: false, defaultBranch: "master" });
+    expect(remotes(dir)).toEqual(["upstream"]);
+    expect(git(dir, "remote", "get-url", "upstream")).toBe(upstream);
+    expect(messages.join("\n")).toContain(NO_FORK_NOTE);
+
+    // source --update on an upstream-only clone fetches upstream and reports it.
+    const work = path.join(root, "work");
+    git(work, "checkout", "-q", "master");
+    fs.writeFileSync(path.join(work, "later.txt"), "later\n");
+    git(work, "add", "-A");
+    git(work, "commit", "-q", "-m", "later upstream");
+    git(work, "push", "-q", upstream, "master");
+    const updated = await ensureVortexSource({ dir, update: true, upstreamUrl: upstream });
+    expect(updated).toMatchObject({ cloned: false, hasFork: false, repo: upstream });
+    expect(git(dir, "rev-parse", "upstream/master")).toBe(git(work, "rev-parse", "master"));
+    expect(remotes(dir)).toEqual(["upstream"]);
+
+    // Work branches start from upstream's default branch.
+    const cut = await cutWorkBranch(dir, "fix/thing");
+    expect(cut).toEqual({ branch: "fix/thing", from: "upstream/master" });
+    expect(git(dir, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "upstream/master"));
+  });
+
+  it("clones the fork as origin beside upstream, and cuts branches from upstream", async () => {
+    const dir = path.join(root, "src-fork");
+    const source = await ensureVortexSource({
+      dir,
+      upstreamUrl: upstream,
+      resolveRepo: async () => ({
+        fullName: "me/Vortex",
+        cloneUrl: fork,
+        defaultBranch: "linux",
+        isFork: true,
+        parent: "Nexus-Mods/Vortex",
+      }),
+    });
+    expect(source).toMatchObject({ cloned: true, hasFork: true, repo: "me/Vortex" });
+    expect(remotes(dir)).toEqual(["origin", "upstream"]);
+    expect(git(dir, "remote", "get-url", "origin")).toBe(fork);
+    expect(git(dir, "remote", "get-url", "upstream")).toBe(upstream);
+    expect(git(dir, "symbolic-ref", "--short", "HEAD")).toBe("linux");
+
+    await cutWorkBranch(dir, "feat/zoom");
+    expect(git(dir, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "upstream/master"));
+    expect(fs.existsSync(path.join(dir, "fork-only.txt"))).toBe(false);
+    await expect(cutWorkBranch(dir, "feat/zoom")).rejects.toThrow(/already exists/);
+    await expect(cutWorkBranch(dir, "bad..name")).rejects.toThrow(/not a valid branch name/);
+  });
+
+  it("adds a missing upstream remote on update", async () => {
+    const dir = path.join(root, "src-old");
+    git(root, "clone", "-q", fork, dir);
+    const updated = await ensureVortexSource({ dir, update: true, upstreamUrl: upstream });
+    expect(updated.hasFork).toBe(true);
+    expect(remotes(dir)).toEqual(["origin", "upstream"]);
+    expect(updated.defaultBranch).toBe("master");
+  });
+});
+
 it("finds every worker main's build script bundles that a build left out", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-build-"));
   try {
@@ -120,7 +225,7 @@ it("leaves a kit command's environment alone, and cleans a Vortex command's", ()
     VORTEX_AI_PNPM: path.resolve("/node22/pnpm.cmd"),
   };
   expect(commandEnv(path.join(repo, "harness"), base, repo)).toEqual(base);
-  const vortex = commandEnv(path.join(repo, ".vortex-worktrees", "fix-a"), base, repo);
+  const vortex = commandEnv(path.join(repo, ".vortex-src", "src"), base, repo);
   expect(vortex.npm_config_user_agent).toBeUndefined();
   expect(vortex.PATH).toBe(
     [path.resolve("/node22"), path.resolve("/Windows")].join(path.delimiter),

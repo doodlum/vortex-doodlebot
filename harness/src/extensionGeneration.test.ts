@@ -22,13 +22,11 @@ const pass: Awaited<ReturnType<typeof runEvidenceProcess>> = {
 let root: string;
 let source: string;
 let profile: string;
-let leaseEnv: { dir: string };
 let runner: ReturnType<typeof vi.fn<typeof runEvidenceProcess>>;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot generation "));
   source = path.join(root, "source");
   profile = path.join(root, "profile");
-  leaseEnv = { dir: path.join(root, "leases") };
   fs.mkdirSync(path.join(source, "src"), { recursive: true });
   fs.writeFileSync(path.join(source, "src", "index.ts"), "initial");
   fs.writeFileSync(path.join(source, "info.json"), '{"id":"doodlebot","version":"1"}');
@@ -44,7 +42,7 @@ afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-const options = () => ({ source, owner: "builder", leaseEnv, runner });
+const options = () => ({ source, runner });
 const dist = () => path.join(source, "dist");
 const plugin = () => path.join(profile, "userData", "plugins", "doodlebot");
 const bundle = (dir = dist()) => fs.readFileSync(path.join(dir, "index.js"), "utf8");
@@ -54,7 +52,7 @@ function output(stage: string, text: string): void {
   fs.writeFileSync(path.join(stage, "dist", "index.js"), text);
 }
 function install(): void {
-  installMcpExtension(profile, source, options());
+  installMcpExtension(profile, source);
 }
 
 it("a failed compiler preserves its previous generation and ordinary ensure/install rebuild changed inputs", async () => {

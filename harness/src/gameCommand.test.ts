@@ -1,0 +1,209 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { readContent } from "./content";
+import {
+  assertGamePathAllowed,
+  copyGame,
+  gameCommand,
+  isStorePath,
+  registerCopy,
+  setCopyFolder,
+  type GameCommandDeps,
+} from "./gameCommand";
+import { normalizeVersionResource } from "./releaseFetch";
+
+let root: string;
+let deps: GameCommandDeps & { contentFile: string };
+let store: string;
+
+function fakeGame(dir: string): string {
+  fs.mkdirSync(path.join(dir, "Data"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "Fallout4.exe"), "exe bytes");
+  fs.writeFileSync(path.join(dir, "Data", "Fallout4.esm"), "master bytes");
+  return dir;
+}
+
+beforeEach(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "game-command-"));
+  store = fakeGame(path.join(root, "SteamLibrary", "steamapps", "common", "Fallout 4"));
+  deps = {
+    contentFile: path.join(root, "content.json"),
+    storePath: (gameId) => (gameId === "fallout4" ? store : undefined),
+    fileVersion: () => "1.10.984.0",
+    now: () => new Date("2026-11-10T10:00:00.000Z"),
+  };
+});
+afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+describe("game copies", () => {
+  it("recognises a store install", () => {
+    expect(isStorePath(store, store)).toBe(true);
+    expect(isStorePath("D:\\Games\\SteamLibrary\\steamapps\\common\\Skyrim", undefined)).toBe(true);
+    expect(isStorePath(path.join(root, "copies", "fallout4"), store)).toBe(false);
+  });
+
+  it("register refuses a store path and records an existing copy", async () => {
+    expect(() => registerCopy("fallout4", store, deps)).toThrow(/is a store install, not a copy/);
+    expect(() => registerCopy("fallout4", path.join(root, "empty"), deps)).toThrow(
+      /does not hold Fallout4.exe/,
+    );
+    const copy = fakeGame(path.join(root, "copies", "fallout4"));
+    expect(registerCopy("fallout4", copy, deps)).toEqual({
+      gameId: "fallout4",
+      path: copy,
+      sizeBytes: 21,
+      gameVersion: "1.10.984.0",
+      registeredAt: "2026-11-10T10:00:00.000Z",
+    });
+    expect(readContent(deps.contentFile).games).toHaveLength(1);
+    // Registering it again replaces the entry.
+    registerCopy("fallout4", copy, deps);
+    expect(readContent(deps.contentFile).games).toHaveLength(1);
+  });
+
+  it("refuses a game whose user folders the kit does not know", () => {
+    expect(() => registerCopy("cyberpunk2077", root, deps)).toThrow(
+      /not a game the kit can protect/,
+    );
+  });
+
+  it("copy copies the store install into the folder given and registers it", async () => {
+    await expect(copyGame("fallout4", undefined, deps)).rejects.toThrow(/No copy folder/);
+    const result = await gameCommand(
+      ["copy", "fallout4"],
+      { to: path.join(root, "copies") },
+      {},
+      deps,
+    );
+    const copy = path.join(root, "copies", "fallout4");
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(copy, "Data", "Fallout4.esm"), "utf8")).toBe("master bytes");
+    expect(readContent(deps.contentFile).games).toEqual([
+      expect.objectContaining({ gameId: "fallout4", path: copy, sourcePath: store, sizeBytes: 21 }),
+    ]);
+    // An unregistered folder in the way is never written over.
+    fs.rmSync(deps.contentFile);
+    await expect(copyGame("fallout4", path.join(root, "copies"), deps)).rejects.toThrow(
+      /already exists/,
+    );
+  });
+
+  it("copy-reused: a second copy of the same version reuses the first; --new makes another", async () => {
+    const folder = path.join(root, "copies");
+    const first = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(first.text).toMatch(/^Copied and registered/);
+    const copy = path.join(folder, "fallout4");
+    fs.writeFileSync(path.join(copy, "Data", "marker.txt"), "the first copy");
+
+    const second = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(second.text).toMatch(/^Reused the registered fallout4 copy at /);
+    expect(second.text).toContain("version 1.10.984.0");
+    expect(readContent(deps.contentFile).games).toHaveLength(1);
+    expect(fs.existsSync(path.join(folder, "fallout4-2"))).toBe(false);
+
+    const fresh = await gameCommand(["copy", "fallout4"], { to: folder, new: true }, {}, deps);
+    expect(fresh.text).toMatch(/^Copied and registered/);
+    expect(fs.existsSync(path.join(folder, "fallout4-2", "Fallout4.exe"))).toBe(true);
+    expect(readContent(deps.contentFile).games.map((g) => g.path)).toEqual([
+      copy,
+      path.join(folder, "fallout4-2"),
+    ]);
+
+    // A store install of another version is copied again, beside the registered copies.
+    deps.fileVersion = () => "1.11.0.0";
+    const updated = await copyGame("fallout4", folder, deps);
+    expect(updated.reused).toBe(false);
+    expect(updated.copy.path).toBe(path.join(folder, "fallout4-3"));
+  });
+
+  it("formats a comma-separated version resource as one dotted version (Stardew Valley's)", async () => {
+    expect(normalizeVersionResource("1.6.15, , 24356,")).toBe("1.6.15.24356");
+    expect(normalizeVersionResource("1, 2, 3, 4")).toBe("1.2.3.4");
+    expect(normalizeVersionResource("2.8.0.0")).toBe("2.8.0.0");
+    expect(normalizeVersionResource(" 2.8.0-beta.1 ")).toBe("2.8.0-beta.1");
+    expect(normalizeVersionResource("")).toBeUndefined();
+    expect(normalizeVersionResource(undefined)).toBeUndefined();
+
+    deps.fileVersion = () => "1.6.15, , 24356,";
+    const folder = path.join(root, "copies");
+    const first = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(first.text).toContain("version 1.6.15.24356)");
+    expect(first.text).not.toContain(", ,");
+    expect(readContent(deps.contentFile).games[0]?.gameVersion).toBe("1.6.15.24356");
+    // A copy registered with the raw text before this fix is still the same version.
+    const raw = readContent(deps.contentFile);
+    raw.games[0]!.gameVersion = "1.6.15, , 24356,";
+    fs.writeFileSync(deps.contentFile, JSON.stringify(raw));
+    const again = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(again.text).toMatch(
+      /^Reused the registered fallout4 copy at .*version 1\.6\.15\.24356\)/,
+    );
+  });
+
+  it("game folder stores the copy folder once, and refuses a store library or the workspace", async () => {
+    expect(setCopyFolder(undefined, deps)).toMatch(/No copy folder is stored/);
+    expect(() => setCopyFolder(path.join(store, "copies"), deps)).toThrow(/store library/);
+    expect(() =>
+      setCopyFolder(path.join(root, "ws", "copies"), { ...deps, workspace: path.join(root, "ws") }),
+    ).toThrow(/inside the doodlebot workspace/);
+    const folder = path.join(root, "copies");
+    const result = await gameCommand(["folder", folder], {}, {}, deps);
+    expect(result.text).toContain(`Copy folder set to ${folder}`);
+    expect(fs.existsSync(folder)).toBe(true);
+    expect(readContent(deps.contentFile).copyFolder).toBe(folder);
+    expect((await gameCommand(["folder"], {}, {}, deps)).text).toBe(`Copy folder: ${folder}`);
+    // game copy now needs no --to.
+    const { copy } = await copyGame("fallout4", undefined, deps);
+    expect(copy.path).toBe(path.join(folder, "fallout4"));
+  });
+
+  it("a launch manages only a registered copy or the kit's own folders", () => {
+    const cacheDir = path.join(root, "cache");
+    const config = (gamePath: string | undefined) => ({ gameId: "fallout4", gamePath, cacheDir });
+    const allowed = (c: { gameId: string; gamePath: string | undefined; cacheDir: string }) => () =>
+      assertGamePathAllowed(c, deps.contentFile, deps.storePath);
+    expect(allowed(config(store))).toThrow(/is a store install; the kit never manages one/);
+    expect(allowed(config(path.join(root, "elsewhere", "fallout4")))).toThrow(
+      /is not a registered copy of fallout4/,
+    );
+    expect(allowed(config(undefined))).toThrow(/needs --game-path <a registered copy>/);
+    // The fake Fallout 4 lives under the cache.
+    expect(
+      allowed(config(path.join(cacheDir, "bethesda-sandbox", "fallout4", "game"))),
+    ).not.toThrow();
+    const copy = fakeGame(path.join(root, "copies", "fallout4"));
+    registerCopy("fallout4", copy, deps);
+    expect(allowed(config(copy))).not.toThrow();
+    expect(allowed(config(store))).toThrow(`Registered copies: ${copy}.`);
+  });
+
+  it("a folder inside the cache is still refused when it is a store install or its game has no user-folder entry", () => {
+    // A cache that sits inside a Steam library does not make the store install the kit's own.
+    const cacheDir = path.join(root, "SteamLibrary", "steamapps", "common");
+    expect(() =>
+      assertGamePathAllowed(
+        { gameId: "fallout4", gamePath: store, cacheDir },
+        deps.contentFile,
+        deps.storePath,
+      ),
+    ).toThrow(/is a store install/);
+    const ownCache = path.join(root, "cache");
+    // The Nexus collection check's placeholder game folder: allowed for a game in USER_FOLDERS
+    // (its real user folders are then backed up: userFolders.test.ts), refused for any other.
+    const placeholder = (gameId: string) => ({
+      gameId,
+      gamePath: path.join(ownCache, "nexus-smoke", "game", gameId),
+      cacheDir: ownCache,
+    });
+    expect(() =>
+      assertGamePathAllowed(placeholder("stardewvalley"), deps.contentFile, () => undefined),
+    ).not.toThrow();
+    expect(() =>
+      assertGamePathAllowed(placeholder("fallout3"), deps.contentFile, () => undefined),
+    ).toThrow(/fallout3 has no entry in USER_FOLDERS/);
+  });
+});

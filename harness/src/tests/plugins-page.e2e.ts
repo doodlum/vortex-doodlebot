@@ -1,6 +1,6 @@
 /**
  * Opt-in responsiveness check of the Plugins page with a large load order:
- * pnpm run ai:test:plugins-page (fake Fallout 4: `up --dev-dir <checkout> --bethesda-sandbox`).
+ * doodlebot test plugins-page (fake Fallout 4: `up --bethesda-sandbox`).
  *
  * Users with large collections on 2.7 reported "constantly freezes scrolling through mods or
  * plugins". The plugin list's own table is virtualised; this measures what the page costs
@@ -16,9 +16,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { attachToRenderer } from "../cdp";
-import { bethesdaSandboxPaths, pluginBytes, setDeterministicLoadOrder } from "../bethesdaSandbox";
+import {
+  assertFakeFallout4Active,
+  pluginBytes,
+  setDeterministicLoadOrder,
+} from "../bethesdaSandbox";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { deployMods } from "../deployment";
 import { fillFilterScript, measureBlocked, seedLibrary, tableRows } from "../largeLibrary";
 import { VortexMcpClient } from "../mcpClient";
@@ -34,20 +37,9 @@ const MAX_ROWS_RENDERED = 200;
 const MAX_ACTION_BLOCKED_MS = 1_500;
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:plugins-page", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
-const status = await mcp.call<{ paths?: { documents: string | null } }>("automation_status");
-if (
-  (await mcp.call<string | null>("vortex_query", { selector: "activeGameId" })) !== "fallout4" ||
-  path.resolve(status.paths?.documents ?? "").toLowerCase() !==
-    path.resolve(bethesdaSandboxPaths(config.cacheDir).documents).toLowerCase()
-) {
-  throw new Error(
-    "This check needs the fake Fallout 4: `doodlebot up --dev-dir <checkout> --bethesda-sandbox`.",
-  );
-}
+await assertFakeFallout4Active(mcp, config.cacheDir);
 
 await seedLibrary(mcp, {
   count,

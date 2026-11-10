@@ -18,7 +18,7 @@ test("cold, warm and fresh starts preserve only the intended profile state", asy
     cdpPort: await freePort(),
   });
   const messages: string[] = [];
-  // Explicit logout tombstone prevents bootstrap from importing the operator's login.
+  // A test cache has no login; the explicit signed-out marker stays in this cache.
   fs.mkdirSync(config.cacheDir, { recursive: true });
   fs.writeFileSync(authCacheFile(config), "null");
   const options = { skipGame: true, onProgress: (message: string) => messages.push(message) };

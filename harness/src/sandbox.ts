@@ -36,7 +36,7 @@ export function localOnlyConfig(config: HarnessConfig, keepApiKey: boolean): Har
  */
 export function resetDisposableGameData(
   config: HarnessConfig,
-  options: { keep?: string[]; pluginLists?: string } = {},
+  options: { keep?: string[] } = {},
 ): boolean {
   if (config.gamePath === undefined) return false;
   const relative = path.relative(path.resolve(config.cacheDir), path.resolve(config.gamePath));
@@ -48,11 +48,6 @@ export function resetDisposableGameData(
   for (const entry of fs.readdirSync(data)) {
     if (keep.has(entry.toLowerCase())) continue;
     fs.rmSync(path.join(data, entry), { recursive: true, force: true });
-  }
-  if (options.pluginLists !== undefined) {
-    for (const list of ["plugins.txt", "loadorder.txt"]) {
-      fs.rmSync(path.join(options.pluginLists, list), { force: true });
-    }
   }
   return true;
 }

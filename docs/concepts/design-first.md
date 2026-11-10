@@ -1,0 +1,81 @@
+# Design with EGM
+
+This page explains why features and refactors start with an approved design, how EGM and
+doodlebot's runtime reviewer check it, and where the design lives while the work goes on.
+
+## Before you begin
+
+Read [How doodlebot works](how-it-works.md). To run the procedure, see
+[Design a feature with EGM](../guides/design-a-feature.md).
+
+## When a design is needed
+
+| Change                             | Design                                        |
+| ---------------------------------- | --------------------------------------------- |
+| A feature                          | Required, approved before any code is written |
+| A refactor                         | Required, approved before any code is written |
+| A bug fix                          | None, unless you supply one or ask for one    |
+| Documentation or test-only changes | None, unless you supply one or ask for one    |
+
+## EGM does the design, doodlebot adds one reviewer
+
+Design work uses Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
+plugin (EGM), unchanged. Doodlebot has no design command of its own. EGM uses two kinds of
+agent:
+
+- The **Elephant** is the agent session you are talking to. It keeps the whole context of the
+  task, asks you questions and writes the design. It writes no code until you approve.
+- A **Goldfish** is a reviewer started without the conversation. It sees only the design and the
+  files it is given. Anything the design leaves unsaid is missing to the Goldfish, which is the
+  point: whoever implements the design later will not have the conversation either.
+
+You start each EGM step yourself: EGM's commands can only be typed by a person, so the agent
+tells you which one comes next.
+
+## The runtime review
+
+After EGM's own staged review, you run EGM's review loop with doodlebot's Goldfish,
+`vortex-runtime-goldfish`. It reviews against doodlebot's Vortex change standard and asks one
+question of every acceptance criterion: can it be proved on a real Vortex? A criterion passes
+the review when the design names:
+
+- the doodlebot command or test that proves it;
+- the content it needs (a sandbox, a game copy, a collection, a login);
+- the build it runs on (a release, or your branch);
+- a negative control: the same check with the behaviour removed, which must fail.
+
+The runtime reviewer runs on Sonnet in Claude Code, read-only and without your project's
+instructions. EGM's own reviewers run on your session's model. How well reviewers are kept
+apart from the conversation depends on your coding agent; see
+[What EGM can guarantee in each agent](../get-started/install.md#what-egm-can-guarantee-in-each-agent).
+
+## You decide
+
+You take part at four points:
+
+1. You answer the agent's questions about the idea.
+2. You approve each section of the draft.
+3. You decide findings the agent disagrees with.
+4. You approve the final text, by setting its Status to Approved or telling the agent to.
+
+The agent never approves a design for you, and never writes an approval you have not given. A
+design revised after approval needs a new approval.
+
+## Designs live on the Vortex branch
+
+A Vortex design is `docs/designs/<topic>.md` in the Vortex checkout, committed on the feature
+branch as `docs(design): <topic>` and pushed to your fork with the work, so it travels with the
+branch.
+
+The pull request never contains it. `/doodlebot:pr` builds `pr/<topic>` from the feature branch
+without the `docs(design)` commits, and tags the approved design commit `design/<topic>` on
+your fork. The pull request's description quotes the design's Overview and acceptance criteria
+and links the design at that tag, so the link keeps working after the branch is rebased or
+deleted. The preflight fails if a design file is still in the pull request's branch.
+
+Doodlebot's own designs are in the doodlebot repository's `designs/` folder, listed in `designs/SITEMAP.md`. The current one is `designs/companion-simplified.md`, the design this version of doodlebot implements.
+
+## What's next
+
+- [Design a feature with EGM](../guides/design-a-feature.md).
+- [Evidence and the QA catalogue](evidence.md).

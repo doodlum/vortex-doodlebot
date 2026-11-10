@@ -1,42 +1,31 @@
 # Vortex behaviours worth knowing
 
 Non-obvious behaviours of Vortex and of this kit that fail silently, or with a message that
-points somewhere else. Use [knowledge routes](harness/KNOWLEDGE-ROUTES.md) and search the
-relevant symptom or subsystem rather than loading the whole catalogue for every task.
+points somewhere else. Search the relevant symptom or subsystem
+(`doodlebot knowledge search <words>`) rather than loading the whole catalogue for every task.
 
 Entries state symptom, confirmed cause, remedy, applicable scope and source/test evidence.
 A matching symptom is a lead to verify against the current revision. Keep measurements,
 incident history and unconfirmed explanations in task artifacts. Promote only verified,
-reviewed lessons under [the workflow](harness/AGENT-WORKFLOW.md#improve-from-verified-lessons)
-and kit lock. Correct disproved claims and remove obsolete workarounds; retain useful
+reviewed lessons ([the manual](harness/AGENTS.md#improving-the-kit) and
+`plugins/doodlebot/resources/knowledge.md`), committed after `pnpm run ci` passes. Correct disproved claims and remove obsolete workarounds; retain useful
 preventive tests. Existing undated entries require rechecking before a task relies on them.
 
 ## Extensions
 
 ### Harness and extension invariants that broke once
 
-The next three entries were checked during the 2026-10-07 workflow rework on kit base
+The next entry was checked during the 2026-10-07 workflow rework on kit base
 `df5d2feef23b2dce2134d1433d299fad612741cb` plus its identified local changes. Recheck the linked
 source/tests when using another revision.
 
-- A shared owner name joins ownership leases; it does not serialize independent commands.
-  Supported commands also take UUID operation guards. Pass an execution context only to
-  intentionally nested commands; give parallel workers distinct owners and slots.
-  Scope: supported harness operations in the 2026-10-07 workflow rework; raw clients are outside
-  these guards. Evidence: [operations.ts](harness/src/operations.ts),
-  [leaseCommand.ts](harness/src/leaseCommand.ts) and the same-owner/nested-process cases in
-  [operations.test.ts](harness/src/operations.test.ts).
-- Repeated E2E test IDs can fail for different causes, and passed tests can disappear or skip.
-  Reconcile selection, outcome and failure evidence before declaring readiness.
-  Scope: native Vortex E2E reports and final readiness in the 2026-10-07 workflow rework.
-  Evidence: `compareRuns`/`e2eReportSchema` in [vortexE2e.ts](harness/src/vortexE2e.ts),
-  [vortexE2e.test.ts](harness/src/vortexE2e.test.ts) and [readiness.test.ts](harness/src/readiness.test.ts).
 - Configuration must not require Electron's auto-installing module. Resolve paths without
-  side effects, then install only inside the guarded launch/provisioning operation.
-  Scope: source-target resolution in the 2026-10-07 workflow rework. Evidence: `resolveTarget` in
+  side effects (`peekDevElectron`), then install only when launching or provisioning
+  (`resolveDevElectron`).
+  Scope: source-target resolution since the 2026-10-07 workflow rework. Evidence: `resolveTarget` in
   [config.ts](harness/src/config.ts), `peekDevElectron`/`resolveDevElectron` in
-  [electronRuntime.ts](harness/src/electronRuntime.ts), and the separate-process installation
-  exclusion checks in [electronRuntime.test.ts](harness/src/electronRuntime.test.ts).
+  [electronRuntime.ts](harness/src/electronRuntime.ts), and the install-once and
+  interrupted-install cases in [electronRuntime.test.ts](harness/src/electronRuntime.test.ts).
 
 - A ref counter that restarts at `e1` lets an old ref hit a new element. Refs carry a renderer
   lifetime and never reuse a counter within it. Test that old refs are rejected.
@@ -92,7 +81,7 @@ it works against a released build.
 A reload can leave the old tool registration in place. A new parameter is then stripped by the old
 schema, and the new handler returns a normal result without it, which looks like the new code not
 loading. The harness waits for `automation_status.runtimeId` to change. After a schema change check
-`tools --json`, and if the schema is missing run `pnpm run ai -- down` then `up`. A successful
+`tools --json`, and if the schema is missing run `doodlebot down` then `up`. A successful
 request does not prove the rebuilt extension loaded.
 
 ## Accounts
@@ -142,40 +131,42 @@ game by itself. Register the path with a raw `type:ADD_DISCOVERED_GAME` dispatch
 
 ## Building Vortex from here
 
-### lease run ran the kit's scripts, under the kit's pnpm
+### A command started through the kit's CLI runs in the workspace unless it takes the caller's directory
 
-`pnpm run ai -- lease run … pnpm run verify`, typed in a worktree, failed at the `assets` step
-with `ERR_PNPM_BROKEN_LOCKFILE`. `pnpm run` starts the CLI in the kit's own root, so the command
-ran there too, with the kit's pnpm 9 first on PATH. `lease run` now takes the caller's directory
-from `INIT_CWD`, and a command outside the kit gets a cleaned environment (`commandEnv` in
-`source.ts`). Anything else that spawns a Vortex command must do the same: `childEnv` for kit
-code, `commandEnv` for a user's command.
+A Vortex command (`pnpm run verify`) passed through the kit's CLI from a Vortex checkout failed
+at the `assets` step with `ERR_PNPM_BROKEN_LOCKFILE`. The CLI runs in the workspace root (then
+started by `pnpm run`, now by `bin/doodlebot.cjs`), so the command ran there too, with the kit's
+pnpm 9 first on PATH. The shim sets `INIT_CWD` to the caller's directory, and `callerCwd` in
+`harness/src/processRunner.ts` takes it from there; `script` runs there
+with a cleaned environment (`commandEnv` in `source.ts`), and `evidence run` uses the subject
+checkout (or a contained `--cwd`) explicitly. Anything else that spawns a Vortex command must do
+the same: `childEnv` for kit code, `commandEnv` for a user's command.
 
-### Worktree chores a build or commit trips on
+### Checkout chores a build or commit trips on
 
 - `pnpm nx run @vortex/renderer:build` and `pnpm run verify` rewrite `etc/vortex.api.md` (and
   `etc/Dependency Report.md`) with drift that isn't yours. Restore them before committing; only
-  the kit's `build` and `worktree add` do it for you. Commit a real API change's own lines only.
+  the kit's `build` does it for you. Commit a real API change's own lines only.
 - Vortex's husky pre-commit hook runs pnpm: a commit from a shell without pnpm 11 on PATH fails
   with "pnpm: command not found". Prepend the node22 PATH in the same command.
-- In some sandboxed agent shells a worktree's install fails at electron-rebuild (MSBuild C1083,
+- In some sandboxed agent shells a checkout's install fails at electron-rebuild (MSBuild C1083,
   "Cannot open compiler generated file"), and `pnpm exec vitest` re-runs that install, so even
-  unit tests can't run. Give such an agent a worktree built from an unsandboxed shell. For unit tests
+  unit tests can't run. Give such an agent a checkout built from an unsandboxed shell. For unit tests
   alone, a vitest config that aliases the native modules (`winapi-bindings`, `drivelist`,
   `leveldown`, `xxhash-addon`, `@nexusmods/fomod-installer-native`, `@parcel/watcher`) to a
   Proxy stub, run as `node node_modules/vitest/vitest.mjs run -c <config>`, gets the suites going.
 
-### The first vitest run in a new worktree installs
+### The first vitest run in a new checkout installs
 
-`pnpm exec vitest` in a worktree nobody has run tests in yet starts an install and postinstall,
-native-module rebuild included, even while a Vortex runs from that worktree. Run the first scoped
+`pnpm exec vitest` in a checkout nobody has run tests in yet starts an install and postinstall,
+native-module rebuild included, even while a Vortex runs from that checkout. Run the first scoped
 test before `up`, or expect the wait.
 
 ### A running app holds native modules open
 
 A running source Vortex keeps plugin DLLs such as `libloot.dll` open, watcher or not. An nx cache
 restore then reports only "Access is denied"; an uncached build names the file in
-`copy-extensions`. Run `pnpm run ai -- down` before Vortex's `verify` gate or a rebuild.
+`copy-extensions`. Run `doodlebot down` before Vortex's `verify` gate or a rebuild.
 
 ### A nested package-manager run inherits the wrong pnpm
 
@@ -209,7 +200,7 @@ Vortex's bundlers inline `NODE_ENV` at build time, and nx caches both modes. A p
 so `--production` on it used to load development React. `up --production` now fails unless the
 renderer reports production NODE_ENV, react and react-dom (`automation_status.react`), and warns
 when `src/main/build/renderer.js` is a development bundle. For release parity build with
-`pnpm run ai -- build --checkout <dir> --production`, which sets NODE_ENV for the build only; one
+`doodlebot build --checkout <dir> --production`, which sets NODE_ENV for the build only; one
 left in the shell silently makes later builds production. Distrust any timing whose
 `automation_status.nodeEnv` was not `"production"`.
 
@@ -250,13 +241,6 @@ out of memory…" (`NX_PARALLEL=2`).
 - `--inspect-brk` hangs every install: workers inherit break-on-start and Vortex hashes archives
   in one, while the renderer looks healthy. Stripping `process.execArgv` does not help.
 - `inspector.close()` from the attached session deadlocks main (0% CPU, no logging).
-- A `--require` preload's `require("electron")` resolves to the npm package's path string. Hook
-  `Module._load` and act on the app's own first `require("electron")`, as `mainPreload.ts` does.
-- In NODE_OPTIONS quoted backslashes are escapes; use forward slashes.
-
-Packaged Vortex ignores NODE_OPTIONS, so this works only on source builds. The harness checks the
-preload's record and kills the instance within 5 s otherwise; `automation_status.paths` shows what
-Vortex resolved.
 
 ### Vortex's E2E suite cannot give a local baseline as-is
 
@@ -264,11 +248,9 @@ Stock `packages/e2e` fails locally: account specs at once ("Missing required env
 E2E_NEXUS_FREE_USER_USERNAME"), and most others in fixture setup with "Vortex process exited
 unexpectedly with code 0 before the main window appeared" after a 6-minute timeout, a startup race
 in `packages/e2e/src/fixtures/vortex-app.ts`. Upstream CI runs E2E only for `packages/e2e` changes
-or on schedule, so for most PRs the local run is the only E2E gate. Use
-`pnpm run ai:vortex-e2e -- --checkout <dir>` (harness/AGENTS.md, "Vortex's own E2E suite"): it
-applies `harness/patches/e2e-window-startup.patch` for the run, restores the file byte for byte,
-and leaves out account specs without credentials by reading each describe's
-`test.use({ nexusUser })` and tier title (files mix tiers). Don't run bare `playwright test`.
+or on schedule, so for most PRs the local run is the only E2E gate. doodlebot no longer runs this
+suite: run it in the Vortex checkout with Vortex's own scripts, and expect these failures until the
+race is fixed in Vortex. Account specs need their credentials.
 
 ## Games and profiles
 
@@ -438,8 +420,8 @@ The modern Mods page passes `stickyHeader` to SuperTable, setting `.table-main-p
 IntersectionObserver at that pane. A non-clipping root sees every row as visible, so all render.
 Nothing errors: deploys, filter clears and collection installs just slow with mod count. The page
 stays mounted while hidden, so every page is slow, Settings and Plugins included. The classic
-layout is unaffected; use it as the in-build control (`ai:test:large-library`). The fix roots the
-observer at the element that scrolls (`scrollContainerOf`). `ai:test:mods-scroll` reports rows
+layout is unaffected; use it as the in-build control (`doodlebot test large-library`). The fix
+roots the observer at the element that scrolls (`scrollContainerOf`). `doodlebot test mods-scroll` reports rows
 rendered against rows on screen. Time only `--production` builds.
 
 ### A sticky-header table's scroll-to did nothing
@@ -449,7 +431,7 @@ which does nothing and throws nothing. Every `mods-scroll-to` (Plugins' Mod colu
 health-check "show mod", a collection's mod link) opened Mods at the top, and Page Up/Down sized
 jumps from the pane's height. It looks like the 200 ms `show-main-page` timeout losing a race; it
 isn't. The fix scrolls `mScrollContainer` (or `document.scrollingElement`) and measures with
-`getBoundingClientRect`. `pnpm run ai:test:plugins-mod-link` reproduces it, but passes on a broken
+`getBoundingClientRect`. `doodlebot test plugins-mod-link` reproduces it, but passes on a broken
 build in the classic layout, which survives `up`'s reset: check its reported `layout`.
 
 ### A row stays rendered forever once it has been on screen
@@ -457,7 +439,7 @@ build in the classic layout, which survives `up`'s reset: check its reported `la
 `VisibilityProxy` ignores "not visible" within 1 s of becoming visible
 (`now - this.mVisibleTime > 1000`), and IntersectionObserver reports only changes, so a row
 scrolled past quickly stays rendered. Scrolling undoes virtualisation bit by bit, in both layouts
-and with the sticky-header fix. `ai:test:mods-scroll` warns, and fails with
+and with the sticky-header fix. `doodlebot test mods-scroll` warns, and fails with
 `--max-accumulated <n>`.
 
 ### Measuring a slow Vortex without measuring the harness
@@ -490,7 +472,7 @@ Playwright summary (`pr-checks` flags this as a post-processing failure).
 
 Settled bounds can pass while chrome jumps mid-zoom: Electron's native zoom can replay an older
 factor after React compensated for a newer one. Modern zoom uses CSS scaling and a shared CSS
-variable, and `ai:test:zoom` samples every frame of rapid scaling. At non-default zoom Playwright's
+variable; sample every frame of rapid scaling. At non-default zoom Playwright's
 viewport screenshot crops right and bottom, so title-bar buttons look off-screen; the harness uses
 CDP `Page.captureScreenshot` without a clip. Check rendered bounds too.
 
@@ -530,7 +512,7 @@ out disabled buttons first, or you walk Back forever; if the last is disabled, r
 The modern Mods page stays mounted while hidden, so a deploy started from Settings pays the same
 rendering cost as one from the Mods page. A Mods-against-Settings ratio stays near 1 on a broken
 build and a fixed one alike. The classic layout's table always virtualised, so it is the in-build
-baseline (`ai:test:large-library` compares against it).
+baseline (`doodlebot test large-library` compares against it).
 
 ### Bundled optional collection members can stall the install
 
@@ -556,14 +538,18 @@ It's public: `collectionRevision(slug, revision) { modFiles { optional fileId up
 name modId } } }` on `https://api.nexusmods.com/v2/graphql`, no auth; the slug and revision are
 in vortex.log. In the report that led here no optional shared a name or file with a required
 member, and the `ignored` count matched declined optionals. A transient download failure alone
-leaves a member failed, and a resume installs it (`ai:test:collection-download-retry`).
+leaves a member failed, and a resume installs it (`doodlebot test collection-download-retry`).
 
-### After a completed collection, Vortex stops running its checks
+### After a completed collection, Vortex 2.8 never resumes the Missing Masters check
 
 `InstallDriver.startInstall` suppresses `plugins-changed`, `mod-installed`, `mod-activated` and
 `settings-changed` checks during a collection install, and only cancel or pause released them, not
 the review's Done/Close. Missing Masters and the rest never run again until restart, with nothing
-logged. `ai:test:bethesda` reproduces it; `check_probe_counts` shows `plugins-changed` stop rising.
+logged. `doodlebot test bethesda` reproduces it (its case B); `check_probe_counts` shows
+`plugins-changed` stop rising. Proved on released 2.8.0 on 2026-11-10 with the fake Fallout 4
+(`up --bethesda-sandbox`): a plugin with an absent master was flagged before an offline
+collection's install and not after its review was closed with Done. The fix,
+Nexus-Mods/Vortex#24282, was closed unmerged, so expect it on 2.8 and earlier.
 
 ### A Bethesda collection without a plugin list skips the end of its postprocessing
 
@@ -627,35 +613,80 @@ auto-deploy races a purge, so timing checks turn auto-deploy off.
 ### Kill the process and you can corrupt the profile
 
 Vortex flushes state only on a proper window close; a hard kill can half-write the state database,
-which shows up much later as a stale or corrupt profile. `vortex_quit` and `pnpm run ai -- down`
+which shows up much later as a stale or corrupt profile. `vortex_quit` and `doodlebot down`
 close the window. Stop cleanly before copying a profile. Even then Windows releases the database's
 handles just after exit, so an immediate `rmSync` hits EPERM: retry with backoff. Directory renames
 can hit EPERM from indexers however often you retry, so build in place and write a marker last.
 
-## Leases
+## One instance
 
-### Slots and worktrees: what is still shared
+### A refusal names a harness Vortex that seems not to be running
 
-The instance lease is per cache (`instance:<cache dir>`, bare `instance` for the default), and
-`--slot <n|auto>` gives each owner its own cache, artifacts and ports. Still shared:
+Launches, the core suite, and builds or evidence runs in the checkout Vortex was launched from
+refuse with "A harness Vortex is running (pid N, cache C); run `doodlebot down` before
+<action>." (or "…is running from <checkout> (pid N)…"). They read the one instance record,
+`~/.doodlebot/instance.json`, whatever workspace or `--cache-dir` is used: the Vortex may have
+been started from another workspace on the machine. A record whose pid is dead, or no longer
+`Vortex.exe`/`electron.exe`, is stale and cleared on read, so a refusal means that pid is a live
+Vortex or Electron process. Run `down` (from any workspace): it waits up to 30 s for a clean exit
+and then clears the record; it never signals the pid. If the pid was reused by another Electron
+app after a crash, `down` reports it still running; check the process, then delete
+`~/.doodlebot/instance.json`. "A harness Vortex from an older doodlebot is running (pid N)…"
+comes from the older record `harness/.cache/instance.json`, which names a live Vortex started by
+an earlier kit; close it, and the file is deleted on the next launch. Scope: every kit launcher
+(`launchVortex` in `instance.ts`, the core fixture). Evidence:
+`runningVortex.ts`, `runningVortex.test.ts`, `instance.test.ts` and `bootstrap.test.ts`.
 
-- **The checkout.** A `--dev-dir` or `--worktree` launch also takes (or joins) `checkout:<dir>`
-  and holds it until that Vortex exits, even if you release it. Checks driving a running instance
-  take the checkout it was launched from (`<cache>/instance.json`), not their own flags'. Two slots
-  from one checkout conflict, so give each agent a worktree (`worktree add <name>`).
-- **The kit's files.** Parallel edits overwrite each other, so the kit is changed only under the
-  kit lock (`kit lock` … `kit push`).
-- **OAuth copies diverge between slots.** A new slot copies slot 0's login once, then refreshes its
-  own. If Nexus rotates refresh tokens, a stale slot needs `login-import --slot <n> --force`.
-- **CPU.** Timings taken while another slot builds or runs Vortex measure the other agent.
+### What the instance record does not cover
+
+- **Launches outside the kit's launchers.** A raw Playwright or Electron start writes no record,
+  and the refusals cannot see it.
+- **Two commands at once.** Nothing serializes harness commands: two sessions driving the same
+  instance invalidate each other's UI refs, and a watcher reload mid-test does the same. Drive
+  it from one session at a time.
+- **A copied OAuth login goes stale.** Nexus rotates the refresh token, so a copy that
+  refreshes first spends the login the other copy holds, so nothing in the kit copies it. The
+  one login is `~/.doodlebot/login/oauth-<target>.json`, used directly by the default cache and by
+  caches that opt in (`sharedLogin: true`); every other cache has none (`login.ts`). Never copy
+  it by hand.
+- **CPU.** Timings taken while a build or another process runs measure that work too.
 
 ## Tooling on Windows
 
-### Account-free lifecycle tests must prevent automatic login import
+### A captured `doodlebot up` never returns
 
-`bootstrap` seeds a new cache from slot 0's OAuth cache. After the operator logs in, a fresh
-test profile can unexpectedly be signed in. Core fixtures write a `null` OAuth tombstone in
-their disposable cache before bootstrapping; this prevents import without touching the login.
+On Windows, a command that launches Vortex (`doodlebot up`, and likewise `setup` or `bootstrap`),
+run with its output captured, can keep the capture open so the command never returns: the agent's
+tool call hangs until its timeout, although `up` printed its endpoint and Vortex is answering.
+Observed with `up` from an agent's captured PowerShell call; which process keeps the capture
+open is not confirmed. Run it in the background with output to a log file:
+
+- PowerShell: `Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`;
+- Bash: `nohup <shim> <args> > <log> 2>&1 &`.
+
+The launch is done when that background process has exited and its log has the success line:
+`Vortex is up in` for `up`; `Ready:` for `setup`; for `setup --oauth`, a line ending
+`Setup complete.`, or with `--no-wait` also `Initial setup: click Log in` (without
+`--no-wait` that line is printed before the wait and is not success). Do not treat
+`doodlebot status` answering as completion: a cold start launches Vortex up to three times on
+the same port (see "Run and reset" in `harness/AGENTS.md`), so MCP can answer
+between launches. `status` is only a liveness hint. Agent shells keep no variables between
+calls, so record the background pid and check it (`Get-Process -Id <pid>`, `kill -0 <pid>`).
+
+Keep logs in `harness/.artifacts/runs/`. Scope: Windows agent shells; the plugin skills and the
+`vortex-driver` agent follow this procedure (`designs/agent-companion.md`, "Long-running and
+blocking commands from an agent").
+
+### A test cache never holds the person's login
+
+Older kits seeded a new non-default cache from the default cache's OAuth login, so a fresh test
+profile could be signed in unexpectedly. Nothing seeds a cache now: only the default cache (and
+a cache with `sharedLogin: true`) uses the shared login in `~/.doodlebot/login`, and every other
+cache resolves to its own `oauth-<target>.json` (`authCacheFile` in `instance.ts`, `login.ts`).
+Core fixtures still write a `null` tombstone in their disposable cache, to be explicit; it lands
+in that cache and never touches the shared login. A signed-out test of the default cache would
+spend the real login, so logout scenarios need the person's go-ahead. Evidence:
+`login.test.ts`, `bootstrap.test.ts`.
 
 ### Fractional display scaling rounds window sizes
 
@@ -666,18 +697,19 @@ Read the DOM dimensions independently; a tool's requested size is not proof it r
 ### Concurrent Electron resolution can overwrite a running binary
 
 Electron 44's module downloads a missing executable during `require("electron")`. Two setup
-commands can both download and one then fails replacing a DLL the other's app has loaded.
-`electronRuntime.ts` serializes resolution with a process lease beside the Electron package,
-including when different slots resolve the same binary, and releases it after failures.
+commands at once can both download, and one then fails replacing a DLL the other's app has
+loaded. `electronRuntime.ts` resolves and installs without a lock, so run one launch or setup at
+a time; the instance record refuses a second launch only once the first Vortex has spawned.
 
 ### No `pnpm`, or only Node 20, on the agent's PATH
 
 A fresh shell can have Node 20 and no `pnpm`; `corepack pnpm` fails signature verification, and
-pnpm 11 (Vortex's) needs Node ≥ 22.13 (`node:sqlite`). Run the kit as
-`npx -y pnpm@9.15.0 run ai -- …`. For Vortex, `npm install node@22 --prefix J:\tools\node22` on a
+pnpm 11 (Vortex's) needs Node ≥ 22.13 (`node:sqlite`). Install the kit with
+`npx -y pnpm@9.15.0 install --frozen-lockfile` and run it as `node bin/doodlebot.cjs …`, which
+needs no pnpm. For Vortex, `npm install node@22 --prefix J:\tools\node22` on a
 roomy drive, install `pnpm@11.10.0` globally into that prefix, prepend
 `J:\tools\node22\node_modules\node\bin;J:\tools\node22` to `PATH`, and set `VORTEX_AI_PNPM` to
-`J:\tools\node22\pnpm.cmd`. `source`, `worktree add` and `build` then skip `pnpm dlx`, which can
+`J:\tools\node22\pnpm.cmd`. `source` and `build` then skip `pnpm dlx`, which can
 fail with ENOENT in `pnpm-cache\dlx` on a nearly full C:. A hand-run build must restore
 `etc/vortex.api.md` and `etc/Dependency Report.md` itself; only the kit's `build` does.
 
@@ -695,18 +727,20 @@ instead of downloading its own), put it first on `PATH` and run `corepack enable
 MFC, Windows 11 SDK), Python with `setuptools`, CMake, .NET 9. ARM64 builds of Python, CMake
 and .NET are fine. Electron then downloads as x64; `eval --expr "process.arch"` should say `x64`.
 
-### With corepack, `lease run` from a checkout picks the checkout's pnpm
+### With corepack, a kit package script started from a checkout picks the checkout's pnpm
 
-`pnpm --dir <kit> run ai -- lease run -- pnpm run verify`, started in a Vortex checkout, fails
-with "This project is configured to use 9.15.0 of pnpm": corepack chooses pnpm by the directory
-it starts in, so the kit runs under Vortex's pnpm 11. Started in the kit instead, the command runs
-in the kit, since pnpm overwrites `INIT_CWD` (`callerCwd` in `leaseCommand.ts`). Run the kit's CLI
-directly from the checkout: `node <kit>/node_modules/tsx/dist/cli.mjs <kit>/harness/src/cli.ts
-lease run --owner <you> --checkout <dir> -- pnpm run verify`.
+`pnpm --dir <kit> run <script>`, started in a Vortex checkout, fails with "This project is
+configured to use 9.15.0 of pnpm": corepack chooses pnpm by the directory it starts in, so the
+kit runs under Vortex's pnpm 11. Started in the kit instead, pnpm overwrites `INIT_CWD`, so a
+command that uses the caller's directory ran in the kit. The `doodlebot` shim
+(`node <kit>/bin/doodlebot.cjs`) spawns Node directly, without pnpm, and sets `INIT_CWD` to the
+caller's directory itself (`callerCwd` in `processRunner.ts`), so `doodlebot script <file.mts>`
+works from a checkout. Run the kit's own package scripts (`ci`, `build`) from its root, and a
+checkout command through `evidence run --checkout <dir>`, which chooses its directory explicitly.
 
 ### Windows on ARM: "You installed esbuild for another platform" means the wrong Node
 
-On an ARM64 machine set up as above, every `pnpm run ai` fails with that esbuild error, or with
+On an ARM64 machine set up as above, every `doodlebot` command fails with that esbuild error, or with
 `pnpm` not found: a new shell has the ARM64 Node first on `PATH`, while the kit's `node_modules`
 was installed by the x64 one. Nothing needs reinstalling. Put the x64 Node directory first on
 `PATH` for the session (`$env:PATH = "C:\dev\tools\node-v24.20.0-win-x64;$env:PATH"`, or
@@ -735,7 +769,7 @@ On Windows on ARM, the first `up` of a new cache can fail with "Vortex did not e
 though Vortex's log says "clean application end": the bootstrap's quit takes longer than
 `stopInstance` waits. The retry can then fail with "Port … is occupied", held only by `TIME_WAIT`
 sockets from that quit. A third `up` works; other times the first one does. Retry rather than
-clearing leases or killing processes.
+deleting the instance record or killing processes.
 
 ### PowerShell's UTF-8 writes start with a BOM
 
@@ -750,12 +784,12 @@ JSON through `readJsonFile` (`harness/src/jsonFile.ts`), which strips it; new re
   clean. In a Vortex checkout `pnpm nx run @vortex/renderer:lint` prints a result; use that.
 - A here-string piped into `git commit -F -` fails with "did not match any file(s)". Use a file.
 - `git show <sha>:<path> | Set-Content` re-encodes the file (Vitest may report "no tests"). Use
-  `git restore --source=<sha> --worktree -- <path>`.
+  `git restore --source=<sha> -W -- <path>` (`-W` restores the working tree).
 - `@(@("a", "b"))` flattens to `@("a", "b")`, so a one-pair find/replace list corrupts files.
   Write `@(,@("a", "b"))` or use Python, and lint after bulk edits.
 - `pnpm exec oxfmt $files` fails with "Expected at least one target file"; splat with `@files`.
 - The agent sandbox refuses `Remove-Item Env:NODE_ENV`; use `$env:NODE_ENV=$null`, or better
-  let `pnpm run ai -- build --production` set it for the build only.
+  let `doodlebot build --production` set it for the build only.
 - Windows PowerShell 5.1's `Get-Content -Raw` reads a UTF-8 file as ANSI, so a read-modify-write
   of a PR body turns 🤖, "→" and "–" into `Ã°Å¸`-style mojibake, and GitHub keeps it. Edit bodies
   with Node (`fs.readFileSync(f, "utf8")`) or `-Encoding UTF8`, then grep the result for `Ã`.
@@ -772,9 +806,6 @@ JSON through `readJsonFile` (`harness/src/jsonFile.ts`), which strips it; new re
   Filter with `gh`'s own `--jq` instead.
 - Node one-liners through `bash -c`/heredocs lose backslashes: `"\r?\n"` in a regex, or
   `J:\tools\...`, come out as raw control characters. Put anything with escapes in a script file.
-- `pnpm run ai:test:zoom | tail -15` can hang after the test exits: a process it started keeps
-  the pipe open, and `tail` prints only at end of input, so the result is lost. Redirect to a
-  file (`> log 2>&1`) and read it.
 - A `doodlebot script` that ends with `await handle.close()` on an `attachToRenderer` handle can
   stay alive after writing its results. End it with `setTimeout(() => process.exit(0), 3000)`
   before `void handle.close()`.
@@ -792,7 +823,7 @@ JSON through `readJsonFile` (`harness/src/jsonFile.ts`), which strips it; new re
 tsx treats a `.ts` file without an ESM `package.json` above it as CommonJS, so top-level `await`
 fails: name it `.mts`. A Windows path in an import (`C:\dev\…`) parses as scheme `c:`; use
 `file:///C:/dev/…`. Bare names such as `fflate` don't resolve from outside the repo.
-`pnpm run ai -- script <file.mts>` runs it with the kit's tsx and puts `harness/src/kit.ts`'s URL
+`doodlebot script <file.mts>` runs it with the kit's tsx and puts `harness/src/kit.ts`'s URL
 in `VORTEX_AI_KIT`. And tsx hard-codes esbuild's `keepNames`, so a named inner function becomes
 `__name(fn, "name")` and `page.evaluate(fn)` throws "`__name` is not defined"; `attachToRenderer`
 defines it in the page (`NAME_SHIM`, `cdp.ts`), and kit modules send source text.

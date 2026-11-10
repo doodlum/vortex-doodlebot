@@ -2,8 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as operations from "./operations";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureCheckoutIdentity,
   collectCommandEvidence,
@@ -12,23 +11,41 @@ import {
   runEvidenceProcess,
   sameIdentity,
 } from "./evidence";
-import {
-  addInstancePid,
-  checkoutResource,
-  holdLease,
-  listLeases,
-  processAlive,
-  readLease,
-} from "./lease";
-import { claimOperations, CONTEXT_ENV } from "./operations";
+import { processAlive } from "./processes";
 import { runPreflight } from "./prPreflight";
 import { REPO_ROOT } from "./paths";
+import { clearInstanceRecord, INSTANCE_RECORD, writeInstanceRecord } from "./runningVortex";
+
+// The instance record lives in a private state folder, and this process counts as a running Vortex.
+vi.mock("./paths", async (original) => {
+  const nodeFs = await import("node:fs");
+  const nodeOs = await import("node:os");
+  const nodePath = await import("node:path");
+  return {
+    ...(await original<typeof import("./paths")>()),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "evidence-cache-")),
+  };
+});
+vi.mock("./processes", async (original) => ({
+  ...(await original<typeof import("./processes")>()),
+  processImageName: () => "electron.exe",
+}));
+
+afterAll(() => fs.rmSync(path.dirname(INSTANCE_RECORD), { recursive: true, force: true }));
 
 describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => {
   let root: string;
   let repo: string;
   let base: string;
-  let leaseEnv: { dir: string };
+  const runningFrom = (sourceDir: string): void =>
+    writeInstanceRecord({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      cacheDir: path.join(root, "cache"),
+      userDataDir: path.join(root, "cache", "userData"),
+      mcpPort: 3701,
+      sourceDir,
+    });
   const git = (...args: string[]) =>
     execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", windowsHide: true }).trim();
   const write = (file: string, content: string) => {
@@ -42,7 +59,6 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-process-"));
     repo = path.join(root, "repo");
-    leaseEnv = { dir: path.join(root, "leases") };
     fs.mkdirSync(repo);
     git("init", "-q");
     git("config", "core.autocrlf", "false");
@@ -54,7 +70,10 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     write("value.test.ts", "test fixture\n");
     commit();
   });
-  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+  afterEach(() => {
+    clearInstanceRecord();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
   it("captures local content, staged state and untracked files, including Windows path aliases", () => {
     const first = captureCheckoutIdentity(repo, base);
     expect(first.checkout).toBe(fs.realpathSync.native(repo));
@@ -87,34 +106,27 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
       resolveEvidenceCommand(repo, ["pnpm", "run", "verify"], { ...env, VORTEX_AI_PNPM: old }),
     ).toThrow(/Pinned pnpm 11/);
   });
-  it("uses complete supplied environment and the held root even when cwd is a subproject", async () => {
+  it("uses exactly the supplied environment and cwd, adding nothing", async () => {
     write("nested/.keep", "");
-    const resource = checkoutResource(repo);
-    const ownership = holdLease(resource, "test", leaseEnv);
-    const operation = claimOperations([resource], "test", { leaseEnv });
-    try {
-      const result = await runEvidenceProcess({
-        executable: process.execPath,
-        args: [
-          "-e",
-          "console.log(JSON.stringify({pin:process.env.npm_execpath,lease:process.env.VORTEX_AI_LEASE_DIR,owner:process.env.VORTEX_AI_OWNER}))",
-        ],
-        cwd: path.join(repo, "nested"),
-        env: { SystemRoot: process.env.SystemRoot },
-        context: operation.context,
-        leaseEnv,
-      });
-      expect(JSON.parse(result.output)).toEqual({ lease: leaseEnv.dir, owner: "test" });
-      expect(readLease(resource, leaseEnv)?.lease.holders).toContain(process.pid);
-    } finally {
-      operation.release();
-      ownership.release();
-    }
+    const result = await runEvidenceProcess({
+      executable: process.execPath,
+      args: [
+        "-e",
+        "console.log(JSON.stringify({cwd:process.cwd(),pin:process.env.npm_execpath,kit:Object.keys(process.env).filter(k=>k.startsWith('VORTEX_AI_'))}))",
+      ],
+      cwd: path.join(repo, "nested"),
+      env: { SystemRoot: process.env.SystemRoot },
+    });
+    const seen = JSON.parse(result.output) as { cwd: string };
+    // No npm pin and no kit variable is added to the supplied environment.
+    expect(seen).toEqual({ cwd: expect.any(String), kit: [] });
+    expect(fs.realpathSync.native(seen.cwd)).toBe(
+      fs.realpathSync.native(path.join(repo, "nested")),
+    );
   });
   it("records an actual CLI command without loading an app and preserves its output", async () => {
     const out = path.join(root, "command.json");
-    const env: NodeJS.ProcessEnv = { ...process.env, VORTEX_AI_LEASE_DIR: leaseEnv.dir };
-    delete env[CONTEXT_ENV];
+    const env: NodeJS.ProcessEnv = { ...process.env };
     const result = await runEvidenceProcess({
       executable: process.execPath,
       args: [
@@ -127,8 +139,6 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
         repo,
         "--base",
         base,
-        "--owner",
-        "cli-evidence",
         "--out",
         out,
         "--",
@@ -144,63 +154,49 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     expect(receipt.command.cwd).toBe(fs.realpathSync.native(repo));
     expect(fs.readFileSync(receipt.output.path, "utf8")).toContain("actual child");
   });
-  it("actual CLI mutation paths refuse independent same-owner operations before changing source", async () => {
-    const resource = checkoutResource(repo);
-    const operation = claimOperations([resource], "same", { leaseEnv });
-    const before = fs.readFileSync(path.join(repo, "value.ts"), "utf8");
-    try {
-      for (const command of ["pr-preflight", "vortex-e2e"]) {
-        const env: NodeJS.ProcessEnv = { ...process.env, VORTEX_AI_LEASE_DIR: leaseEnv.dir };
-        delete env[CONTEXT_ENV];
-        const result = await runEvidenceProcess({
-          executable: process.execPath,
-          args: [
-            "--import",
-            "tsx",
-            path.join(REPO_ROOT, "harness/src/cli.ts"),
-            command,
-            "--checkout",
-            repo,
-            "--base",
-            base,
-            "--owner",
-            "same",
-            "--artifact-dir",
-            path.join(root, "artifacts"),
-          ],
-          cwd: REPO_ROOT,
-          env,
-        });
-        expect(result.code).not.toBe(0);
-        expect(result.output).toMatch(/independent operation.*checkout:.*refusing overlapping/s);
-        expect(fs.readFileSync(path.join(repo, "value.ts"), "utf8")).toBe(before);
-      }
-    } finally {
-      operation.release();
-    }
-  });
-  it("preflight rejects anonymous owners and its owner's live app before invoking a runner", async () => {
+  it("preflight refuses its revert check while the harness Vortex runs from the checkout", async () => {
     const options = {
       checkout: repo,
       base,
-      leaseEnv,
       runner: async () => {
         throw new Error("runner must not start");
       },
     };
-    await expect(runPreflight({ ...options, owner: "anonymous" })).rejects.toThrow(/named owner/);
-    const resource = checkoutResource(repo);
-    const hold = holdLease(resource, "same", leaseEnv);
-    addInstancePid(hold.lease, process.pid, leaseEnv);
-    try {
-      await expect(runPreflight({ ...options, owner: "same" })).rejects.toThrow(/running from/);
-    } finally {
-      const { removeInstancePid } = await import("./lease");
-      removeInstancePid(hold.lease, process.pid, leaseEnv);
-      hold.release();
-    }
+    runningFrom(repo);
+    await expect(runPreflight(options)).rejects.toThrow(
+      `A harness Vortex is running from ${path.resolve(repo)} (pid ${process.pid}); run \`doodlebot down\` before reverting it.`,
+    );
+    // Without the revert check nothing is changed, so nothing is refused.
+    await expect(runPreflight({ ...options, skipRevert: true })).resolves.toBeDefined();
   });
-  it("cancels a real negative-control child before restoring and releasing its checkout", async () => {
+  it("evidence run refuses before running while the harness Vortex runs from the checkout", async () => {
+    runningFrom(repo);
+    const out = path.join(root, "refused.json");
+    await expect(
+      collectCommandEvidence({
+        checkout: repo,
+        base,
+        cwd: repo,
+        command: ["node", "-e", "require('node:fs').writeFileSync('value.ts','changed')"],
+        out,
+      }),
+    ).rejects.toThrow(
+      `A harness Vortex is running from ${repo} (pid ${process.pid}); run \`doodlebot down\` before recording evidence in it.`,
+    );
+    expect(fs.readFileSync(path.join(repo, "value.ts"), "utf8")).toBe("export const value = 2;\n");
+    expect(fs.existsSync(out)).toBe(false);
+    // A Vortex running from another checkout does not stop it.
+    runningFrom(path.join(root, "other"));
+    const result = await collectCommandEvidence({
+      checkout: repo,
+      base,
+      cwd: repo,
+      command: ["node", "-e", "console.log('ran')"],
+      out,
+    });
+    expect(result.code).toBe(0);
+  });
+  it("cancels a real negative-control child before restoring its checkout", async () => {
     const controller = new AbortController();
     let calls = 0;
     let pid: number | undefined;
@@ -209,8 +205,6 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
       runPreflight({
         checkout: repo,
         base,
-        owner: "cancel",
-        leaseEnv,
         signal: controller.signal,
         handleSignals: false,
         runner: async (cwd, _tests, options) => {
@@ -246,50 +240,16 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     expect(pid).toBeDefined();
     expect(processAlive(pid!)).toBe(false);
     expect(fs.readFileSync(path.join(repo, "value.ts"), "utf8")).toBe(before);
-    expect(readLease(checkoutResource(repo), leaseEnv)).toBeUndefined();
-    expect(listLeases(leaseEnv)).toEqual([]);
   });
   it("records source changes during a successful command instead of claiming stable evidence", async () => {
     const result = await collectCommandEvidence({
       checkout: repo,
       base,
       cwd: repo,
-      owner: "mutate",
-      leaseEnv,
       command: ["node", "-e", "require('node:fs').writeFileSync('value.ts','changed')"],
       out: path.join(root, "changed.json"),
     });
     expect(result.code).toBe(0);
     expect(sameIdentity(result.before, result.after)).toBe(false);
-  });
-  it("waits for a spawned child to exit even if lease registration throws", async () => {
-    const resource = checkoutResource(repo);
-    const ownership = holdLease(resource, "registration", leaseEnv);
-    const operation = claimOperations([resource], "registration", { leaseEnv });
-    let pid: number | undefined;
-    const spy = vi
-      .spyOn(operations, "trackOperationChild")
-      .mockImplementation((_context, child) => {
-        pid = child;
-        expect(processAlive(child)).toBe(true);
-        throw new Error("registration failed");
-      });
-    try {
-      await expect(
-        runEvidenceProcess({
-          executable: process.execPath,
-          args: ["-e", "setInterval(()=>{},1000)"],
-          cwd: repo,
-          context: operation.context,
-          leaseEnv,
-        }),
-      ).rejects.toThrow("registration failed");
-      expect(pid).toBeDefined();
-      expect(processAlive(pid!)).toBe(false);
-    } finally {
-      spy.mockRestore();
-      operation.release();
-      ownership.release();
-    }
   });
 });

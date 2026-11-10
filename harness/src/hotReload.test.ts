@@ -3,18 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { loadConfig, MCP_EXTENSION_ID, type HarnessConfig } from "./config";
-import { extensionOutputResource } from "./extensionBuild";
-import {
-  assertStandaloneWatch,
-  watchAndReload,
-  type HotReloadEvent,
-  type WatchOptions,
-} from "./hotReload";
-import { instanceLeaseResources } from "./instance";
-import { readLease } from "./lease";
-import { withLiveOperation } from "./liveOperation";
+import { watchAndReload, type HotReloadEvent, type WatchOptions } from "./hotReload";
 import type { VortexMcpClient } from "./mcpClient";
-import { claimOperations, CONTEXT_ENV, operationResource } from "./operations";
 import type { runEvidenceProcess } from "./processRunner";
 
 const pass: Awaited<ReturnType<typeof runEvidenceProcess>> = {
@@ -28,7 +18,6 @@ let dir: string;
 let source: string;
 let liveDir: string;
 let config: HarnessConfig;
-let leaseEnv: { dir: string };
 let controller: AbortController;
 let pending: Promise<void> | undefined;
 let cleanup: (() => void)[];
@@ -43,7 +32,6 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot source watch "));
   source = path.join(dir, "extension");
   liveDir = path.join(dir, "cache", "live");
-  leaseEnv = { dir: path.join(dir, "leases") };
   fs.mkdirSync(path.join(source, "src"), { recursive: true });
   fs.writeFileSync(path.join(source, "src", "index.ts"), "initial");
   fs.writeFileSync(path.join(source, "info.json"), '{"id":"doodlebot"}');
@@ -52,7 +40,6 @@ beforeEach(() => {
   config = loadConfig({
     target: { kind: "installed", executable: "unused.exe", args: [], appName: "Vortex" },
     cacheDir: path.join(dir, "cache"),
-    owner: "watcher",
   });
   controller = new AbortController();
   pending = undefined;
@@ -115,11 +102,9 @@ function start(options: Partial<WatchOptions> = {}): Promise<void> {
   pending = watchAndReload(mcp, config, {
     source,
     liveDir,
-    leaseEnv,
     signal: controller.signal,
     pollMs: 10,
     debounceMs: 20,
-    retryMs: 30,
     reloadTimeoutMs: 80,
     reloadPollMs: 10,
     buildRunner: runner,
@@ -135,20 +120,11 @@ function loaded(): number {
   return events.filter((event) => event.type === "reloaded").length;
 }
 
-async function assertIdle(): Promise<void> {
-  await expect(
-    withLiveOperation(config, "foreground command", async () => true, { leaseEnv }),
-  ).resolves.toBe(true);
-  const hold = claimOperations([extensionOutputResource(source)], "another-builder", { leaseEnv });
-  hold.release();
-}
-
 it("builds initial source, detects added/deleted files, and ignores output and test changes", async () => {
   start();
   await vi.advanceTimersByTimeAsync(60);
   expect(installed()).toBe("initial");
   expect(loaded()).toBe(1);
-  await assertIdle();
   writeOutput("external output");
   fs.writeFileSync(path.join(source, "src", "ignored.test.ts"), "test-only");
   await vi.advanceTimersByTimeAsync(100);
@@ -163,7 +139,6 @@ it("builds initial source, detects added/deleted files, and ignores output and t
   await vi.advanceTimersByTimeAsync(60);
   expect(runner).toHaveBeenCalledTimes(4);
   expect(loaded()).toBe(4);
-  await assertIdle();
 });
 
 it("debounces rapid edits and detects changed bytes even when timestamps and lengths match", async () => {
@@ -182,35 +157,7 @@ it("debounces rapid edits and detects changed bytes even when timestamps and len
   expect(installed()).toBe("latest!");
 });
 
-it.each(["instance", "output"])(
-  "retains pending edits after same-owner %s contention and releases partial holds",
-  async (resource) => {
-    const instance = instanceLeaseResources(config)[0]!;
-    const output = extensionOutputResource(source);
-    const hold = claimOperations([resource === "instance" ? instance : output], "watcher", {
-      leaseEnv,
-    });
-    try {
-      start();
-      await vi.advanceTimersByTimeAsync(100);
-      expect(runner).not.toHaveBeenCalled();
-      expect(reload).not.toHaveBeenCalled();
-      expect(events.filter((event) => event.type === "waiting")).toHaveLength(1);
-      expect(readLease(instance, leaseEnv)).toBeUndefined();
-      expect(
-        readLease(operationResource(resource === "instance" ? output : instance), leaseEnv),
-      ).toBeUndefined();
-    } finally {
-      hold.release();
-    }
-    await vi.advanceTimersByTimeAsync(60);
-    expect(installed()).toBe("initial");
-    expect(loaded()).toBe(1);
-    await assertIdle();
-  },
-);
-
-it("holds the full cycle, discards a build whose inputs changed, then loads the latest source", async () => {
+it("discards a build whose inputs changed, then loads the latest source", async () => {
   const compiling = gate();
   runner.mockImplementationOnce(async (options) => {
     const captured = fs.readFileSync(path.join(options.cwd, "src", "index.ts"), "utf8");
@@ -220,12 +167,6 @@ it("holds the full cycle, discards a build whose inputs changed, then loads the 
   });
   start();
   await vi.advanceTimersByTimeAsync(30);
-  await expect(
-    withLiveOperation(config, "overlap", async () => true, { leaseEnv }),
-  ).rejects.toThrow(/overlapping/);
-  expect(() => claimOperations([extensionOutputResource(source)], "watcher", { leaseEnv })).toThrow(
-    /overlapping/,
-  );
   edit("edited during build");
   compiling.release();
   await vi.advanceTimersByTimeAsync(0);
@@ -235,10 +176,9 @@ it("holds the full cycle, discards a build whose inputs changed, then loads the 
   expect(runner).toHaveBeenCalledTimes(2);
   expect(reload).toHaveBeenCalledTimes(1);
   expect(installed()).toBe("edited during build");
-  await assertIdle();
 });
 
-it("retains edits made during reload and allows foreground commands between completed cycles", async () => {
+it("retains edits made during reload", async () => {
   const reloading = gate();
   reload.mockImplementationOnce(async () => {
     edit("edited during reload");
@@ -248,17 +188,10 @@ it("retains edits made during reload and allows foreground commands between comp
   start();
   await vi.advanceTimersByTimeAsync(30);
   expect(installed()).toBe("initial");
-  await expect(
-    withLiveOperation(config, "overlap", async () => true, { leaseEnv }),
-  ).rejects.toThrow(/overlapping/);
-  expect(() => claimOperations([extensionOutputResource(source)], "watcher", { leaseEnv })).toThrow(
-    /overlapping/,
-  );
   reloading.release();
   await vi.advanceTimersByTimeAsync(80);
   expect(loaded()).toBe(2);
   expect(installed()).toBe("edited during reload");
-  await assertIdle();
   await vi.advanceTimersByTimeAsync(100);
   expect(runner).toHaveBeenCalledTimes(2);
 });
@@ -281,7 +214,6 @@ it("does not copy a build if source changes while obtaining the pre-reload ident
   expect(runner).toHaveBeenCalledTimes(2);
   expect(reload).toHaveBeenCalledTimes(1);
   expect(installed()).toBe("edited during status");
-  await assertIdle();
 });
 
 it.each(["failed compiler", "missing output"])(
@@ -297,7 +229,6 @@ it.each(["failed compiler", "missing output"])(
     expect(reload).not.toHaveBeenCalled();
     expect(fs.existsSync(liveDir)).toBe(false);
     expect(events.filter((event) => event.type === "error")).toHaveLength(1);
-    await assertIdle();
     edit("corrected");
     await vi.advanceTimersByTimeAsync(60);
     expect(installed()).toBe("corrected");
@@ -305,36 +236,34 @@ it.each(["failed compiler", "missing output"])(
   },
 );
 
-it("cancels debounce without building and keeps an idle watcher free of operation holds", async () => {
+it("cancels debounce without building", async () => {
   const watching = start();
   await vi.advanceTimersByTimeAsync(10);
-  await assertIdle();
   controller.abort();
   await vi.advanceTimersByTimeAsync(0);
   await watching;
   expect(runner).not.toHaveBeenCalled();
-  await assertIdle();
 });
 
-it("keeps guards until a cancelled compiler confirms exit and never copies its output", async () => {
+it("awaits a cancelled compiler's exit and never copies its output", async () => {
   const exited = gate();
   runner.mockImplementationOnce(async (options) => {
     await exited.promise;
     return { ...pass, aborted: options.signal?.aborted === true };
   });
-  const watching = start();
+  let settled = false;
+  const watching = start().finally(() => {
+    settled = true;
+  });
   await vi.advanceTimersByTimeAsync(30);
   controller.abort();
-  await vi.advanceTimersByTimeAsync(0);
-  expect(() => claimOperations([extensionOutputResource(source)], "watcher", { leaseEnv })).toThrow(
-    /overlapping/,
-  );
+  await vi.advanceTimersByTimeAsync(100);
+  expect(settled).toBe(false);
   exited.release();
   await vi.advanceTimersByTimeAsync(0);
   await watching;
   expect(reload).not.toHaveBeenCalled();
   expect(fs.existsSync(liveDir)).toBe(false);
-  await assertIdle();
 });
 
 it("finishes bounded runtime verification after cancellation without spinning or starting another cycle", async () => {
@@ -345,20 +274,16 @@ it("finishes bounded runtime verification after cancellation without spinning or
   const watching = start();
   await vi.advanceTimersByTimeAsync(40);
   expect(loaded()).toBe(0);
-  expect(() => claimOperations([extensionOutputResource(source)], "watcher", { leaseEnv })).toThrow(
-    /overlapping/,
-  );
   expect(vi.mocked(mcp.call).mock.calls.length).toBeLessThan(8);
   runtime = "runtime-after-cancel";
   await vi.advanceTimersByTimeAsync(10);
   await watching;
   expect(loaded()).toBe(1);
   expect(runner).toHaveBeenCalledTimes(1);
-  await assertIdle();
 });
 
 it.each(["unchanged", "missing", "invalid"])(
-  "rejects a reload with %s runtime identity and releases its guards",
+  "rejects a reload with %s runtime identity",
   async (identity) => {
     let requested = false;
     mcp.call = vi.fn(async (name: string) => {
@@ -377,7 +302,6 @@ it.each(["unchanged", "missing", "invalid"])(
       identity === "invalid" ? /expected isolated profile/ : /new runtime/,
     );
     expect(loaded()).toBe(0);
-    await assertIdle();
   },
 );
 
@@ -391,7 +315,6 @@ it("requires an initial runtime identity before copying or requesting reload", a
   expect(vi.mocked(mcp.call).mock.calls.map(([name]) => name)).toEqual(["automation_status"]);
   expect(fs.existsSync(liveDir)).toBe(false);
   expect(loaded()).toBe(0);
-  await assertIdle();
 });
 
 it.each([1, 2, 3, 4])("refuses a foreign profile at status boundary %s", async (foreignAt) => {
@@ -414,7 +337,6 @@ it.each([1, 2, 3, 4])("refuses a foreign profile at status boundary %s", async (
   if (foreignAt === 1) expect(runner).not.toHaveBeenCalled();
   if (foreignAt <= 2) expect(fs.existsSync(liveDir)).toBe(false);
   expect(reload).toHaveBeenCalledTimes(foreignAt === 4 ? 1 : 0);
-  await assertIdle();
 });
 
 it("an edit and Undo during compilation cannot load transient source bytes", async () => {
@@ -429,19 +351,4 @@ it("an edit and Undo during compilation cannot load transient source bytes", asy
   expect(installed()).toBe("initial");
   expect(loaded()).toBe(1);
   expect(runner).toHaveBeenCalledTimes(1);
-  await assertIdle();
-});
-
-it("rejects explicit and inherited long-lived execution contexts before touching the app", async () => {
-  const hold = claimOperations(["parent"], "watcher", { leaseEnv });
-  try {
-    await expect(start({ context: hold.context })).rejects.toThrow(/Run watch directly/);
-    vi.stubEnv(CONTEXT_ENV, JSON.stringify(hold.context));
-    expect(() => assertStandaloneWatch()).toThrow(/Run watch directly/);
-    await expect(watchAndReload(mcp, config, { liveDir })).rejects.toThrow(/Run watch directly/);
-    expect(mcp.call).not.toHaveBeenCalled();
-    expect(runner).not.toHaveBeenCalled();
-  } finally {
-    hold.release();
-  }
 });

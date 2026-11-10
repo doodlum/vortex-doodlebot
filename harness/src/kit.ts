@@ -12,7 +12,7 @@
  *   const mcp = kit.clientFor(config);
  *
  * Anything a script proves useful belongs in a harness module with a test, not in the
- * scratch file (harness/AGENT-WORKFLOW.md, "Improve from verified lessons").
+ * scratch file (harness/AGENTS.md, "Improving the kit").
  */
 import type { HarnessConfig } from "./config";
 import { VortexMcpClient } from "./mcpClient";
@@ -22,7 +22,6 @@ export { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 export { loadConfig, type HarnessConfig } from "./config";
 export { VortexMcpClient };
 export { attachToRenderer, captureScreenshot, realHover, realWheel } from "./cdp";
-export { claimInstanceLease } from "./instance";
 export { readJsonFile, parseJson } from "./jsonFile";
 
 export * as bethesda from "./bethesdaSandbox";

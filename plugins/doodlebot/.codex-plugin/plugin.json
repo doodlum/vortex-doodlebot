@@ -1,0 +1,33 @@
+{
+  "name": "doodlebot",
+  "version": "2.0.0",
+  "description": "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds.",
+  "author": {
+    "name": "doodlum"
+  },
+  "homepage": "https://doodlum.github.io/vortex-doodlebot/",
+  "repository": "https://github.com/doodlum/vortex-doodlebot",
+  "license": "GPL-3.0-only",
+  "skills": "./skills/",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "Doodlebot",
+    "shortDescription": "The agent companion for Vortex",
+    "developerName": "doodlum",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Try things in a test Vortex",
+      "Investigate and fix Vortex bugs",
+      "QA pull requests and releases",
+      "Measure Vortex builds"
+    ],
+    "defaultPrompt": [
+      "Set up doodlebot on this machine.",
+      "Try installing a mod in Vortex 2.8.0 and report.",
+      "Is my branch slower than 2.8.0?"
+    ],
+    "brandColor": "#FF8B24",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
+  }
+}

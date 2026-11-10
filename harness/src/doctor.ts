@@ -9,14 +9,18 @@
  * prerequisite is actually missing and the exact command that fixes it.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-import { ANONYMOUS, loginDir, readMarker, snapshotDir, liveDir } from "./bootstrap";
+import { ANONYMOUS, markerFile, readMarker, snapshotDir, liveDir } from "./bootstrap";
 import { extensionRoot, findInstalledVortex, type HarnessConfig } from "./config";
 import { KNOWN_GAMES, findGamePath, steamLibraryRoots } from "./gameSetup";
 import { VortexMcpClient } from "./mcpClient";
 import { hasVortexSource, vortexSourceDir } from "./source";
 import { authCacheFile } from "./instance";
+import { checkLoginAcl, loginState, usesSharedLogin } from "./login";
+import { SEVEN_ZIP_HINT, find7Zip } from "./releaseFetch";
+import { readContent } from "./content";
 
 export interface Check {
   name: string;
@@ -31,33 +35,108 @@ export interface Check {
 export interface DoctorReport {
   ok: boolean;
   checks: Check[];
+  /** Why the requested Vortex target could not be resolved (an explicit --dev-dir). */
+  targetError?: string;
+}
+
+export interface DoctorOptions {
+  skipGame?: boolean;
+  /** A target the CLI could not resolve; reported as the failing `Vortex` check. */
+  targetError?: string;
+  /** The home folder holding the legacy lease store (default: the user's). */
+  homeDir?: string;
 }
 
 export async function runDoctor(
   config: HarnessConfig,
-  options: { skipGame?: boolean } = {},
+  options: DoctorOptions = {},
 ): Promise<DoctorReport> {
   const checks: Check[] = [];
 
   checks.push(checkApiKey(config));
   checks.push(await checkSource());
-  checks.push(checkVortex(config));
+  checks.push(
+    options.targetError === undefined ? checkVortex(config) : targetFailure(options.targetError),
+  );
   checks.push(checkExtension());
   if (!options.skipGame) checks.push(checkGame(config));
-  checks.push(checkCache(config));
+  checks.push(checkCache(config, options.skipGame === true));
+  checks.push(checkSandboxBaseline(config, options.skipGame === true));
   checks.push(checkCapturedLogin(config));
+  checks.push(checkLoginFolder(path.join(options.homeDir ?? os.homedir(), ".doodlebot", "login")));
+  checks.push(checkSevenZip());
+  const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
+  if (lease !== undefined) checks.push(lease);
   checks.push(await checkRunning(config));
 
-  return { ok: checks.every((c) => c.ok || c.advisory === true), checks };
+  return {
+    ok: checks.every((c) => c.ok || c.advisory === true),
+    checks,
+    ...(options.targetError === undefined ? {} : { targetError: options.targetError }),
+  };
 }
 
+function targetFailure(message: string): Check {
+  return {
+    name: "Vortex",
+    ok: false,
+    detail: message,
+    fix: "Pass a built Vortex checkout to --dev-dir (doodlebot build --checkout <dir>), or use --installed.",
+  };
+}
+
+/**
+ * The baseline a start reseeds from, for these flags (`--sandbox` gives the sandbox's). Advisory:
+ * the next `up` builds it. The same test `checkCache` and `status` use; `--no-game` has its own
+ * baseline, so `skipGame` selects it.
+ */
+function checkSandboxBaseline(config: HarnessConfig, skipGame: boolean): Check {
+  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS, skipGame);
+  const present = readMarker(snapshot) !== undefined;
+  return {
+    name: "Sandbox baseline",
+    ok: present,
+    advisory: true,
+    detail: present ? `present: ${markerFile(snapshot)}` : "missing",
+    fix: `doodlebot up ${skipGame ? "--no-game" : "--sandbox"} (the first start builds it), then doodlebot down`,
+  };
+}
+
+/** 7-Zip, which `release get` needs to extract a release without running its installer. */
+export function checkSevenZip(find: () => string | undefined = find7Zip): Check {
+  const found = find();
+  return {
+    name: "7-Zip",
+    ok: found !== undefined,
+    advisory: true,
+    detail: found ?? "not found; only `doodlebot release get` needs it",
+    fix: SEVEN_ZIP_HINT,
+  };
+}
+
+/** The lease store of the removed multi-instance kit; reported only when it is still there. */
+function checkLegacyLeaseStore(homeDir: string): Check | undefined {
+  const store = path.join(homeDir, ".vortex-ai", "leases");
+  if (!fs.existsSync(store)) return undefined;
+  return {
+    name: "Legacy lease store",
+    ok: false,
+    advisory: true,
+    detail: store,
+    fix: `delete ${store}; nothing reads it any more`,
+  };
+}
+
+/**
+ * The login of this cache: the shared `~/.doodlebot/login` file for the default cache (and a
+ * cache that opts in), the cache's own file otherwise, which only a signed-out marker or a test
+ * writes (login.ts).
+ */
 function checkCapturedLogin(config: HarnessConfig): Check {
-  const key = config.apiKey?.trim();
-  const captured =
-    readMarker(snapshotDir(config, key === undefined || key === "" ? "anonymous" : key))
-      ?.loginCaptured === true ||
-    readMarker(loginDir(config))?.loginCaptured === true ||
-    fs.existsSync(authCacheFile(config));
+  const file = authCacheFile(config);
+  const state = loginState(file);
+  const shared = usesSharedLogin(config);
+  const captured = state === "login";
   return {
     name: "Nexus login captured",
     ok: captured,
@@ -65,9 +144,36 @@ function checkCapturedLogin(config: HarnessConfig): Check {
     // and everything else works without it.
     advisory: true,
     detail: captured
-      ? "cache recorded — auth-status checks live credentials; this marker does not prove server validity"
-      : "not captured — collections will fail; an API key alone does not cover them",
-    fix: "pnpm run ai -- setup --oauth (complete browser login once; caches automatically)",
+      ? `present in ${file}; auth-status checks live credentials, this file does not prove Nexus still accepts them`
+      : shared
+        ? `${state === "missing" ? "missing" : state} (${file}) — collections will fail; an API key alone does not cover them`
+        : `this cache has no login (${state}); only the default cache uses the shared login in ~/.doodlebot/login`,
+    fix: shared
+      ? "doodlebot setup --oauth --installed (the account owner signs in once; a lost or expired login is fixed the same way)"
+      : "run collections and Nexus tests in the default cache",
+  };
+}
+
+/** The shared login's folder is private: only the user, SYSTEM and Administrators can read it. */
+function checkLoginFolder(dir: string): Check {
+  let report;
+  try {
+    report = checkLoginAcl(dir);
+  } catch (error) {
+    return {
+      name: "Nexus login folder",
+      ok: false,
+      advisory: true,
+      detail: `${dir}: could not read its ACL (${error instanceof Error ? error.message : String(error)})`,
+      fix: `icacls "${dir}"`,
+    };
+  }
+  return {
+    name: "Nexus login folder",
+    ok: report.ok,
+    advisory: true,
+    detail: `${dir}: ${report.detail}`,
+    ...(report.fix === undefined ? {} : { fix: report.fix }),
   };
 }
 
@@ -112,22 +218,35 @@ async function checkSource(): Promise<Check> {
     ok: false,
     advisory: true,
     detail: "not cloned; optional unless developing Vortex itself",
-    fix: "pnpm run ai:source",
+    fix: "doodlebot source",
+  };
+}
+
+/**
+ * No installed Vortex is fine when an official release is registered (`release get`): every
+ * command takes `--release <version>`.
+ */
+export function missingVortexCheck(releases: string[]): Check {
+  if (releases.length > 0)
+    return {
+      name: "Vortex",
+      ok: true,
+      detail: `no installed Vortex; registered releases: ${releases.join(", ")} (use --release ${releases[0]!})`,
+    };
+  return {
+    name: "Vortex",
+    ok: false,
+    detail: "no installed Vortex found",
+    fix:
+      "doodlebot release get <version>   (an official release, never installed), or install " +
+      "Vortex from https://www.nexusmods.com/about/vortex/, or set VORTEX_AI_EXE / VORTEX_AI_DEV_DIR.",
   };
 }
 
 function checkVortex(config: HarnessConfig): Check {
   const { target } = config;
-  if (target.executable === "" || !fs.existsSync(target.executable)) {
-    return {
-      name: "Vortex",
-      ok: false,
-      detail: "no installed Vortex found",
-      fix:
-        "Install it from https://www.nexusmods.com/about/vortex/ — the released build is " +
-        "all this needs. Or set VORTEX_AI_EXE / VORTEX_AI_DEV_DIR.",
-    };
-  }
+  if (target.executable === "" || !fs.existsSync(target.executable))
+    return missingVortexCheck(readContent().releases.map((release) => release.version));
 
   if (target.kind === "dev") {
     const renderer = path.join(target.args[0] ?? "", "build", "renderer.js");
@@ -138,7 +257,7 @@ function checkVortex(config: HarnessConfig): Check {
       detail: built
         ? `source build at ${target.sourceDir ?? "?"}`
         : `source checkout at ${target.sourceDir ?? "?"} is not built`,
-      fix: "pnpm run ai:source   (installs and builds the clone)",
+      fix: "doodlebot source   (installs and builds the clone)",
     };
   }
 
@@ -189,8 +308,8 @@ function checkGame(config: HarnessConfig): Check {
   };
 }
 
-function checkCache(config: HarnessConfig): Check {
-  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS);
+function checkCache(config: HarnessConfig, skipGame: boolean): Check {
+  const snapshot = snapshotDir(config, config.apiKey?.trim() || ANONYMOUS, skipGame);
   const marker = readMarker(snapshot);
   const live = fs.existsSync(path.join(liveDir(config), "userData"));
 
@@ -215,7 +334,7 @@ async function checkRunning(config: HarnessConfig): Promise<Check> {
       ok: false,
       advisory: true,
       detail: `nothing answering on ${mcp.url}`,
-      fix: "pnpm run ai:up",
+      fix: "doodlebot up",
     };
   }
 
@@ -244,7 +363,7 @@ export function formatDoctorReport(report: DoctorReport): string {
   lines.push("");
   lines.push(
     report.ok
-      ? "Ready. Start an instance with: pnpm run ai:up"
+      ? "Ready. Start an instance with: doodlebot up"
       : "Not ready — fix the FAIL items above.",
   );
   return lines.join("\n");

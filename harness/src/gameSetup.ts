@@ -12,7 +12,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-import { assertRedirected } from "./bethesdaSandbox";
 import type { HarnessConfig } from "./config";
 import type { VortexMcpClient } from "./mcpClient";
 import { realHover } from "./cdp";
@@ -87,7 +86,105 @@ export const KNOWN_GAMES: Record<string, GameDefinition> = {
     steamDir: "Cyberpunk 2077",
     executable: "bin/x64/Cyberpunk2077.exe",
   },
+  starfield: {
+    id: "starfield",
+    name: "Starfield",
+    steamAppId: "1716740",
+    steamDir: "Starfield",
+    executable: "Starfield.exe",
+  },
 };
+
+/**
+ * The per-user folders a game (and Vortex managing it) writes outside the game folder:
+ * `Documents\My Games\<myGames>`, `%LOCALAPPDATA%\<localAppData>` and
+ * `%APPDATA%\<roamingAppData>` (Roaming). A launch that manages a game listed here backs them up
+ * and restores them at `down` (userFolders.ts). `{}` means the game has none. A registered copy
+ * of a game missing from this table cannot be launched.
+ */
+export interface UserFolderNames {
+  myGames?: string;
+  localAppData?: string;
+  roamingAppData?: string;
+}
+
+export const USER_FOLDERS: Record<string, UserFolderNames> = {
+  vortexaisandbox: {},
+  fallout4: { myGames: "Fallout4", localAppData: "Fallout4" },
+  falloutnv: { myGames: "FalloutNV", localAppData: "FalloutNV" },
+  skyrimse: { myGames: "Skyrim Special Edition", localAppData: "Skyrim Special Edition" },
+  starfield: { myGames: "Starfield", localAppData: "Starfield" },
+  // Saves and settings live in %APPDATA%\StardewValley (Roaming).
+  stardewvalley: { roamingAppData: "StardewValley" },
+};
+
+/**
+ * The files Vortex itself writes in a game's user folders, as case-insensitive file-name
+ * patterns (`*` matches any run of characters). After a clean `down` only a changed file named
+ * here, changed inside the run, is restored automatically; every other change (a save above all)
+ * is listed for the owner, since the owner may have played their own copy during the run.
+ */
+const BETHESDA_WRITES = ["plugins.txt", "loadorder.txt", "DLCList.txt", "*.ini"];
+export const VORTEX_WRITES: Record<string, string[]> = {
+  vortexaisandbox: [],
+  fallout4: BETHESDA_WRITES,
+  falloutnv: BETHESDA_WRITES,
+  skyrimse: BETHESDA_WRITES,
+  starfield: BETHESDA_WRITES,
+  stardewvalley: [],
+};
+
+/** Whether `fileName` is one of the files Vortex writes for `gameId` (VORTEX_WRITES). */
+export function vortexWrites(gameId: string, fileName: string): boolean {
+  return (VORTEX_WRITES[gameId] ?? []).some((pattern) =>
+    new RegExp(
+      `^${pattern
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
+      "i",
+    ).test(fileName),
+  );
+}
+
+/** The executables that mean a game is running (its launcher-script loaders included). */
+export const GAME_EXECUTABLES: Record<string, string[]> = {
+  fallout4: ["Fallout4.exe", "f4se_loader.exe"],
+  skyrimse: ["SkyrimSE.exe", "skse64_loader.exe"],
+  fallout3: ["Fallout3.exe"],
+  falloutnv: ["FalloutNV.exe"],
+  stardewvalley: ["Stardew Valley.exe", "StardewModdingAPI.exe"],
+  starfield: ["Starfield.exe", "sfse_loader.exe"],
+};
+
+/** The game's running processes, from `tasklist`. Throws for a game with no known executable. */
+export async function gameProcesses(gameId: string): Promise<{ name: string; pid: number }[]> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+  const names =
+    GAME_EXECUTABLES[gameId] ?? (KNOWN_GAMES[gameId] ? [KNOWN_GAMES[gameId]!.executable] : []);
+  if (names.length === 0)
+    throw new Error(
+      `No launch-process check is defined for ${gameId}. Add its executable or use --no-launch for installation/deployment only.`,
+    );
+  const { stdout } = await run("tasklist", ["/FO", "CSV", "/NH"], { windowsHide: true });
+  return stdout.split(/\r?\n/).flatMap((line) => {
+    const match = /^"([^"]+)","(\d+)"/.exec(line);
+    return match?.[1] &&
+      match[2] &&
+      names.some((name) => name.toLowerCase() === match[1]!.toLowerCase())
+      ? [{ name: match[1], pid: Number(match[2]) }]
+      : [];
+  });
+}
+
+/** Whether the game itself is running. A game with no known executable counts as not running. */
+export async function gameRunning(gameId: string): Promise<boolean> {
+  if (process.platform !== "win32") return false;
+  if (GAME_EXECUTABLES[gameId] === undefined && KNOWN_GAMES[gameId] === undefined) return false;
+  return (await gameProcesses(gameId)).length > 0;
+}
 
 export class GameNotFoundError extends Error {}
 
@@ -200,16 +297,6 @@ export async function ensureGameManaged(
   gameId: string,
   options: EnsureGameOptions,
 ): Promise<EnsureGameResult> {
-  const redirect = options.config.profileRedirect;
-  if (redirect !== undefined) {
-    // Checked before the game is registered or activated: both write to its per-user
-    // folders, and for the fake Fallout 4 those must be the sandbox's.
-    const status = await mcp.call<{
-      paths?: { documents: string | null; localAppData: string | null };
-    }>("automation_status");
-    assertRedirected(redirect, status.paths);
-  }
-
   const game = KNOWN_GAMES[gameId];
   if (
     options.gamePath !== undefined &&

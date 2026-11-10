@@ -1,6 +1,6 @@
 /**
  * Opt-in check that a collection member whose download fails is installed by a resume:
- * pnpm run ai:test:collection-download-retry (fake Fallout 4: `up --bethesda-sandbox`).
+ * doodlebot test collection-download-retry (fake Fallout 4: `up --bethesda-sandbox`).
  *
  * A required member downloads from a local server (a direct member) that resets every
  * connection until the first install has ended. Vortex retries the download itself, then marks
@@ -12,10 +12,9 @@ import path from "node:path";
 
 import { zipSync } from "fflate";
 
-import { pluginBytes } from "../bethesdaSandbox";
+import { assertFakeFallout4Active, pluginBytes } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
 import { startArchiveServer } from "../downloadServer";
-import { claimInstanceLease } from "../instance";
 import { VortexMcpClient } from "../mcpClient";
 import {
   closeCollectionReviews,
@@ -25,11 +24,9 @@ import {
 } from "../offlineCollection";
 
 const config = loadConfig();
-claimInstanceLease(config, "ai:test:collection-download-retry", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
-if ((await mcp.call<string | null>("vortex_query", { selector: "activeGameId" })) !== "fallout4")
-  throw new Error("This check needs the fake Fallout 4: `doodlebot up --bethesda-sandbox`.");
+await assertFakeFallout4Active(mcp, config.cacheDir);
 
 const stamp = String(Date.now());
 const plugin = `Direct${stamp}.esp`;

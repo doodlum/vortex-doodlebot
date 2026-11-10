@@ -38,20 +38,33 @@ import {
 } from "./instance";
 import { VortexMcpClient } from "./mcpClient";
 import { requireOAuth } from "./auth";
-import { bethesdaSandboxPaths } from "./bethesdaSandbox";
+import { ensureFallout4Inis, isBethesdaSandbox } from "./bethesdaSandbox";
 import { resetDisposableGameData } from "./sandbox";
-import { importLogin } from "./loginImport";
-import { DEFAULT_CACHE_DIR } from "./paths";
+import { describeMigration, migrateDefaultLogin, usesSharedLogin } from "./login";
+import { normalizedPath } from "./paths";
+import {
+  assertNoHarnessVortex,
+  buildOf,
+  leftoverRefusal,
+  runningVortex,
+  sameBuild,
+} from "./runningVortex";
+import { assertNoOwnVortex, windowsOnlyWarning } from "./ownVortex";
+import { assertGamePathAllowed } from "./gameCommand";
+import {
+  protectUserFolders,
+  settlePendingRestores,
+  userFolderRoots,
+  userFoldersOf,
+} from "./userFolders";
 import { missingBuildOutputs } from "./source";
-import { withLiveOperation } from "./liveOperation";
-import type { OperationOptions } from "./operations";
 
 /**
  * Bumped when a change here makes previously-cached snapshots wrong (a different
  * seeding step, a new required piece of state). Cheaper and more reliable than
  * trying to detect staleness from the snapshot's contents.
  */
-const SNAPSHOT_SCHEMA_VERSION = 1;
+export const SNAPSHOT_SCHEMA_VERSION = 1;
 
 const MARKER_FILE = ".vortex-ai-snapshot.json";
 
@@ -74,6 +87,11 @@ export interface SnapshotMarker {
   /** Identifies the configuration this working directory was copied from. */
   snapshotKey?: string;
   gameSkipped?: boolean;
+  /**
+   * The build it was made with: the checkout of a source build or the executable of a released
+   * one (`buildOf`). Absent from markers written before it was recorded.
+   */
+  build?: string;
 }
 
 function fingerprint(value: string): string {
@@ -114,8 +132,13 @@ export function loginDir(config: HarnessConfig): string {
   );
 }
 
+/** The marker file a usable baseline snapshot (or profile) carries. */
+export function markerFile(dir: string): string {
+  return path.join(dir, MARKER_FILE);
+}
+
 export function readMarker(dir: string): SnapshotMarker | undefined {
-  const file = path.join(dir, MARKER_FILE);
+  const file = markerFile(dir);
   if (!fs.existsSync(file)) return undefined;
   try {
     return readJsonFile<SnapshotMarker>(file);
@@ -163,8 +186,8 @@ export async function seedLogin(mcp: VortexMcpClient, apiKey: string): Promise<v
   }
 }
 
-export interface BootstrapOptions extends OperationOptions {
-  /** Observe every spawned cold/live process before readiness checks. */
+export interface BootstrapOptions {
+  /** Observe every spawned cold/live process before waiting for MCP. */
   onProcessSpawn?: (child: ChildProcess) => void;
   /** Keep an explicitly copied real game intact when resetting its profile.
    * Default reset behavior remains appropriate for generated disposable games.
@@ -203,18 +226,6 @@ export async function bootstrap(
   config: HarnessConfig,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  return withLiveOperation(
-    config,
-    "bootstrap",
-    (context) => bootstrapInside(config, { ...options, context }),
-    options,
-  );
-}
-
-async function bootstrapInside(
-  config: HarnessConfig,
-  options: BootstrapOptions,
-): Promise<BootstrapResult> {
   const started = Date.now();
   const report = options.onProgress ?? ((): void => undefined);
   const configuredKey = config.apiKey?.trim();
@@ -237,22 +248,103 @@ async function bootstrapInside(
     );
 
   fs.mkdirSync(config.cacheDir, { recursive: true });
-  const seeded = seedSlotLogin(config);
-  if (seeded !== undefined)
-    report(`slot ${String(config.slot)}: copied the saved login from ${seeded}`);
+  // A shared-login cache uses ~/.doodlebot/login directly; an older workspace's login moves there
+  // once. Every other cache has no login, and nothing is ever copied into it (login.ts).
+  if (usesSharedLogin(config)) {
+    const moved = describeMigration(migrateDefaultLogin());
+    if (moved !== undefined) report(moved);
+  }
+
+  // One harness Vortex per machine: a running one of another cache (another workspace, a test
+  // cache) is refused here with the documented message, never restarted or left to fail on a
+  // port. A restart of this cache's own instance goes on below, but only of the same build:
+  // another build's Vortex is another session's, and is refused too.
+  const running = runningVortex();
+  if (running !== undefined && normalizedPath(running.cacheDir) !== normalizedPath(config.cacheDir))
+    assertNoHarnessVortex("starting Vortex");
+  const build = buildOf(config.target);
+  if (running !== undefined) {
+    const refusal = leftoverRefusal(running, build);
+    if (refusal !== undefined) throw new ConfigError(refusal);
+  }
+  // A real game folder is managed only when it is a registered copy (content.json).
+  if (options.skipGame !== true) assertGamePathAllowed(config);
 
   // An instance left over from an earlier run holds both the MCP port and the
   // working directory; every later step would fail on that rather than on
   // anything to do with what was asked for.
-  if (await stopStaleInstance(config, options)) {
-    report("stopped a Vortex instance left over from an earlier run");
-  }
+  const stopped = await stopStaleInstance(config);
+  if (stopped) report("stopped a Vortex instance left over from an earlier run");
+  // The leftover's user folders: restored after the clean stop just confirmed; after an unclean
+  // end (no live leftover) nothing is restored and the launch refuses with the changed files.
+  await settlePendingRestores({ clean: running !== undefined || stopped, write: report });
+  // Checked once this cache's own leftover is gone, so its processes never count.
+  assertNoOwnVortex(runningVortex()?.pid);
+  // Off Windows those checks find nothing: say so, whether or not progress is reported.
+  const platformWarning = windowsOnlyWarning();
+  if (platformWarning !== undefined)
+    (options.onProgress ?? ((m: string) => process.stderr.write(`${m}\n`)))(platformWarning);
 
-  const builtAt = await ensureExtensionBuilt({
-    ...options,
-    owner: config.owner,
-    rebuild: options.rebuildExtension,
-  });
+  const lastBuild = readLastBuild(config.cacheDir);
+  const fresh = options.fresh === true || buildChanged(lastBuild, build);
+  if (options.fresh !== true && fresh)
+    report(`the build changed since the last launch on this cache (${lastBuild!}); starting fresh`);
+
+  const pending =
+    options.skipGame === true
+      ? undefined
+      : await protectUserFolders(config.gameId, config.cacheDir);
+  if (pending !== undefined)
+    report(`backed up the user folders of ${config.gameId} to ${pending.backupDir}`);
+  try {
+    // The fake Fallout 4 uses the real Fallout 4 folders, backed up just now. Vortex needs the
+    // game's INI files there; the ones written here are the run's, so `down` removes them.
+    if (pending !== undefined && isBethesdaSandbox(config)) {
+      const myGames = userFoldersOf("fallout4", userFolderRoots())![0]!;
+      for (const file of ensureFallout4Inis(myGames)) report(`wrote ${file} for this run`);
+    }
+    const result = await launchProfile(config, { ...options, fresh }, apiKey, started);
+    writeLastBuild(config.cacheDir, build);
+    return result;
+  } catch (error) {
+    // Nothing of this launch is running any more: its folders go back now, not at a later down.
+    if (pending !== undefined && runningVortex() === undefined)
+      await settlePendingRestores({ clean: true, write: report }).catch((restoreError: unknown) =>
+        report(restoreError instanceof Error ? restoreError.message : String(restoreError)),
+      );
+    throw error;
+  }
+}
+
+const LAST_BUILD_FILE = "last-build.json";
+
+/** The build the last successful launch on this cache ran, if recorded. */
+export function readLastBuild(cacheDir: string): string | undefined {
+  try {
+    const value = readJsonFile<{ build?: unknown }>(path.join(cacheDir, LAST_BUILD_FILE));
+    return typeof value.build === "string" ? value.build : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLastBuild(cacheDir: string, build: string): void {
+  fs.writeFileSync(path.join(cacheDir, LAST_BUILD_FILE), JSON.stringify({ build }, null, 2));
+}
+
+/** A launch of another build than the last one on the same cache starts from the baseline. */
+export function buildChanged(lastBuild: string | undefined, build: string): boolean {
+  return lastBuild !== undefined && !sameBuild(lastBuild, build);
+}
+
+async function launchProfile(
+  config: HarnessConfig,
+  options: BootstrapOptions,
+  apiKey: string,
+  started: number,
+): Promise<BootstrapResult> {
+  const report = options.onProgress ?? ((): void => undefined);
+  const builtAt = await ensureExtensionBuilt({ rebuild: options.rebuildExtension });
   report(`extension ready (${builtAt})`);
   report(`target: ${config.target.kind} — ${config.target.executable}`);
 
@@ -292,18 +384,9 @@ async function bootstrapInside(
     removeInstanceDir(live);
     fs.cpSync(snapshot, live, { recursive: true });
     // The reset profile has deployed nothing, so neither may its disposable game.
-    const bethesda = bethesdaSandboxPaths(config.cacheDir);
-    const isBethesdaSandbox =
-      config.gamePath !== undefined &&
-      path.resolve(config.gamePath).toLowerCase() === path.resolve(bethesda.gamePath).toLowerCase();
     if (
       options.preserveGameFixture !== true &&
-      resetDisposableGameData(
-        config,
-        isBethesdaSandbox
-          ? { keep: ["Fallout4.esm"], pluginLists: path.dirname(bethesda.pluginsTxt) }
-          : {},
-      )
+      resetDisposableGameData(config, isBethesdaSandbox(config) ? { keep: ["Fallout4.esm"] } : {})
     ) {
       report("cleared the disposable game's deployed files");
     }
@@ -314,14 +397,14 @@ async function bootstrapInside(
   // rebuilt since the snapshot was taken, and the appData layout must exist
   // before Vortex starts.
   prepareUserDataDir(live, config.target.appName);
-  installMcpExtension(live, undefined, { ...options, owner: config.owner });
+  installMcpExtension(live);
 
   report(`launching Vortex (${tier})`);
   const instance = await launchVortex({
-    ...options,
     userDataDir: live,
     config,
     onProgress: report,
+    onProcessSpawn: options.onProcessSpawn,
   });
   if (liveUsable && legacyMatch && liveMarker) {
     fs.writeFileSync(
@@ -351,7 +434,7 @@ async function bootstrapInside(
   if (!auth.oauthPresent) {
     report(
       "no Nexus login captured yet — collections will not install. Log in through " +
-        "`pnpm run ai -- setup --oauth` during initial setup if you need collections.",
+        "`doodlebot setup --oauth` during initial setup if you need collections.",
     );
   }
 
@@ -383,19 +466,7 @@ async function bootstrapInside(
  */
 export async function captureLogin(
   config: HarnessConfig,
-  options: OperationOptions & { onProgress?: (message: string) => void } = {},
-): Promise<string> {
-  return withLiveOperation(
-    config,
-    "capture login",
-    (context) => captureLoginInside(config, { ...options, context }),
-    options,
-  );
-}
-
-async function captureLoginInside(
-  config: HarnessConfig,
-  options: OperationOptions & { onProgress?: (message: string) => void },
+  options: { onProgress?: (message: string) => void } = {},
 ): Promise<string> {
   const report = options.onProgress ?? ((): void => undefined);
   const live = liveDir(config);
@@ -415,11 +486,16 @@ async function captureLoginInside(
       "The running profile uses different settings. Repeat the same --installed, --game, --game-path and --cache-dir flags used for setup.",
     );
   }
+  // The same rule as bootstrap: a running harness Vortex of another cache is refused, never
+  // asked over its port for a login or stopped as this cache's leftover.
+  const running = runningVortex();
+  if (running !== undefined && normalizedPath(running.cacheDir) !== normalizedPath(config.cacheDir))
+    assertNoHarnessVortex("saving the login");
   const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
   await requireOAuth(mcp);
 
   report("stopping Vortex so its state is flushed to disk");
-  await stopStaleInstance(config, options);
+  await stopStaleInstance(config);
 
   report("capturing the verified profile; refreshed OAuth credentials are cached separately");
   const login = loginDir(config);
@@ -437,11 +513,14 @@ async function captureLoginInside(
     loginCaptured: true,
     snapshotKey: path.basename(snapshot),
     gameSkipped: existing?.gameSkipped === true,
+    build: buildOf(config.target),
   };
   fs.writeFileSync(path.join(snapshot, MARKER_FILE), JSON.stringify(marker, null, 2));
   fs.writeFileSync(path.join(login, MARKER_FILE), JSON.stringify(marker, null, 2));
   fs.writeFileSync(path.join(live, MARKER_FILE), JSON.stringify(marker, null, 2));
   report(`snapshot updated at ${snapshot}`);
+  // Vortex exited cleanly above: its run's user folders go back now.
+  await settlePendingRestores({ clean: true, write: report });
   return snapshot;
 }
 
@@ -473,10 +552,15 @@ async function buildSnapshot(
   const hasLogin = fs.existsSync(authCacheFile(config));
   if (hasLogin) report("cold: reusing the local OAuth cache with a clean profile");
   prepareUserDataDir(snapshot, config.target.appName);
-  installMcpExtension(snapshot, undefined, { ...options, owner: config.owner });
+  installMcpExtension(snapshot);
 
   report("cold: starting a blank Vortex");
-  const launchOptions = { ...options, userDataDir: snapshot, config, onProgress: report };
+  const launchOptions = {
+    userDataDir: snapshot,
+    config,
+    onProgress: report,
+    onProcessSpawn: options.onProcessSpawn,
+  };
   let game = await withSnapshotInstance(launchOptions, async (instance) => {
     const auth = await instance.mcp.call<{ oauthPresent: boolean }>("nexus_auth_status");
     if (auth.oauthPresent) {
@@ -543,6 +627,7 @@ async function buildSnapshot(
     loginCaptured: hasLogin,
     snapshotKey: path.basename(snapshot),
     gameSkipped: options.skipGame === true,
+    build: buildOf(config.target),
   };
   fs.writeFileSync(path.join(snapshot, MARKER_FILE), JSON.stringify(marker, null, 2));
   report(`cold: snapshot cached at ${snapshot}`);
@@ -566,7 +651,7 @@ async function withSnapshotInstance<T>(
   let stopFailed = false;
   let stopFailure: unknown;
   try {
-    await instance.stop(options);
+    await instance.stop();
   } catch (error) {
     stopFailed = true;
     stopFailure = error;
@@ -583,22 +668,4 @@ async function withSnapshotInstance<T>(
   if (failed) throw failure;
   if (stopFailed) throw stopFailure;
   return result as T;
-}
-
-/**
- * A new slot (slots.ts) starts with the machine's saved login, as `login-import` would copy
- * it: its first `up` needs no interactive login. Only when the slot has none of its own; after
- * that each slot's copy is refreshed by its own Vortex and the two diverge (KNOWLEDGE.md).
- * Returns the cache it was copied from, or undefined when nothing was copied.
- */
-export function seedSlotLogin(config: HarnessConfig): string | undefined {
-  if (path.resolve(config.cacheDir) === path.resolve(DEFAULT_CACHE_DIR)) return undefined;
-  const destination = authCacheFile(config);
-  if (fs.existsSync(destination)) return undefined;
-  try {
-    return importLogin(DEFAULT_CACHE_DIR, destination);
-  } catch {
-    // No usable login in the default cache: the slot starts logged out, as any cache does.
-    return undefined;
-  }
 }

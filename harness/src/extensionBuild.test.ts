@@ -6,10 +6,9 @@ import {
   buildExtension,
   ExtensionBuildCancelledError,
   ExtensionBuildError,
-  extensionOutputResource,
 } from "./extensionBuild";
-import { listLeases, processAlive, readLease } from "./lease";
-import { claimOperations, operationResource } from "./operations";
+import { verifyExtensionGeneration } from "./extensionGeneration";
+import { processAlive } from "./processes";
 import { runEvidenceProcess } from "./processRunner";
 
 const pass: Awaited<ReturnType<typeof runEvidenceProcess>> = {
@@ -20,7 +19,6 @@ const pass: Awaited<ReturnType<typeof runEvidenceProcess>> = {
   aborted: false,
 };
 let source: string;
-let leaseEnv: { dir: string };
 let signalListeners: number[];
 const signals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
@@ -31,7 +29,6 @@ beforeEach(() => {
   fs.writeFileSync(path.join(source, "info.json"), '{"id":"doodlebot"}');
   for (const file of ["tsup.config.ts", "tsconfig.json", "package.json", "pnpm-lock.yaml"])
     fs.writeFileSync(path.join(source, file), "{}");
-  leaseEnv = { dir: path.join(source, "leases") };
   signalListeners = signals.map((signal) => process.listenerCount(signal));
 });
 
@@ -45,8 +42,7 @@ function output(root = source): void {
   fs.writeFileSync(path.join(root, "dist", "index.js"), "synthetic output");
 }
 
-it("runs one finite compiler with the output guard held until completion", async () => {
-  const resource = extensionOutputResource(source);
+it("runs one finite compiler on a private stage and publishes a verified dist", async () => {
   const runner = vi.fn<typeof runEvidenceProcess>(async (options) => {
     expect(options.executable).toBe(process.execPath);
     expect(options.args).toHaveLength(1);
@@ -55,59 +51,22 @@ it("runs one finite compiler with the output guard held until completion", async
     expect(fs.readFileSync(path.join(options.cwd, "src", "index.ts"), "utf8")).toBe(
       "captured source",
     );
-    expect(options.context?.owner).toBe("builder");
-    expect(readLease(operationResource(resource), leaseEnv)?.live).toBe(true);
-    expect(() => claimOperations([resource], "builder", { leaseEnv })).toThrow(/overlapping/);
     output(options.cwd);
     return pass;
   });
-  await buildExtension({ source, owner: "builder", leaseEnv, runner });
+  await buildExtension({ source, runner });
   expect(runner).toHaveBeenCalledTimes(1);
-  expect(listLeases(leaseEnv)).toEqual([]);
-});
-
-it("reuses an explicit cycle context and leaves the parent hold intact", async () => {
-  const resource = extensionOutputResource(source);
-  const parent = claimOperations([resource], "builder", { leaseEnv });
-  try {
-    await buildExtension({
-      source,
-      owner: "builder",
-      leaseEnv,
-      context: parent.context,
-      runner: async (options) => {
-        expect(options.context?.id).toBe(parent.context.id);
-        output(options.cwd);
-        return pass;
-      },
-    });
-    expect(readLease(operationResource(resource), leaseEnv)?.live).toBe(true);
-    expect(() => claimOperations([resource], "builder", { leaseEnv })).toThrow(/overlapping/);
-  } finally {
-    parent.release();
-  }
-  expect(listLeases(leaseEnv)).toEqual([]);
-});
-
-it("checks whether output is needed under the guard without starting a compiler", async () => {
-  const resource = extensionOutputResource(source);
-  const runner = vi.fn<typeof runEvidenceProcess>();
-  await buildExtension({
-    source,
-    owner: "builder",
-    leaseEnv,
-    runner,
-    needed: () => {
-      expect(readLease(operationResource(resource), leaseEnv)?.live).toBe(true);
-      return false;
-    },
-  });
-  expect(runner).not.toHaveBeenCalled();
-  expect(listLeases(leaseEnv)).toEqual([]);
+  expect(fs.readFileSync(path.join(source, "dist", "index.js"), "utf8")).toBe("synthetic output");
+  expect(() => verifyExtensionGeneration(path.join(source, "dist"))).not.toThrow();
+  expect(
+    fs
+      .readdirSync(path.join(source, "harness", ".artifacts"))
+      .filter((file) => file.startsWith("extension-build-")),
+  ).toEqual([]);
 });
 
 it.each(["nonzero exit", "missing output", "cancelled zero exit"])(
-  "rejects %s and releases the finite build guard",
+  "rejects %s",
   async (failure) => {
     if (failure !== "missing output") output();
     const result = {
@@ -115,17 +74,9 @@ it.each(["nonzero exit", "missing output", "cancelled zero exit"])(
       code: failure === "nonzero exit" ? 1 : 0,
       aborted: failure === "cancelled zero exit",
     };
-    await expect(
-      buildExtension({
-        source,
-        owner: "builder",
-        leaseEnv,
-        runner: async () => result,
-      }),
-    ).rejects.toBeInstanceOf(
+    await expect(buildExtension({ source, runner: async () => result })).rejects.toBeInstanceOf(
       failure === "cancelled zero exit" ? ExtensionBuildCancelledError : ExtensionBuildError,
     );
-    expect(listLeases(leaseEnv)).toEqual([]);
   },
 );
 
@@ -134,21 +85,13 @@ it("does not start a compiler when already cancelled", async () => {
   controller.abort();
   const runner = vi.fn<typeof runEvidenceProcess>();
   await expect(
-    buildExtension({
-      source,
-      owner: "builder",
-      leaseEnv,
-      signal: controller.signal,
-      runner,
-    }),
+    buildExtension({ source, signal: controller.signal, runner }),
   ).rejects.toBeInstanceOf(ExtensionBuildCancelledError);
   expect(runner).not.toHaveBeenCalled();
-  expect(listLeases(leaseEnv)).toEqual([]);
 });
 
-it("awaits a real synthetic child's exit before releasing a cancelled build", async () => {
+it("awaits a real synthetic child's exit before rejecting a cancelled build", async () => {
   const controller = new AbortController();
-  const resource = extensionOutputResource(source);
   let pid = 0;
   let markStarted!: () => void;
   const started = new Promise<void>((resolve) => {
@@ -156,8 +99,6 @@ it("awaits a real synthetic child's exit before releasing a cancelled build", as
   });
   const pending = buildExtension({
     source,
-    owner: "builder",
-    leaseEnv,
     signal: controller.signal,
     runner: (options) =>
       runEvidenceProcess({
@@ -176,10 +117,8 @@ it("awaits a real synthetic child's exit before releasing a cancelled build", as
     expect(pid).toBeGreaterThan(0);
     expect(processAlive(pid)).toBe(true);
     controller.abort();
-    expect(() => claimOperations([resource], "builder", { leaseEnv })).toThrow(/overlapping/);
     await expect(pending).rejects.toBeInstanceOf(ExtensionBuildCancelledError);
     expect(processAlive(pid)).toBe(false);
-    expect(listLeases(leaseEnv)).toEqual([]);
   } finally {
     controller.abort();
     await pending.catch(() => undefined);

@@ -1,8 +1,12 @@
 /**
  * The `doodlebot` command line, parsed. Kept apart from cli.ts so the rules that agents keep
- * tripping over (where `--owner` may go, what `--` means) have unit tests.
+ * tripping over (which flags `script` keeps after its file, what `--` means, which paths are the
+ * caller's) have unit tests.
  */
+import path from "node:path";
+
 import { ConfigError } from "./config";
+import { callerCwd } from "./processRunner";
 
 export interface ParsedArgs {
   command: string;
@@ -10,7 +14,7 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
   /** Every value of each string flag, for flags that may repeat (`--test a --test b`). */
   lists: Record<string, string[]>;
-  /** The command for `lease run`/`evidence run`, or a script's own arguments. */
+  /** The command for `evidence run`, or a script's own arguments. */
   passthrough: string[];
 }
 
@@ -19,7 +23,6 @@ export const BOOLEAN_FLAGS = new Set([
   "installed",
   "sandbox",
   "bethesda-sandbox",
-  "isolate-user-folders",
   "headless",
   "production",
   "oauth",
@@ -35,7 +38,6 @@ export const BOOLEAN_FLAGS = new Set([
   "build",
   "update",
   "no-build",
-  "no-install",
   "where",
   "purge",
   "keep",
@@ -44,38 +46,88 @@ export const BOOLEAN_FLAGS = new Set([
   "skip-revert",
   "force",
   "with-api-key",
-  "checkout-only",
+  "ready",
+  "list",
+  "all",
+  "new",
+  "dry-run",
+  "yes",
+  "print",
+  "include-third-party",
+  "wontfix",
+  "push",
+  "allow-logout",
 ]);
 
 /**
- * Flags `script` takes for itself wherever they appear, even after the script's path: agents
- * put `--owner` last as often as first, and a script run as the wrong owner is refused the
- * lease. The flags that pick the instance count too: a `--slot auto` after the path used to
- * reach the script instead, which then drove slot 0's Vortex. Everything else after the path is
- * the script's; after a bare `--`, all of it is.
+ * Flags whose value is a path the caller typed, so it is resolved against the caller's directory
+ * (`callerCwd()`), not the workspace the shim runs the CLI in. Every value of a repeated flag is.
+ * pr-preflight's `--project-dir`, `--test`, `--revert` and `--revert-hunk` (relative to the
+ * checkout) are deliberately absent.
  */
-export const SCRIPT_KIT_FLAGS = new Set([
-  "owner",
-  "wait",
-  "slot",
-  "worktree",
+export const PATH_FLAGS = new Set([
   "dev-dir",
+  "checkout",
+  "out",
   "cache-dir",
-  "port",
-  "cdp-port",
+  "artifact-dir",
+  "game-path",
+  "test-report",
+  "runtime",
+  "manifest",
+  "exe",
+  "bin-dir",
+  "args-file",
+  "cwd",
+  "ffmpeg",
+  "a",
+  "b",
+  "to",
+  "file",
 ]);
 
-export function parseArgs(argv: string[]): ParsedArgs {
-  // `pnpm run ai -- status` forwards the `--` separator itself, so the first
+/** The positional arguments that are files the caller named, by command. */
+function positionalPaths(command: string, positional: string[]): number[] {
+  switch (command) {
+    case "script":
+    case "eval":
+    case "install":
+      return [0];
+    case "evidence":
+      return positional[0] === "runtime" ? positional.map((_, i) => i).slice(1) : [];
+    case "game":
+      return positional[0] === "register" ? [2] : positional[0] === "folder" ? [1] : [];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Flags `script` takes for itself wherever they appear, even after the script's path: the flags
+ * that pick the instance, so the script drives the same Vortex this command was given.
+ * Everything else after the path is the script's; after a bare `--`, all of it is.
+ */
+export const SCRIPT_KIT_FLAGS = new Set(["dev-dir", "cache-dir", "port", "cdp-port"]);
+
+/**
+ * Parse a command line. Relative paths in `PATH_FLAGS` and in the commands' file arguments are
+ * resolved against `cwd`, the caller's directory. Everything after `test <suite>` passes through
+ * verbatim: the suite resolves its own arguments against the workspace root.
+ */
+export function parseArgs(argv: string[], cwd: string = callerCwd()): ParsedArgs {
+  // A package-script wrapper may forward the `--` separator itself, so the first
   // argument we see is "--" rather than the command. Dropping a leading bare
-  // separator makes the documented invocation work instead of printing help.
+  // separator makes that invocation work instead of printing help.
   const args = argv[0] === "--" ? argv.slice(1) : argv;
   const [command = "help", ...rest] = args;
-  const runsCommand = command === "lease" || command === "evidence";
+  const runsCommand = command === "evidence";
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
   const lists: Record<string, string[]> = {};
-  const setValue = (name: string, value: string): void => {
+  const setValue = (name: string, raw: string): void => {
+    // A bare command name (no separator) for --ffmpeg is found on the PATH, not in the cwd.
+    const bareCommand = name === "ffmpeg" && !/[\\/]/.test(raw);
+    const value = PATH_FLAGS.has(name) && raw !== "" && !bareCommand ? path.resolve(cwd, raw) : raw;
     flags[name] = value;
     (lists[name] ??= []).push(value);
   };
@@ -85,6 +137,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const arg = rest[i];
     if (arg === undefined) continue;
     const next = rest[i + 1];
+    // `test <suite> [args...]`: everything after the suite is the suite's, verbatim.
+    if (command === "test" && positional.length === 1) {
+      passthrough.push(...rest.slice(i));
+      break;
+    }
     // `script <file> [args...]`: after the file, only the kit's own flags are taken.
     if (command === "script" && positional.length === 1) {
       if (arg === "--") {
@@ -136,6 +193,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else {
       throw new ConfigError(`--${body} needs a value. Run help for supported flags.`);
     }
+  }
+  for (const index of positionalPaths(command, positional)) {
+    const value = positional[index];
+    if (value !== undefined && value !== "") positional[index] = path.resolve(cwd, value);
   }
   return { command, positional, flags, lists, passthrough };
 }

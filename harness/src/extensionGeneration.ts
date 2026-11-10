@@ -98,8 +98,8 @@ export function captureExtensionInputs(source: string): ExtensionInputs {
       files[file] = null;
     }
   }
-  // Installed dependencies are provisioned under the kit lock; package/lock bytes bind their
-  // declared versions. The current config has no other external inputs or environment reads.
+  // Installed dependencies come from `pnpm install --frozen-lockfile`; package/lock bytes bind
+  // their declared versions. The current config has no other external inputs or environment reads.
   const environment = JSON.stringify([
     1,
     process.version,

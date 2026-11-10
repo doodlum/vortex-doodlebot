@@ -2,15 +2,30 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { acquireLease, addInstancePid, checkoutResource, readLease, type LeaseEnv } from "./lease";
+import { clearInstanceRecord, INSTANCE_RECORD, writeInstanceRecord } from "./runningVortex";
 import { buildCheckout, buildEnvironment, restoreChanged, saveFiles } from "./vortexBuild";
+
+// The instance record lives in a private state folder, and this process counts as a running Vortex.
+vi.mock("./paths", async (original) => {
+  const nodeFs = await import("node:fs");
+  const nodeOs = await import("node:os");
+  const nodePath = await import("node:path");
+  return {
+    ...(await original<typeof import("./paths")>()),
+    USER_STATE_DIR: nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "vortex-build-cache-")),
+  };
+});
+vi.mock("./processes", async (original) => ({
+  ...(await original<typeof import("./processes")>()),
+  processImageName: () => "electron.exe",
+}));
 
 let dir: string;
 let checkout: string;
-let env: LeaseEnv;
-let alive: Set<number>;
+
+afterAll(() => fs.rmSync(path.dirname(INSTANCE_RECORD), { recursive: true, force: true }));
 
 beforeEach(() => {
   // an operator's own pnpm override would change which command runs
@@ -24,11 +39,10 @@ beforeEach(() => {
     JSON.stringify({ packageManager: "pnpm@11.10.0+sha512.abc" }),
   );
   fs.writeFileSync(path.join(checkout, "etc", "vortex.api.md"), "api v1\n");
-  alive = new Set([process.pid, 4242]);
-  env = { dir: path.join(dir, "leases"), isAlive: (pid) => alive.has(pid) };
 });
 
 afterEach(() => {
+  clearInstanceRecord();
   vi.unstubAllEnvs();
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -59,18 +73,14 @@ const mustNotRun = async (): Promise<number> => {
 };
 
 describe("building a checkout", () => {
-  it("runs the pinned pnpm under the checkout's lock and restores what the build rewrote", async () => {
+  it("runs the pinned pnpm and restores what the build rewrote", async () => {
     const runs: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
     const report = await buildCheckout({
       checkout,
       production: true,
-      owner: "kit",
       installedPnpm: "9.15.0",
-      leaseEnv: env,
       runner: async (command, args, options) => {
         runs.push({ command, args, env: options.env });
-        // The build holds the lock while it runs.
-        expect(readLease(checkoutResource(checkout), env)?.lease.owner).toBe("kit");
         fs.writeFileSync(path.join(checkout, "etc", "vortex.api.md"), "rewritten\n");
         return 0;
       },
@@ -80,8 +90,6 @@ describe("building a checkout", () => {
     expect(runs[0]?.env.NODE_ENV).toBe("production");
     expect(report).toMatchObject({ exitCode: 0, restored: ["etc/vortex.api.md"] });
     expect(fs.readFileSync(path.join(checkout, "etc", "vortex.api.md"), "utf8")).toBe("api v1\n");
-    // Released afterwards.
-    expect(readLease(checkoutResource(checkout), env)).toBeUndefined();
   });
 
   it("builds main directly when the build left out a worker main's build script bundles", async () => {
@@ -96,7 +104,6 @@ describe("building a checkout", () => {
       checkout,
       production: false,
       installedPnpm: "11.10.0",
-      leaseEnv: env,
       runner: async (command, _args, options) => {
         runs.push({ command, cwd: options.cwd });
         // nx restored main from cache: main.cjs and the renderer, but not the worker
@@ -115,7 +122,6 @@ describe("building a checkout", () => {
       checkout,
       production: false,
       installedPnpm: "11.10.0",
-      leaseEnv: env,
       runner: async (_command, args, options) => {
         expect(args).toEqual(["run", "build"]);
         expect(options.env.NODE_ENV).toBeUndefined();
@@ -130,40 +136,36 @@ describe("building a checkout", () => {
     });
   });
 
-  it("refuses while a Vortex runs from the checkout, and while another owner holds it", async () => {
-    const resource = checkoutResource(checkout);
-    const reservation = acquireLease(resource, "kit", { ...env, pid: process.pid });
-    addInstancePid(reservation.lease, 4242, env);
+  it("refuses while the harness Vortex runs from the checkout, before running anything", async () => {
+    const record = {
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      cacheDir: path.join(dir, "cache"),
+      userDataDir: path.join(dir, "cache", "userData"),
+      mcpPort: 3701,
+    };
+    writeInstanceRecord({ ...record, sourceDir: checkout });
     await expect(
-      buildCheckout({
-        owner: "kit",
-        checkout,
-        production: true,
-        installedPnpm: "11.10.0",
-        leaseEnv: env,
-        runner: mustNotRun,
-      }),
-    ).rejects.toThrow(/is running from/);
-    // That Vortex and its launcher exit; another owner then takes the checkout.
-    alive.delete(4242);
-    alive.delete(process.pid);
-    alive.add(4243);
-    acquireLease(resource, "someone", { ...env, pid: 4243 });
-    alive.add(process.pid);
-    await expect(
-      buildCheckout({
-        checkout,
-        production: true,
-        owner: "kit",
-        installedPnpm: "11.10.0",
-        leaseEnv: env,
-        runner: mustNotRun,
-      }),
-    ).rejects.toThrow(/held by "someone"/);
+      buildCheckout({ checkout, production: true, installedPnpm: "11.10.0", runner: mustNotRun }),
+    ).rejects.toThrow(
+      `A harness Vortex is running from ${checkout} (pid ${process.pid}); run \`doodlebot down\` before building it.`,
+    );
+    expect(fs.readFileSync(path.join(checkout, "etc", "vortex.api.md"), "utf8")).toBe("api v1\n");
+    // One running from another checkout, or an installed Vortex, does not stop the build.
+    const runs: string[] = [];
+    const runner = async (command: string): Promise<number> => {
+      runs.push(command);
+      return 0;
+    };
+    writeInstanceRecord({ ...record, sourceDir: path.join(dir, "other") });
+    await buildCheckout({ checkout, production: true, installedPnpm: "11.10.0", runner });
+    writeInstanceRecord(record);
+    await buildCheckout({ checkout, production: true, installedPnpm: "11.10.0", runner });
+    expect(runs).toEqual(["pnpm", "pnpm"]);
   });
 
   it("refuses a directory that is not a Vortex checkout", async () => {
-    await expect(buildCheckout({ checkout: dir, production: true, leaseEnv: env })).rejects.toThrow(
+    await expect(buildCheckout({ checkout: dir, production: true })).rejects.toThrow(
       /not a Vortex checkout/,
     );
   });

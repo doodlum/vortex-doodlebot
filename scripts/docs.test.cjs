@@ -4,7 +4,6 @@ const os = require("node:os");
 const path = require("node:path");
 const cp = require("node:child_process");
 const { test } = require("node:test");
-const { checkExamples, extractExample } = require("./docs-examples.cjs");
 
 const root = path.resolve(__dirname, "..");
 const script = path.join(__dirname, "docs.cjs");
@@ -16,10 +15,12 @@ const run = (fixture, args = [], extraEnv = {}) =>
     encoding: "utf8",
   });
 const git = (fixture, args) => cp.execFileSync("git", args, { cwd: fixture, stdio: "pipe" });
+const output = (result) => result.stdout + result.stderr;
 
-test("paired documentation refuses drift and missing companions", () => {
-  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-docs-control-"));
-  const output = (result) => result.stdout + result.stderr;
+// A synthetic repository holding the sources docs.cjs reads, generated and committed as a
+// clean baseline, so a case can change it and run the real checker against it.
+function withFixture(prefix, body) {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const changed = (file, transform) =>
     fs.writeFileSync(
       path.join(fixture, file),
@@ -29,10 +30,12 @@ test("paired documentation refuses drift and missing companions", () => {
     for (const file of [
       "src",
       "harness/src",
-      "harness/benchmarks",
-      "benchmarks",
+      "plugins",
+      ".claude-plugin",
+      "mkdocs.yml",
       "docs",
       "harness/reference",
+      "harness/qa",
       "scripts/documentation-map.json",
       "package.json",
       "AGENTS.md",
@@ -40,9 +43,7 @@ test("paired documentation refuses drift and missing companions", () => {
       "KNOWLEDGE.md",
       "harness/AGENTS.md",
       "harness/TESTING.md",
-      "harness/AGENT-WORKFLOW.md",
-      "harness/KNOWLEDGE-ROUTES.md",
-      "harness/WORKFLOWS.md",
+      "harness/PULL-REQUESTS.md",
     ]) {
       fs.mkdirSync(path.dirname(path.join(fixture, file)), { recursive: true });
       fs.cpSync(path.join(root, file), path.join(fixture, file), { recursive: true });
@@ -52,6 +53,22 @@ test("paired documentation refuses drift and missing companions", () => {
     git(fixture, ["config", "user.email", "docs-control@example.invalid"]);
     const generated = run(fixture, ["--write"]);
     assert.equal(generated.status, 0, output(generated));
+    git(fixture, ["add", "."]);
+    git(fixture, ["commit", "--quiet", "-m", "synthetic baseline"]);
+    const baseline = git(fixture, ["rev-parse", "HEAD"]).toString().trim();
+    const clean = run(fixture);
+    assert.equal(clean.status, 0, output(clean));
+    body({ fixture, changed, baseline });
+  } finally {
+    // mkdtemp supplies the exact owned root; never derive a delete target from repository input.
+    assert.equal(path.dirname(fixture), os.tmpdir());
+    assert.ok(path.basename(fixture).startsWith(prefix));
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+}
+
+test("paired documentation refuses drift and missing companions", () => {
+  withFixture("doodlebot-docs-control-", ({ fixture, changed, baseline }) => {
     const mcpReference = fs.readFileSync(path.join(fixture, "docs/reference/mcp-tools.md"), "utf8");
     assert.match(
       mcpReference,
@@ -65,11 +82,6 @@ test("paired documentation refuses drift and missing companions", () => {
       !mcpReference.includes("**CALLBACK**"),
       "Callback sentinel must never become bold Markdown",
     );
-    git(fixture, ["add", "."]);
-    git(fixture, ["commit", "--quiet", "-m", "synthetic baseline"]);
-    const baseline = git(fixture, ["rev-parse", "HEAD"]).toString().trim();
-    const clean = run(fixture);
-    assert.equal(clean.status, 0, output(clean));
 
     changed("docs/reference/mcp-tools.md", (body) => body + "\nInvented contract\n");
     const stale = run(fixture);
@@ -97,12 +109,15 @@ test("paired documentation refuses drift and missing companions", () => {
     assert.equal(run(fixture).status, 0);
     git(fixture, ["restore", "."]);
 
+    // bootstrap.ts is both a lifecycle source and harness implementation, so the paired
+    // change updates a human page of each group.
     changed("harness/src/bootstrap.ts", (body) => body + "\n// Synthetic lifecycle change.\n");
     changed("harness/AGENTS.md", (body) => body + "\nSynthetic AI companion.\n");
     const missingHuman = run(fixture);
     assert.equal(missingHuman.status, 1);
     assert.match(output(missingHuman), /Lifecycle and authentication: update a mapped human page/);
-    changed("docs/reference/sessions.md", (body) => body + "\nSynthetic human companion.\n");
+    changed("docs/concepts/one-test-vortex.md", (body) => body + "\nSynthetic human companion.\n");
+    changed("docs/concepts/how-it-works.md", (body) => body + "\nSynthetic human companion.\n");
     const paired = run(fixture);
     assert.equal(paired.status, 0, output(paired));
     git(fixture, ["add", "."]);
@@ -112,7 +127,7 @@ test("paired documentation refuses drift and missing companions", () => {
     git(fixture, ["reset", "--hard", "--quiet", baseline]);
 
     changed("harness/src/bootstrap.ts", (body) => body + "\n// Synthetic lifecycle change.\n");
-    changed("docs/reference/sessions.md", (body) => body + "\nSynthetic human companion.\n");
+    changed("docs/concepts/one-test-vortex.md", (body) => body + "\nSynthetic human companion.\n");
     const missingAI = run(fixture);
     assert.equal(missingAI.status, 1);
     assert.match(output(missingAI), /Lifecycle and authentication: update a mapped AI/);
@@ -130,65 +145,95 @@ test("paired documentation refuses drift and missing companions", () => {
     assert.match(output(audience), /links to AI instructions/);
     git(fixture, ["restore", "."]);
 
-    fs.unlinkSync(path.join(fixture, "docs/getting-started/setup.md"));
+    fs.unlinkSync(path.join(fixture, "docs/get-started/set-up.md"));
     const missingPage = run(fixture);
     assert.equal(missingPage.status, 1);
     assert.match(
       output(missingPage),
-      /Missing paired documentation: docs\/getting-started\/setup\.md/,
+      /Missing paired documentation: docs\/get-started\/set-up\.md/,
     );
-  } finally {
-    // mkdtemp supplies the exact owned root; never derive a delete target from repository input.
-    assert.equal(path.dirname(fixture), os.tmpdir());
-    assert.ok(path.basename(fixture).startsWith("doodlebot-docs-control-"));
-    fs.rmSync(fixture, { recursive: true, force: true });
+  });
+});
+
+// The pages mkdocs.yml's nav lists, read as text with no YAML parser: list items naming a
+// Markdown file after `nav:` and before the next top-level key, relative to docs_dir.
+function navPages(mkdocs) {
+  const pages = [];
+  let inNav = false;
+  for (const line of mkdocs.replace(/\r\n/g, "\n").split("\n")) {
+    if (/^nav:\s*$/.test(line)) {
+      inNav = true;
+      continue;
+    }
+    if (inNav && /^\S/.test(line)) break;
+    if (!inNav) continue;
+    const match = /^\s*- .*?:\s*(\S+\.md)\s*$/.exec(line) ?? /^\s*- (\S+\.md)\s*$/.exec(line);
+    if (match) pages.push("docs/" + match[1]);
   }
-});
+  return pages.sort();
+}
 
-test("runnable human examples compile against the actual harness", () => {
-  assert.deepEqual(checkExamples(root), []);
-});
-
-test("duplicate example filenames cannot hide an unchecked example", () => {
-  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-example-control-"));
-  try {
-    fs.mkdirSync(path.join(fixture, "harness"));
-    fs.mkdirSync(path.join(fixture, "docs"));
-    fs.writeFileSync(
-      path.join(fixture, "harness/tsconfig.json"),
-      '{"compilerOptions":{"strict":true}}',
-    );
-    for (const page of ["first.md", "second.md"])
-      fs.writeFileSync(
-        path.join(fixture, "docs", page),
-        '```typescript title="duplicate.mts"\nconst value = 1;\n```\n',
+function sitePages(docsRoot) {
+  const walk = (dir) =>
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .flatMap((entry) =>
+        entry.isDirectory() ? walk(path.join(dir, entry.name)) : [path.join(dir, entry.name)],
       );
-    assert.match(checkExamples(fixture)[0], /Duplicate runnable TypeScript filename duplicate.mts/);
-  } finally {
-    assert.equal(path.dirname(fixture), os.tmpdir());
-    assert.ok(path.basename(fixture).startsWith("doodlebot-example-control-"));
-    fs.rmSync(fixture, { recursive: true, force: true });
-  }
-});
+  return walk(path.join(docsRoot, "docs"))
+    .filter((file) => file.endsWith(".md"))
+    .map((file) => path.relative(docsRoot, file).split(path.sep).join("/"))
+    .filter((file) => !file.startsWith("docs/theme/") && !file.startsWith("docs/stylesheets/"))
+    .sort();
+}
 
-test("example checking rejects an invented method on the human TypeScript API", () => {
-  const file = "docs/getting-started/first-session.md";
-  const original = extractExample(root, file, "my-first-test.mts");
-  const code = original.replace("vortex.seedMods", "vortex.inventedCall");
-  assert.notEqual(code, original, "The control must actually change the example");
-  assert.ok(
-    checkExamples(root, { [file]: code }).some((message) => message.includes("inventedCall")),
+test("the site navigation lists every documentation page", () => {
+  const nav = navPages(fs.readFileSync(path.join(root, "mkdocs.yml"), "utf8"));
+  assert.ok(nav.length > 0, "mkdocs.yml has no nav pages");
+  assert.equal(new Set(nav).size, nav.length, "a page is listed twice in the nav");
+  assert.deepEqual(nav, sitePages(root));
+  // The parser must actually see both item forms and stop at the next top-level key.
+  assert.deepEqual(
+    navPages("nav:\n  - Home: index.md\n  - Group:\n      - extra.md\nplugins:\n  - other.md\n"),
+    ["docs/extra.md", "docs/index.md"],
   );
 });
 
-test("example checking rejects arguments that the real MCP schema would silently strip", () => {
-  const file = "docs/guides/mod-workflows.md";
-  const original = extractExample(root, file, "local-mod.mts");
-  const code = original.replaceAll("expectedActiveProfileId:", "expectedActiveGameId:");
-  assert.notEqual(code, original, "The control must actually change the example");
-  assert.ok(
-    checkExamples(root, { [file]: code }).some((message) =>
-      message.includes("set_mods_enabled does not accept expectedActiveGameId"),
-    ),
-  );
+test("a stale commands reference fails the check", () => {
+  withFixture("doodlebot-docs-commands-", ({ fixture, changed }) => {
+    const commands = fs.readFileSync(path.join(fixture, "docs/reference/commands.md"), "utf8");
+    assert.match(
+      commands,
+      /## Set up and run the test Vortex[\s\S]*## Work on Vortex[\s\S]*## Benchmark/,
+    );
+    assert.match(commands, /\| `\/doodlebot:setup` +\|/);
+    assert.match(commands, /\| `\/doodlebot:try` +\| [^|]+\| <code>[^|]+<\/code> +\|/);
+    assert.ok(!/\| Doodlebot: /.test(commands), "the plugin prefix is removed");
+
+    const skill = "plugins/doodlebot/skills/fix/SKILL.md";
+    changed(skill, (body) =>
+      body.replace(/^description: "Doodlebot: /m, 'description: "Doodlebot: Synthetically '),
+    );
+    const stale = run(fixture);
+    assert.equal(stale.status, 1);
+    assert.match(output(stale), /docs\/reference\/commands\.md is stale/);
+    const regenerated = run(fixture, ["--write"]);
+    assert.equal(regenerated.status, 0, output(regenerated));
+    assert.match(
+      fs.readFileSync(path.join(fixture, "docs/reference/commands.md"), "utf8"),
+      /\| `\/doodlebot:fix` +\| Synthetically /,
+    );
+    git(fixture, ["restore", "."]);
+
+    // A skill missing from COMMAND_GROUPS cannot be silently left out of the reference.
+    const extra = path.join(fixture, "plugins/doodlebot/skills/docs-control");
+    fs.mkdirSync(extra);
+    fs.writeFileSync(
+      path.join(extra, "SKILL.md"),
+      '---\nname: docs-control\ndescription: "Doodlebot: Synthetic."\n---\n',
+    );
+    const unordered = run(fixture);
+    assert.notEqual(unordered.status, 0);
+    assert.match(output(unordered), /Skills of plugin doodlebot .* differ from COMMAND_GROUPS/);
+  });
 });

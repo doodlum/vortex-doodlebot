@@ -1,5 +1,5 @@
 /**
- * Opt-in performance check against a running instance: pnpm run ai:test:large-library.
+ * Opt-in performance check against a running instance: doodlebot test large-library.
  *
  * Seeds a library of several thousand small mods (see largeLibrary.ts) and checks the
  * what users with large collections reported as broken on Vortex 2.7:
@@ -15,7 +15,7 @@
  *
  * These fail on a stock 2.7.0, where the Mods page's sticky header leaves the
  * table's rows observed against a pane that no longer clips, so every row renders in
- * full. That is why this is opt-in rather than part of `ai:test`, which has to pass
+ * full. That is why this is opt-in rather than part of `doodlebot test core`, which has to pass
  * against released Vortex. It needs no account; use the sandbox game, because it
  * deploys and purges.
  *
@@ -33,7 +33,6 @@ import { strToU8, zipSync } from "fflate";
 
 import { attachToRenderer, captureScreenshot } from "../cdp";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { purgeGame } from "../deployment";
 import {
   fillFilterScript,
@@ -67,8 +66,6 @@ const MAX_DEPLOY_RATIO = 1.6;
 const MAX_INSTALL_FREEZE_MS = 1_500;
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:large-library", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 const gameId = await mcp.call<string | null>("vortex_query", { selector: "activeGameId" });

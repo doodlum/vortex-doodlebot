@@ -1,0 +1,13 @@
+{
+  "name": "doodlebot",
+  "owner": {
+    "name": "doodlum"
+  },
+  "plugins": [
+    {
+      "name": "doodlebot",
+      "source": "./plugins/doodlebot",
+      "description": "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds."
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+# Open a pull request
+
+This page shows how to have the agent check a Vortex branch and prepare its pull request with
+`/doodlebot:pr`.
+
+## Before you begin
+
+- Have a committed branch of `<workspace>/.vortex-src` (or of the checkout you work in) with the
+  change.
+- Make sure the change was tested in the scenario it addresses. For a bug fix, the reported
+  scenario was reproduced on the base and passes on the fix; see
+  [Fix a Vortex bug](fix-a-bug.md#test-the-reported-scenario). Without that, the agent does not
+  prepare a pull request, draft included.
+- For a feature or a refactor, have the approved design; see [Design a feature with EGM](design-a-feature.md).
+- Stop the test Vortex (`doodlebot down`). The checks below refuse to change a checkout that
+  a running test Vortex uses.
+
+## Prepare the pull request
+
+1. Run:
+
+   ```text
+   /doodlebot:pr
+   ```
+
+2. The agent builds the branch the pull request is opened from:
+   `doodlebot pr-branch <topic>`. It makes `pr/<topic>` from your commits, without the
+   `docs(design)` commits, so the design never reaches the pull request. With a design, it tags
+   the design commit you approved `design/<topic>` (`--design-commit <sha>`), so the description
+   can link the design; a revision you have not approved is never tagged. When you approve a
+   later revision, the tag moves to it and the earlier one is kept as `design/<topic>-v<n>`. A
+   commit that mixes code with a change to `docs/designs/` is refused: split it first.
+
+3. The agent runs `doodlebot pr-preflight` on `pr/<topic>`. It compares the committed branch with
+   its merge base and reports PASS, WARN, FAIL or SKIP for each check:
+
+   | Check                    | What it reports                                                             |
+   | ------------------------ | --------------------------------------------------------------------------- |
+   | Size                     | WARN over 400 changed lines or 10 files                                     |
+   | Callers outside the diff | Uses of each changed export, member or helper outside the changed lines     |
+   | Readers of changed state | Readers of each class field whose assignment changed                        |
+   | Dispatchers of reducers  | Each changed reducer's action creator and its uses                          |
+   | Revert check             | Whether the tests fail with the fix reverted, which shows they test the fix |
+   | Measurements in comments | Timing or size figures in added comments                                    |
+   | Design kept out          | FAIL when the branch still carries its design file                          |
+
+   The agent gives each meaningful warning a disposition.
+
+4. The agent writes the description with these sections, in this order:
+
+   - **Problem**: the trigger, the user-visible result, the affected scope and the cause, with
+     the issue link.
+   - **Change**: the resulting behavior and the relevant decisions. With a design, its Overview
+     and acceptance criteria verbatim, and "Design approved by <owner> on <date>", with a link
+     to the design at its `design/<topic>` tag on your fork; "None" for a bug fix.
+   - **Behaviour changes**: what users and extension authors can observe.
+   - **Evidence**: revision and platform, the before and after run reports, the regression
+     test and its control, each acceptance criterion with its negative control (with a design),
+     the QA catalogue entries the change touches, performance if relevant, and CI.
+   - **Review**: the independent review and its findings.
+   - **Not covered**: related work left out.
+
+   Every description ends with the footer
+   `Written with [doodlebot](https://github.com/doodlum/vortex-doodlebot).`
+
+   The title follows Conventional Commits, such as `fix(collections): ...`, in under about 72
+   characters.
+
+5. The agent shows you the title and description. It never pushes a branch or opens a pull
+   request unless you ask it to.
+
+6. When you ask, it pushes with `doodlebot pr-branch <topic> --push`. That pushes `pr/<topic>`
+   and the `design/<topic>` tag only to your own fork, and refuses when your `origin` would push
+   anywhere else (a push URL or `pushInsteadOf` rule pointing elsewhere); see
+   [Working with your fork](source-development.md#working-with-your-fork-and-worktrees). If you
+   have no fork yet, the agent offers to make one.
+
+7. After you ask it to open the pull request (a draft unless you say otherwise), the agent runs
+   `doodlebot pr-checks <number>` to report the pull request's CI checks, with failed jobs
+   expanded to their failed steps. When CI is red, it says why: a test failure, an upload or
+   infrastructure failure, or a known failure on the base.
+
+The expected result: a preflight report, a description ready to post, and, once the pull request
+exists, its check status.
+
+## What's next
+
+- Have the change checked independently with `/doodlebot:qa`; see
+  [Try things in Vortex](try-vortex.md#check-a-change-a-pull-request-or-a-release).
+- [Evidence and the QA catalogue](../concepts/evidence.md).

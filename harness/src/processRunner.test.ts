@@ -1,21 +1,35 @@
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import * as operations from "./operations";
-import { ChildRegistrationError, claimOperations } from "./operations";
-import { checkoutResource, holdLease, listLeases, processAlive } from "./lease";
-import { runEvidenceProcess } from "./processRunner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { processAlive } from "./processes";
+import { callerCwd, runInteractive, tsxCli } from "./processRunner";
 import * as processes from "./processRunner";
 import { runStreaming } from "./source";
-import { runUnderLease } from "./leaseCommand";
-import { buildCheckout, streamingRunner } from "./vortexBuild";
+import { streamingRunner } from "./vortexBuild";
+
+// A test can substitute the next spawned child; every other spawn is real.
+const fake = vi.hoisted(() => ({ next: undefined as undefined | (() => unknown) }));
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    spawn: (...args: Parameters<typeof actual.spawn>) => {
+      const make = fake.next;
+      fake.next = undefined;
+      return make === undefined ? actual.spawn(...args) : make();
+    },
+  };
+});
 
 let root: string;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "process-recovery-"));
 });
 afterEach(() => {
+  fake.next = undefined;
   vi.restoreAllMocks();
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -32,105 +46,103 @@ it("does not report a gracefully exited cancelled command as success", async () 
     /interrupted/,
   );
   expect(await streamingRunner("node", [], { cwd: root, env: {} })).toBe(130);
-  expect(
-    await runUnderLease({
-      command: "node",
-      args: [],
-      owner: "author",
-      resources: ["fixture"],
-      leaseEnv: { dir: path.join(root, "leases") },
-      cwd: root,
-    }),
-  ).toBe(130);
 });
 
-it("rejects cleanup errors after close without stranding the process promise", async () => {
-  const leaseEnv = { dir: path.join(root, "leases") };
-  const ownership = holdLease("fixture", "author", leaseEnv);
-  const operation = claimOperations(["fixture"], "author", { leaseEnv });
-  const track = operations.trackOperationChild;
-  let pid = 0;
-  vi.spyOn(operations, "trackOperationChild").mockImplementation(
-    (context, child, persistent, env) => {
-      pid = child;
-      const release = track(context, child, persistent, env);
-      return () => {
-        expect(processAlive(child)).toBe(false);
-        release();
-        throw new Error("cleanup failed after confirmed exit");
-      };
-    },
-  );
-  try {
-    await expect(
-      runEvidenceProcess({
-        executable: process.execPath,
-        args: ["-e", "process.exit(0)"],
-        cwd: root,
-        context: operation.context,
-        persistentResources: ["fixture"],
-        leaseEnv,
-      }),
-    ).rejects.toThrow(/cleanup failed after confirmed exit/);
-    expect(pid).toBeGreaterThan(0);
-    expect(processAlive(pid)).toBe(false);
-  } finally {
-    operation.release();
-    ownership.release();
-  }
+describe("callerCwd", () => {
+  it("runs a command where the caller was, not in the kit's root", () => {
+    // The doodlebot shim starts the CLI in the kit and keeps the caller's directory in INIT_CWD
+    expect(callerCwd(undefined, { INIT_CWD: "J:/vortex/checkout" })).toBe("J:/vortex/checkout");
+  });
+
+  it("prefers an explicit directory, and falls back to this process's", () => {
+    expect(callerCwd("J:/elsewhere", { INIT_CWD: "J:/kit" })).toBe("J:/elsewhere");
+    expect(callerCwd(undefined, {})).toBe(process.cwd());
+    expect(callerCwd(undefined, { INIT_CWD: "" })).toBe(process.cwd());
+  });
 });
 
-it.each(["lease", "build"] as const)(
-  "%s waits for a registration-failed child before cleanup",
-  async (kind) => {
-    const leaseEnv = { dir: path.join(root, "leases") };
-    const checkout = path.join(root, "checkout");
-    fs.mkdirSync(path.join(checkout, "src", "main"), { recursive: true });
-    fs.mkdirSync(path.join(checkout, "etc"));
-    fs.writeFileSync(
-      path.join(checkout, "package.json"),
-      JSON.stringify({ packageManager: "pnpm@11.0.0" }),
+describe("tsxCli", () => {
+  it("is the workspace's tsx CLI, which exists", () => {
+    const cli = tsxCli();
+    expect(path.isAbsolute(cli)).toBe(true);
+    expect(cli.replace(/\\/g, "/")).toMatch(
+      /\/node_modules\/(?:\.pnpm\/.*\/)?tsx\/dist\/cli\.mjs$/,
     );
-    const generated = path.join(checkout, "etc", "vortex.api.md");
-    fs.writeFileSync(generated, "original");
-    const resource = checkoutResource(checkout);
-    const track = operations.trackOperationChild;
-    let pid = 0;
-    vi.spyOn(operations, "trackOperationChild").mockImplementation(
-      (context, child, persistent, env) => {
-        pid = child;
-        const release = track(context, child, persistent, env);
-        if (kind === "build") fs.writeFileSync(generated, "partial output");
-        throw new ChildRegistrationError(new Error("injected registration failure"), () => {
-          expect(processAlive(child)).toBe(false);
-          if (kind === "build") expect(fs.readFileSync(generated, "utf8")).toBe("partial output");
-          release();
-        });
-      },
+    expect(fs.existsSync(cli)).toBe(true);
+  });
+});
+
+describe("runInteractive", { timeout: 30_000 }, () => {
+  const interruptListeners = (): Array<(...args: unknown[]) => void> =>
+    process.listeners("SIGINT") as Array<(...args: unknown[]) => void>;
+
+  it("resolves to the child's exit code in the given directory and environment", async () => {
+    const out = path.join(root, "seen.json");
+    const before = interruptListeners();
+    const code = await runInteractive(
+      process.execPath,
+      [
+        "-e",
+        `require("node:fs").writeFileSync(${JSON.stringify(out)}, JSON.stringify({cwd:process.cwd(),marker:process.env.RUN_INTERACTIVE_MARKER})); process.exit(7)`,
+      ],
+      { cwd: root, env: { ...process.env, RUN_INTERACTIVE_MARKER: "seen" } },
     );
-    const args = ["-e", "setInterval(()=>{},1000)"];
-    const pending =
-      kind === "lease"
-        ? runUnderLease({
-            command: process.execPath,
-            args,
-            shell: false,
-            owner: "author",
-            resources: [resource],
-            leaseEnv,
-            cwd: checkout,
-          })
-        : buildCheckout({
-            checkout,
-            owner: "author",
-            production: false,
-            installedPnpm: "11.0.0",
-            leaseEnv,
-            runner: (_command, _args, options) => streamingRunner(process.execPath, args, options),
-          });
-    await expect(pending).rejects.toThrow(/Child registration failed/);
+    expect(code).toBe(7);
+    const seen = JSON.parse(fs.readFileSync(out, "utf8")) as { cwd: string; marker: string };
+    expect(seen.marker).toBe("seen");
+    expect(fs.realpathSync.native(seen.cwd)).toBe(fs.realpathSync.native(root));
+    // Its signal handlers are gone once it resolves.
+    expect(interruptListeners()).toEqual(before);
+  });
+
+  it("kills the child tree on an interrupt, waits for it and resolves 130", async () => {
+    const before = new Set(interruptListeners());
+    const pidFile = path.join(root, "pid");
+    const pending = runInteractive(
+      process.execPath,
+      [
+        "-e",
+        `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(()=>{},1000)`,
+      ],
+      { cwd: root, env: process.env },
+    );
+    const added = interruptListeners().filter((listener) => !before.has(listener));
+    expect(added).toHaveLength(1);
+    await vi.waitFor(() => expect(fs.existsSync(pidFile)).toBe(true), { timeout: 15_000 });
+    const pid = Number(fs.readFileSync(pidFile, "utf8"));
+    expect(processAlive(pid)).toBe(true);
+    // As Ctrl+C would, without signalling the test process itself.
+    added[0]!("SIGINT");
+    expect(await pending).toBe(130);
     expect(processAlive(pid)).toBe(false);
-    expect(fs.readFileSync(generated, "utf8")).toBe("original");
-    expect(listLeases(leaseEnv)).toEqual([]);
-  },
-);
+    expect(interruptListeners().filter((listener) => !before.has(listener))).toEqual([]);
+  });
+
+  it("resolves 128 plus the signal number when the child died from a signal", async () => {
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4242,
+      exitCode: null,
+      signalCode: "SIGTERM",
+    });
+    fake.next = () => {
+      setImmediate(() => child.emit("close", null, "SIGTERM"));
+      return child as unknown as ChildProcess;
+    };
+    expect(await runInteractive("vortex", [], { cwd: root, env: process.env })).toBe(
+      128 + os.constants.signals.SIGTERM,
+    );
+  });
+
+  it("resolves 1 when the child reports neither a code nor a signal", async () => {
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4242,
+      exitCode: null,
+      signalCode: null,
+    });
+    fake.next = () => {
+      setImmediate(() => child.emit("close", null, null));
+      return child as unknown as ChildProcess;
+    };
+    expect(await runInteractive("vortex", [], { cwd: root, env: process.env })).toBe(1);
+  });
+});

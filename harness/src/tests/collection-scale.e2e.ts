@@ -1,5 +1,5 @@
 /**
- * Opt-in performance check of a large collection install: pnpm run ai:test:collection-scale.
+ * Opt-in performance check of a large collection install: doodlebot test collection-scale.
  *
  * Installs an offline collection of N members that are all already installed, so nothing
  * downloads or installs. Everything between Install Now and the review screen is Vortex
@@ -42,7 +42,6 @@ import path from "node:path";
 
 import { attachToRenderer } from "../cdp";
 import { loadConfig } from "../config";
-import { claimInstanceLease } from "../instance";
 import { seedLibrary } from "../largeLibrary";
 import { VortexMcpClient } from "../mcpClient";
 import { libraryCount, scaleCollection, type ScaleOptions } from "../collectionScale";
@@ -94,8 +93,6 @@ if (!["skip", "install", "stand-in"].includes(optionalsMode)) {
 const MAX_FREEZE_MS = 10_000;
 
 const config = loadConfig();
-// Drives the running instance: refuse while another owner holds it.
-claimInstanceLease(config, "ai:test:collection-scale", {}, { attach: true });
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 if (
