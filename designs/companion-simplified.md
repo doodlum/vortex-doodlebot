@@ -5,7 +5,8 @@
   implementation readiness and Vortex runtime. That includes the additions from the owner's
   review questions on 2026-11-10: U11 learning, 4.10 plugin users and sessions per branch, 4.11
   the EGM walk, 4.12 the login, and designs on the Vortex branch. The owner approved the use
-  cases (section 2) and told the agent to start implementing (2026-11-10).
+  cases (section 2) and told the agent to start implementing (2026-11-10). Implemented on
+  `egm-overhaul` (PR doodlum/vortex-doodlebot#2). Three Opus code reviewers confirmed it ready.
 - **Target:** doodlebot (`C:\dev\doodlebot`, branch `egm-overhaul`)
 - **Date:** 2026-11-10
 - **Supersedes:** iterations 1 and 2, the handover draft, `designs/agent-companion.md`.
@@ -1106,7 +1107,15 @@ references in the same step. "Docs" below means:
   `game copy`. `--to` overrides it for one copy.
 - Learning and kit gaps: added as U11 and 4.9.
 
-**Still open:**
+- `test bethesda` stays, including its failing case B, as a bug to fix later.
+- The `core-released` CI job is removed; the core suite is a local gate before releases.
 
-1. **Spike:** does the extracted release run, and does the fake Fallout 4 run on it (plan step 1)?
-   The answers may change 4.4 and 4.8.
+**Answered by the step 1 spike and the live checks (2026-11-10):**
+
+- **The extracted release:** it runs. `test core` passes 21 of 21 on 2.8.0 from
+  `~/.doodlebot/releases`, and fails from inside the workspace (4.4).
+- **The fake Fallout 4:** it runs on the release behind the user-folder backup. `plugins-page`
+  passes, and `down` restored the real Fallout 4 folders exactly (4.8).
+- **The `nxm` handler:** every launch re-registers it, so the kit saves and restores it (4.3.4).
+
+**Open:** none.

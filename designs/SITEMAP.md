@@ -6,4 +6,4 @@ Approved and in-progress designs for changes to doodlebot itself. Vortex designs
 - [Doodlebot as an agent companion for Vortex](agent-companion.md): Approved, target `doodlebot`.
   Superseded by the simplified companion.
 - [Doodlebot, simplified: a Vortex companion built around real use cases](companion-simplified.md):
-  use cases approved by the owner, implementation in progress, target `doodlebot`.
+  use cases approved by the owner, implemented, target `doodlebot`.

@@ -73,7 +73,7 @@ your fork. The pull request's description quotes the design's Overview and accep
 and links the design at that tag, so the link keeps working after the branch is rebased or
 deleted. The preflight fails if a design file is still in the pull request's branch.
 
-Doodlebot's own designs are in the doodlebot repository's `designs/` folder.
+Doodlebot's own designs are in the doodlebot repository's `designs/` folder, listed in `designs/SITEMAP.md`. The current one is `designs/companion-simplified.md`, the design this version of doodlebot implements.
 
 ## What's next
 
