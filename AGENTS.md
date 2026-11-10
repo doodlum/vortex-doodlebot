@@ -65,7 +65,7 @@ for a Vortex checkout. Building, installing, patching, reverting or recording ev
 checkout a running harness Vortex was launched from refuses with
 "A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before <action>."
 
-Collections need a Nexus login, once per machine: `/doodlebot:login`, or
+Collections need a Nexus login, once per machine: `/doodlebot:setup --login`, or
 `doodlebot setup --installed --oauth`. The account owner completes the browser login; the kit
 caches and refreshes it. See `harness/AGENTS.md`.
 

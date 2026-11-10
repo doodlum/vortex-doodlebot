@@ -18,8 +18,8 @@ behavior changes, update both: `pnpm run docs:generate` refreshes the generated 
 - [PULL-REQUESTS.md](PULL-REQUESTS.md): Vortex PR titles, description template, reviews.
 - [AGENT-WORKFLOW.md](AGENT-WORKFLOW.md): canonical task routing, delegation and handoff.
 - [TESTING.md](TESTING.md): kit gates, the core suite and opt-in checks.
-- `plugins/doodlebot/`: the plugin (below). Apply the relevant skills; `plugins/doodlebot/skills/design/SKILL.md` (`/doodlebot:design`) is the design-first
-  procedure for features and refactors.
+- `plugins/doodlebot/`: the plugin (below). Apply the relevant skills. Features and refactors
+  start with an EGM design (`/egm:*`, root `AGENTS.md`).
 - [ARCHITECTURE.md](../ARCHITECTURE.md): where a new capability belongs.
 
 When developing Vortex, **read and follow its own `AGENTS.md`, `CLAUDE.md` when present, its
@@ -35,29 +35,45 @@ with `icon`) and a Codex manifest (`.codex-plugin/plugin.json`, `"skills": "./sk
 icon is `plugins/doodlebot/assets/icon.png` (512×512, rendered from `icon.svg`). Claude Code
 ignores `icon` at load time; Codex shows it in its plugin picker.
 
-| Group (`docs/reference/commands.md`) | Skills (`plugins/doodlebot/skills/<name>/SKILL.md`)                         |
-| ------------------------------------ | --------------------------------------------------------------------------- |
-| Set up and run the test Vortex       | `setup`, `login`, `baseline`, `start`, `stop`, `status`, `update`, `source` |
-| Work on Vortex                       | `design`, `fix`, `drive`, `qa`, `ui-test`, `pr`                             |
-| Benchmark                            | `measure`, `compare`                                                        |
+Eight commands, one per use case (designs/companion-simplified.md, 4.1):
+
+| Group (`docs/reference/commands.md`) | Skill (`plugins/doodlebot/skills/<name>/SKILL.md`) | Use case and what it replaced                                                                                     |
+| ------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Set up and run the test Vortex       | `setup`                                            | U0. Modes `setup`, `--check` (`doodlebot check`), `--login`, `--update [<ref>]`; was setup, login, update, status |
+|                                      | `source`                                           | U3–U5. Clone and build `.vortex-src`, `--branch`, a PR's branch for QA                                            |
+| Work on Vortex                       | `try`                                              | U1, U7. Content choice, starts and stops the test Vortex, the run report; was drive, start, stop, baseline        |
+|                                      | `investigate`                                      | U2. An issue report on the user's version; changes no code                                                        |
+|                                      | `fix`                                              | U3. End to end, the regression test in the Vortex branch (`resources/testing.md`); was fix, ui-test               |
+|                                      | `qa`                                               | U4, U5, U8. A PR or branch (base then PR builds), `--design <file>`, `--release <version>`                        |
+|                                      | `pr`                                               | U9. `pr-branch --push`, the description and footer, `pr-checks`                                                   |
+| Benchmark                            | `measure`                                          | U6. `--a <build> [--b <build>] --check <check>`; was measure, compare                                             |
 
 Agents: `plugins/doodlebot/agents/vortex-runtime-goldfish.md` and `vortex-driver.md`. The
 groups are `COMMAND_GROUPS` in `scripts/docs.cjs`; every skill must be in exactly one.
 
-- Commands are `/doodlebot:<skill>` in Claude Code (`/doodlebot:drive`). Claude Code namespaces
+- Every command's report ends with a **Learned** section (4.9): lessons recorded, noted or
+  removed, kit gaps recorded with `doodlebot gap add`, catalogue entries proposed, or "nothing".
+  No skill patches the kit in the middle of a task. `try` defines the run report (Outcome,
+  Tested against, Scenario and target, Steps, Dialogs and prompts answered, Errors and
+  warnings, Evidence, Not checked, Learned); `measure` the benchmark report.
+- A skill never runs `doodlebot down` on a test Vortex another session started from another
+  checkout: it waits, or tells the person.
+- Commands are `/doodlebot:<skill>` in Claude Code (`/doodlebot:try`). Claude Code namespaces
   plugin agents: skills dispatch `doodlebot:vortex-runtime-goldfish` and `doodlebot:vortex-driver`
   (`model: sonnet`). Codex plugins ship no agents; there the skills run the procedure inline or
   give a general-purpose subagent the persona file.
 - `plugins/doodlebot/resources/` holds the EGM persona `vortex_runtime.md`, the document
-  standard `vortex-change-standard.md`, and `knowledge.md`, the procedure skills follow to search
-  and record lessons, record kit gaps, propose test gaps and share them ("Knowledge" below).
+  standard `vortex-change-standard.md`, `knowledge.md`, the procedure skills follow to search
+  and record lessons, record kit gaps, propose test gaps and share them ("Knowledge" below), and
+  `testing.md`, the procedure `fix` and feature work follow to write the tests that prove a
+  Vortex change (they go in that change's Vortex PR).
   `plugins.test.ts` checks that every `${CLAUDE_PLUGIN_ROOT}/resources/…` path a skill or agent
   names exists. Skills and agents reach them through
   `${CLAUDE_PLUGIN_ROOT}/resources/…` (in Codex, the plugin root is three folders above a
   `SKILL.md`).
 - Every repository path in a skill or agent body is written `<workspace>/<path>` or
   `${CLAUDE_PLUGIN_ROOT}/<path>`; every skill except `setup` starts with
-  `doodlebot version --json`, takes `<workspace>` from it, and suggests `/doodlebot:update`
+  `doodlebot version --json`, takes `<workspace>` from it, and suggests `/doodlebot:setup --update`
   when its version differs from the plugin's. Skills may name only commands in
   `harness/src/commands.ts`. `harness/src/plugins.test.ts` asserts all of this, and
   `docs/reference/commands.md` is generated from the skills.
@@ -165,7 +181,7 @@ doodlebot save-login --installed        # after a timeout or --no-wait, once log
 doodlebot auth-status                   # presence booleans, never secrets
 ```
 
-- From an agent (`/doodlebot:login`): run `doodlebot setup --oauth --installed --no-wait`, ask
+- From an agent (`/doodlebot:setup --login`): run `doodlebot setup --oauth --installed --no-wait`, ask
   the person to log in, poll `doodlebot auth-status`, then run `doodlebot save-login --installed`.
 - setup clears any seeded API key in its isolated profile so Log in appears. **The account owner**
   clicks Log in and completes the browser flow (password, MFA, captcha); agents do the rest. It
@@ -202,7 +218,7 @@ doodlebot auth-status                   # presence booleans, never secrets
   `icacls ... /inheritance:r /grant:r` fix.
 - Credential presence does not prove Nexus still accepts them. There is no backup command: a
   copy goes stale at the first refresh. A lost, revoked or expired login means repeating
-  `setup --oauth` (`/doodlebot:login`).
+  `setup --oauth` (`/doodlebot:setup --login`).
 - Optional legacy key: `VORTEX_AI_NEXUS_API_KEY` in `harness/.env`.
 
 ## Run and reset
@@ -273,8 +289,8 @@ doodlebot up --installed --sandbox --rebuild-snapshot
 - `down` waits for a clean shutdown. An unresponsive instance is reported and left intact, never
   killed and certified; close that window and retry. A server of another cache is never stopped
   for holding the same port.
-- `/doodlebot:baseline` creates or refreshes a baseline (`up … --rebuild-snapshot`, then `down`);
-  `doodlebot doctor` reports it as the advisory check `Sandbox baseline` (`present: <marker>` or
+- The first start of a build and game creates its baseline; `/doodlebot:try` refreshes one on
+  request (`up … --rebuild-snapshot`, then `down`). `doodlebot doctor` reports it as the advisory check `Sandbox baseline` (`present: <marker>` or
   `missing`), and lists `Legacy lease store` when `~/.vortex-ai/leases` from an older kit
   exists. Advisory checks never make `doctor` exit 1.
 
@@ -359,6 +375,7 @@ collections. It is rewritten through a temporary file and a rename.
 doodlebot game copy <gameId> [--to <folder>] [--new]   # Steam install -> <folder>/<gameId>, registered
 doodlebot game register <gameId> <dir>         # an existing copy; refuses a store path
 doodlebot game restore <gameId> [--all | --keep | --file <path>...]
+doodlebot game folder [<dir>]                  # store the copy folder (asked once by setup --check)
 ```
 
 - **A launch manages only a registered copy** (`assertGamePathAllowed`, `gameCommand.ts`). A path
@@ -366,12 +383,17 @@ doodlebot game restore <gameId> [--all | --keep | --file <path>...]
   exempt. Any other `--game-path` must be a registered copy of that game, and `--game` without
   `--game-path` refuses: the Steam install is never managed. A store path (what `findGamePath`
   returns, or anything under `steamapps\common`) is never a copy. `game copy` needs `--to`
-  until a copy folder is stored.
+  until a copy folder is stored with `game folder <dir>` (`setCopyFolder`), which refuses a
+  store library and a folder inside the workspace, and creates the folder.
 - **One copy per game version.** `game copy` reuses a registered copy of the same game id and
   version (the executable's `ProductVersion`, still on disk) and prints
   `Reused the registered <game> copy at <dir> ...`; nothing is copied. `--new` makes another in
   `<folder>/<gameId>-<n>`, and so does a new game version when `<folder>/<gameId>` is a
   registered copy. An unregistered folder in the way is never written over.
+- **Versions** are read with `windowsProductVersion` and normalized
+  (`normalizeVersionResource`, `releaseFetch.ts`): a resource written as comma-separated parts,
+  such as Stardew Valley's `1.6.15, , 24356,`, becomes `1.6.15.24356`. Copies recorded with the
+  raw text by older kits compare and print normalized.
 - **User folders** (`userFolders.ts`). `USER_FOLDERS` next to `KNOWN_GAMES` (`gameSetup.ts`)
   names each game's `Documents\My Games\<x>`, `%LOCALAPPDATA%\<y>` and `%APPDATA%\<z>`
   (`roamingAppData`; Stardew Valley keeps saves and settings in `%APPDATA%\StardewValley`); a
@@ -410,22 +432,42 @@ lists them, and `--release <version>` selects one wherever `--exe` is accepted. 
 outside the workspace: under it the renderer fails with `Cannot find module './common'`
 (KNOWLEDGE.md).
 
+### The status table: `doodlebot check`
+
+`doodlebot check [--json]` (`checkCommand.ts`) is the table `/doodlebot:setup --check` prints.
+It only reads and always exits 0. Each row is `{area, item, status, detail, next?}`, `status`
+one of `ready`, `missing`, `blocked`, `advisory` and `info`; every missing or blocked row has
+`next`. Rows: the workspace (`versionInfo`); `doctor` for the installed target and the sandbox
+unless target or game flags are given (the login row replaces doctor's `Nexus login captured`);
+EGM, enabled in `<workspace>/.claude/settings.json` or `~/.claude/settings.json`, or listed in
+`~/.claude/plugins/installed_plugins.json`; `.vortex-src`'s fetch remotes, branch and build;
+the inventory's items (a store install with a registered copy is `info`) and the login
+(`next: /doodlebot:setup --login`); the copy folder (`next: doodlebot game folder <dir>`); each
+pending restore (`blocked`, `next: doodlebot game restore <gameId>`); the open kit gaps
+(`openGaps`); each local lesson whose title matches a `KNOWLEDGE.md` entry (`duplicateLessons`,
+`next: doodlebot knowledge remove <id>`, run only with the person's yes); and disk use: the
+sizes of `harness/.artifacts`, `harness/.cache` and `~/.doodlebot/releases`, each registered
+copy's recorded size, and the drive's free space, `advisory` below 10 GB (`LOW_DISK_BYTES`) with
+`doodlebot clean`.
+
 ### Inventory and content choice
 
 `doodlebot inventory [--json]` (`inventory.ts`) lists what this machine can test against. It
 only reads: `content.json`, the default cache (or `--cache-dir`), Steam's manifests and
 `.vortex-src`; it never launches Vortex. Each item is `{id, kind, ready, next?, label, gameId?,
 path?, sizeBytes?, details?}` (`inventorySchema`); `next`, the exact command that makes it
-ready, is present exactly when `ready` is false.
+ready, is present exactly when `ready` is false, except for a store install whose game already
+has a registered copy on disk: it stays not usable, with no `next`, "a copy is registered" in
+its label and the copy in `details.copy`.
 
-| Kind         | Items                                                                                                                                                                                                                                 |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build`      | `release:<v>` (registered; `next: doodlebot release get <v>` when its exe is gone), `installed` (`findInstalledVortex`), `source` (`.vortex-src`: built, branch, head; else `doodlebot source` or `doodlebot build --checkout <dir>`) |
-| `game`       | `store:<id>`: a Steam install of a game in `USER_FOLDERS`, never usable, `next: doodlebot game copy <id>` (with `--to <folder>` until a copy folder is stored); `copy:<id>:<path>`: a registered copy                                 |
-| `snapshot`   | `snapshot:<dir>` for each `snapshot-*` in the cache, read through its marker. Stale (older format, game folder or build gone): `next: doodlebot up <flags> --rebuild-snapshot`; no marker: delete it                                  |
-| `sandbox`    | `sandbox` (the fake game) and `sandbox:fallout4` (the fake Fallout 4), always ready                                                                                                                                                   |
-| `collection` | `collection:offline` (always ready) and `collection:nexus:<game>/<slug>` from `content.json`, ready with a login                                                                                                                      |
-| `login`      | `login`: an `oauth-*.json` in the cache holding a login, not the null tombstone; else `next: doodlebot setup --oauth --installed`                                                                                                     |
+| Kind         | Items                                                                                                                                                                                                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `build`      | `release:<v>` (registered; `next: doodlebot release get <v>` when its exe is gone), `installed` (`findInstalledVortex`), `source` (`.vortex-src`: built, branch, head; else `doodlebot source` or `doodlebot build --checkout <dir>`)                                                                                                  |
+| `game`       | `store:<id>`: a Steam install of a game in `USER_FOLDERS`, never usable, `next: doodlebot game copy <id>` (with `--to <folder>` until a copy folder is stored), or no `next` and "a copy is registered" (`details.copy`) when a registered copy of that game is on disk; `copy:<id>:<path>`: a registered copy, its version normalized |
+| `snapshot`   | `snapshot:<dir>` for each `snapshot-*` in the cache, read through its marker. Stale (older format, game folder or build gone): `next: doodlebot up <flags> --rebuild-snapshot`; no marker: delete it                                                                                                                                   |
+| `sandbox`    | `sandbox` (the fake game) and `sandbox:fallout4` (the fake Fallout 4), always ready                                                                                                                                                                                                                                                    |
+| `collection` | `collection:offline` (always ready) and `collection:nexus:<game>/<slug>` from `content.json`, ready with a login                                                                                                                                                                                                                       |
+| `login`      | `login`: an `oauth-*.json` in the cache holding a login, not the null tombstone; else `next: doodlebot setup --oauth --installed`                                                                                                                                                                                                      |
 
 The snapshot marker records `build` (`buildOf`: the checkout or the exe) since this change;
 older markers without it are read as "build not recorded", and their `next` names no target flag.
@@ -512,12 +554,12 @@ doodlebot log --level warn [--tail <n>] [--since <ISO time>] [--json]
 `info`; an unrecognised level counts as `info`). Vortex writes four-letter codes: `DEBG` ranks
 with `debug`, `INFO` with `info`, `WARN` with `warn` and `ERRO` with `error`, so the default
 `warn` keeps `ERRO` lines; each entry keeps its continuation lines, such as
-stack frames, and `--json` appends them to `message`. Driven runs (`/doodlebot:drive`,
-`/doodlebot:qa`) also read the renderer console from sequence 0 with
+stack frames, and `--json` appends them to `message`. Driven runs (`/doodlebot:try`, and
+`investigate`, `fix` and `qa` through it) also read the renderer console from sequence 0 with
 `doodlebot call ui_read_console`, and write a run report to
-`harness/.artifacts/runs/<UTC time>-<slug>/report.md` (sections Outcome, Scenario and target,
-Steps, Dialogs and prompts answered, Errors and warnings, Evidence, Not checked; defined in
-`plugins/doodlebot/skills/drive/SKILL.md`).
+`harness/.artifacts/runs/<UTC time>-<slug>/report.md` (sections Outcome, Tested against,
+Scenario and target, Steps, Dialogs and prompts answered, Errors and warnings, Evidence, Not
+checked, Learned; defined in `plugins/doodlebot/skills/try/SKILL.md`).
 
 `--args-file` avoids shell quoting (a PowerShell BOM is fine); keep credential-bearing ones private.
 
@@ -700,9 +742,14 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   Node/platform/architecture/`NODE_ENV` identity. Install pinned dependencies
   (`pnpm install --frozen-lockfile`) before building, not while a build runs. New external config inputs, environment dependencies or symlinks need an explicit
   capture-contract change; dependency integrity is not proved by the generation marker.
-- `doodlebot test nexus` (opt-in; same target, cache and ports as account setup): a separate
-  `nexus-smoke` profile and disposable Stardew Valley folder, the five required members of
-  revision 1 of `stardewvalley/nudx7b`, SHA-256 checks of deployed files, purge, evidence. The
+- `doodlebot test nexus [--collection <game>/<slug> | <url> | <slug>] [--revision <n>]` (opt-in;
+  same target, cache and ports as account setup; `nexusCollection.ts`): no collection is pinned.
+  It takes the `--collection` argument, a bare slug that `content.json` records, or else the
+  newest Nexus collection `content.json` records, and refuses when there is none. A separate
+  `nexus-smoke` profile and a disposable folder for the collection's game (`KNOWN_GAMES`; its
+  executable is a marker), the collection's required members, SHA-256 checks of the files every
+  `vortex.deployment*.json` lists, purge, evidence. A complete install is recorded in
+  `content.json` (`recordCollection`), as `doodlebot collection <url>` does. The
   cache opts in to the shared login, so token rotations land in it directly; nothing is copied.
   No launch. Needs Nexus Premium for unattended downloads.
   Outages are failures, not a reason to repeat OAuth.
@@ -711,48 +758,18 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 
 Features and refactors start with a design written and reviewed with Google's
 [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM,
-`v0.1.1`) before any implementation. Follow `plugins/doodlebot/skills/design/SKILL.md`
-(`/doodlebot:design`), which every agent reads (Codex included). Bug fixes, docs and test-only
-changes need no design unless the user supplies or asks for one. The approved designs defining
-this workflow are `designs/egm-workflow.md` and, for its plugin form, `designs/agent-companion.md`.
+`v0.1.1`) before any implementation: `/egm:egm-brainstorm`, `/egm:egm-draft`,
+`/egm:egm-review`, then `/egm:egm-review-loop` with doodlebot's runtime reviewer as the root
+`AGENTS.md` gives it, and the person's approval. Bug fixes, docs and test-only changes need no
+design unless the user supplies or asks for one.
 
-```powershell
-doodlebot design new <file> --title <t> --target vortex|doodlebot
-doodlebot design check <file> [--ready] [--json]
-doodlebot design scope <file> --checkout <dir> --base <ref> [--json]
-```
-
-- `design new` writes the design template (required sections, `Status: Draft`, today's date);
-  it refuses an existing file and needs both `--title` and `--target`.
-- `design check` validates the structure (title, status, target, required sections, acceptance
-  ids, contracts, file boundary) and the `Approved` line, and prints `content sha256: <d>`. It
-  prints `OK <file>` or `ISSUES <file>` with one issue per line and exits 1 on any issue.
-  `--ready` applies the approval-time checks (open questions, `TBD`) whatever the Status.
-  `--json` prints `{file, contentSha256, issues, design}`. Run `pnpm exec oxfmt <file>` first
-  whenever you record the digest: CI formats Markdown, and a format change changes the digest.
-- `design scope` lists the checkout's changed files (committed or not, plus untracked
-  non-ignored files) against `--base` that fall outside the design's file boundary, as
-  `outside: <file>` lines, or `IN SCOPE`; it exits 1 when any file is outside and warns
-  `design is not approved` for an unapproved design. The design file itself is exempt when it
-  lies inside the checkout.
-- Design paths: `designs/<topic>.md` for doodlebot (listed in `designs/SITEMAP.md`),
-  `harness/.artifacts/designs/<topic>.md` for Vortex (never in a Vortex PR). EGM's own briefs,
-  drafts and stage reports go to `harness/.artifacts/egm`; confirmation-round reports to
-  `harness/.artifacts/designs/<topic>.reviews/`.
-- The digest covers the whole text except the `Status`, `Date` and `Approved` header bullets.
-  Approval is the human's line `- **Approved:** <person>; content <sha256>; <reference>`; any
-  body edit afterwards voids it. Each header bullet stays on one line: a wrapped continuation
-  counts as body. Never write an `Approved` line the person has not given.
-- The confirmation round (after the last edit, on a checkout without implementation changes)
-  runs two fresh reviewers: EGM's `implementation_readiness` with its standard, and
-  `vortex-runtime-goldfish` (`plugins/doodlebot/agents/vortex-runtime-goldfish.md`, dispatched as
-  `doodlebot:vortex-runtime-goldfish`; persona `plugins/doodlebot/resources/vortex_runtime.md`) with
-  `plugins/doodlebot/resources/vortex-change-standard.md`. Every Goldfish runs on Sonnet in
-  Claude Code (the runtime adapter declares `model: sonnet`; EGM's reviewer gets the dispatch
-  override `model: sonnet`) and on GPT-6.1 Terra in Codex. The report's `Harness:` line names the
-  model.
-- After implementing, run `design scope`, then `down`; independent QA starts with `up --fresh`
-  in a fresh context. Readiness binds the result to the approved design (next section).
+- A Vortex design lives on the Vortex branch, in the checkout's docs/designs folder, committed
+  as `docs(design): <topic>`. `pr-branch` keeps it out of the PR and tags it
+  `design/<topic>`; `pr-preflight` FAILs when it is still in the PR's diff or commits.
+- The tests that prove the change go in the same Vortex branch
+  (`plugins/doodlebot/resources/testing.md`), and `/doodlebot:qa --design <file>` checks each
+  acceptance criterion with its negative control from a fresh profile.
+- The walk, step by step: `docs/guides/design-a-feature.md`.
 
 ### Recorded checks and readiness
 
@@ -1091,12 +1108,13 @@ machine while they measure. Every check runs on a released Vortex as well as a s
 
 ### Benchmarking: `perf-summary` and the benchmark commands
 
-`/doodlebot:measure` and `/doodlebot:compare` (`plugins/doodlebot/skills/`) are agent procedures
-over the performance checks `mods-scroll`, `large-library`, `collection-scale` (sandbox),
-`download-churn` (any game) and `plugins-page` (`--bethesda-sandbox`).
-Builds are given as `--exe <path>` or `--dev-dir <path>` (built with
-`doodlebot build --checkout <dir> --production` and launched with `--production`); nothing is
-downloaded. Each build gets its own new `VORTEX_AI_CACHE_DIR` with a null OAuth tombstone, and
+`/doodlebot:measure --a <build> [--b <build>] --check <check>`
+(`plugins/doodlebot/skills/measure/SKILL.md`) is the agent procedure over the performance checks
+`mods-scroll`, `large-library`, `collection-scale` (sandbox), `download-churn` (any game) and
+`plugins-page` (`--bethesda-sandbox`). Builds are given as `--release <version>` (fetched with
+`release get`), `--exe <path>` or `--dev-dir <path>` (built with
+`doodlebot build --checkout <dir> --production` and launched with `--production`). Without
+`--b` there is no verdict. Each build gets its own new `VORTEX_AI_CACHE_DIR` with a null OAuth tombstone, and
 runs alternate A and B, five each by default (three at least). Each run is
 `doodlebot up <build flags> <game flags> --fresh`, `doodlebot call automation_status`
 (recording `vortexVersion` and `nodeEnv`), `doodlebot test <check> <options>` (capturing the
@@ -1213,9 +1231,10 @@ GitHub issue on `doodlum/vortex-doodlebot`, which the maintainer turns into a ch
 - `--print` gives only the text, without `gh`, to paste by hand. Without `gh`, `--yes` fails
   with that advice.
 
-`plugins/doodlebot/resources/knowledge.md` is the procedure. Before acting, `fix`, `drive`,
-`design` and `ui-test` search for the symptom or area, and treat every match as a lead to
-recheck against the source. After acting, `fix`, `drive` and `qa` record a lesson only when:
+`plugins/doodlebot/resources/knowledge.md` is the procedure. Before acting, `try`,
+`investigate` and `fix` search for the symptom or area, and treat every match as a lead to
+recheck against the source. After acting, `try`, `investigate`, `fix` and `qa` record a lesson
+only when:
 
 - the cause was confirmed;
 - the lesson would have saved real time;

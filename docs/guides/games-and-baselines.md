@@ -1,7 +1,8 @@
 # Use real games and baselines
 
-This page shows how to prepare a baseline profile for the sandbox, a real game copy or a source
-build with `/doodlebot:baseline`, and how to start the test Vortex with it.
+This page shows how doodlebot uses baselines, game copies and sandboxes, how to refresh a
+baseline, and how to keep a real game safe. `/doodlebot:try` chooses the game itself; you name
+one only to override it.
 
 ## Before you begin
 
@@ -25,31 +26,29 @@ reused.
 | `--fresh`            | The working profile is replaced with a copy of the baseline   |
 | `--rebuild-snapshot` | The baseline is created again; the saved login is kept        |
 
-## Create or refresh a baseline
+## Refresh a baseline
 
-1. Run `/doodlebot:baseline` with the game you want:
-
-   | Game             | Example                                                   | The agent runs                                                              |
-   | ---------------- | --------------------------------------------------------- | --------------------------------------------------------------------------- |
-   | The sandbox      | `/doodlebot:baseline sandbox`                             | `doodlebot up --installed --sandbox --rebuild-snapshot`                     |
-   | A real game copy | `/doodlebot:baseline fallout4 at D:\GameCopies\Fallout 4` | `doodlebot up --installed --game <id> --game-path <dir> --rebuild-snapshot` |
-   | A source build   | `/doodlebot:baseline sandbox on my source build`          | `doodlebot up --dev-dir <checkout> --sandbox --rebuild-snapshot`            |
-
-2. The agent waits for the baseline to be saved, then runs `doodlebot down`, so no Vortex is
-   left running.
-
-The expected result: the agent reports the baseline it created. `/doodlebot:status` and
-`doodlebot doctor` report whether the sandbox baseline is present.
-
-## Start Vortex with a game
-
-Run `/doodlebot:start` and name the target and game, for example:
+The first `/doodlebot:try` on a build and game creates its baseline. To create it again, ask
+for it:
 
 ```text
-/doodlebot:start the released Vortex with fallout4 at D:\GameCopies\Fallout 4
+/doodlebot:try refresh the baseline for the sandbox on 2.8.0
 ```
 
-The games you can name:
+The agent runs `doodlebot up <build> <game> --rebuild-snapshot`, then `doodlebot down`.
+`/doodlebot:setup --check` and `doodlebot inventory` show each baseline, with the build and game
+it was made for, and a stale one with the command that rebuilds it.
+
+## Name a game
+
+`/doodlebot:try` picks the cheapest content that meets the scenario. To use a particular game,
+name it, for example:
+
+```text
+/doodlebot:try install this mod with my Fallout 4 copy on 2.8.0
+```
+
+The games doodlebot can use:
 
 | Game                 | Flag                            | Notes                                                                           |
 | -------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
@@ -64,13 +63,21 @@ Doodlebot manages a real game folder only when it is a registered copy. A store 
 a folder under `steamapps\common`, is never used: a start with it, or with `--game` and no
 `--game-path`, is refused.
 
+- Choose a folder for copies once; `/doodlebot:setup --check` asks for it and stores it:
+
+  ```powershell
+  doodlebot game folder D:\GameCopies
+  ```
+
 - Make a copy of the Steam install and register it:
 
   ```powershell
-  doodlebot game copy fallout4 --to D:\GameCopies
+  doodlebot game copy fallout4
   ```
 
-  The copy goes to `D:\GameCopies\fallout4`. Copies are listed in `~/.doodlebot/content.json`.
+  The copy goes to `D:\GameCopies\fallout4` (`--to <folder>` overrides the stored folder once).
+  It records the game's version, such as `1.10.984.0`. Copies are listed in
+  `~/.doodlebot/content.json`.
 
 - Doodlebot keeps one copy per game version. Running `game copy` again reuses the registered copy
   of the same version, and says so. Pass `--new` to make a second copy anyway; it goes to
@@ -116,7 +123,8 @@ is ready:
 - the Nexus login, in `~/.doodlebot/login` for the main test Vortex (other caches have none).
 
 Every item that is not ready shows the command that makes it ready, for example
-`next: doodlebot game copy skyrimse`. Add `--json` for the full list in JSON. The command only
+`next: doodlebot game copy skyrimse`. A Steam install whose game already has a registered copy
+says "a copy is registered" instead. Add `--json` for the full list in JSON. The command only
 reads; it never starts Vortex.
 
 ## Free disk space
@@ -140,5 +148,5 @@ doodlebot clean --older-than 14 --yes
 
 ## What's next
 
-- [Drive Vortex and get a report](drive-vortex.md) with the new baseline.
+- [Try things in Vortex](drive-vortex.md) with the new baseline.
 - [Sign in to Nexus Mods](sign-in.md) for collections.

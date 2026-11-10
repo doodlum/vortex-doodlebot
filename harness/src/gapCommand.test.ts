@@ -20,7 +20,7 @@ afterEach(() => {
 const KIT = "a".repeat(40);
 const gap = {
   title: "No tool reads the Downloads queue",
-  command: "/doodlebot:drive",
+  command: "/doodlebot:try",
   needed: "the queued downloads and their states",
   happened: "only the finished archives were visible",
   workaround: "vortex_query on state.persistent.downloads (bypasses the UI)",
@@ -50,7 +50,7 @@ describe("kit gaps", () => {
     const text = fs.readFileSync(d.file, "utf8");
     for (const line of [
       `## ${gap.title}`,
-      "- **Command:** /doodlebot:drive",
+      "- **Command:** /doodlebot:try",
       "- **What was needed:** the queued downloads and their states",
       "- **What happened:** only the finished archives were visible",
       "- **Workaround used:** vortex_query on state.persistent.downloads (bypasses the UI)",
@@ -176,7 +176,7 @@ describe("gap command", () => {
     };
     expect(added.outcome).toBe("added");
     expect(gapCommand(["list"], {}, d)).toBe(
-      `${added.gap.id}  ${gap.title} [/doodlebot:drive; open; seen 1x, last 2026-11-10]`,
+      `${added.gap.id}  ${gap.title} [/doodlebot:try; open; seen 1x, last 2026-11-10]`,
     );
     expect(gapCommand(["close", added.gap.id], { wontfix: true }, d)).toContain("wontfix");
     expect(gapCommand(["list"], {}, d)).toMatch(/^No open kit gaps/);

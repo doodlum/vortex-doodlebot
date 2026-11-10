@@ -15,6 +15,7 @@ import { z } from "zod";
 import { SNAPSHOT_SCHEMA_VERSION, readMarker } from "./bootstrap";
 import { findInstalledVortex } from "./config";
 import { readContent, type Content } from "./content";
+import { normalizeVersionResource } from "./releaseFetch";
 import { ConfigError } from "./errors";
 import { KNOWN_GAMES, USER_FOLDERS, findGamePath } from "./gameSetup";
 import { sharedLoginDir, usesSharedLogin } from "./login";
@@ -36,7 +37,11 @@ export const inventoryItemSchema = z.object({
   id: z.string(),
   kind: z.enum(INVENTORY_KINDS),
   ready: z.boolean(),
-  /** The exact command that makes a not-ready item ready. Present exactly when `ready` is false. */
+  /**
+   * The exact command that makes a not-ready item ready. Present exactly when `ready` is false,
+   * except for a store install (`store:<id>`) whose game already has a registered copy on disk:
+   * the store install stays unusable, and there is nothing to do (`details.copy` names the copy).
+   */
   next: z.string().optional(),
   /** One line for people. */
   label: z.string(),
@@ -209,17 +214,28 @@ function gameItems(content: Content, deps: InventoryDeps): InventoryItem[] {
   for (const gameId of copyableGames()) {
     const store = storePath(gameId);
     if (store === undefined) continue;
+    const executable = KNOWN_GAMES[gameId]!.executable;
+    // A registered copy still on disk already makes this game testable: nothing to do.
+    const copy = content.games.find(
+      (game) => game.gameId === gameId && exists(path.join(game.path, executable)),
+    );
     items.push({
       id: `store:${gameId}`,
       kind: "game",
       ready: false,
-      next: copyCommand(gameId, content),
-      label: `${KNOWN_GAMES[gameId]!.name}, Steam install: not usable (a store install is never managed)`,
+      ...(copy === undefined ? { next: copyCommand(gameId, content) } : {}),
+      label:
+        `${KNOWN_GAMES[gameId]!.name}, Steam install: not usable (a store install is never managed)` +
+        (copy === undefined ? "" : `; a copy is registered (${copy.path})`),
       gameId,
       path: store,
+      ...(copy === undefined ? {} : { details: { copy: copy.path } }),
     });
   }
-  for (const copy of content.games) {
+  for (const registered of content.games) {
+    // A copy registered before versions were normalized holds the raw resource text.
+    const gameVersion = normalizeVersionResource(registered.gameVersion);
+    const copy = { ...registered, ...(gameVersion === undefined ? {} : { gameVersion }) };
     const executable = KNOWN_GAMES[copy.gameId]?.executable;
     const ready = executable === undefined || exists(path.join(copy.path, executable));
     items.push({
@@ -413,6 +429,8 @@ export function formatInventory(inventory: Inventory): string {
       lines.push(`  ${item.ready ? "ready    " : "not ready"}  ${item.id}`);
       lines.push(`             ${item.label}`);
       if (item.next !== undefined) lines.push(`             next: ${item.next}`);
+      else if (!item.ready && item.details?.copy !== undefined)
+        lines.push(`             a copy is registered: ${String(item.details.copy)}`);
     }
   }
   return lines.join("\n");

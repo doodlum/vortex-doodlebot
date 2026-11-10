@@ -1,7 +1,7 @@
 # Troubleshooting
 
 This page lists common problems, what causes them, and what to do. Start with the first error
-the agent reports. `/doodlebot:status` and `doodlebot doctor`, which the agent can run for you,
+the agent reports. `/doodlebot:setup --check` and `doodlebot doctor`, which the agent can run for you,
 check the local setup.
 
 ## The agent says `doodlebot` was not found
@@ -16,13 +16,13 @@ If `link` fails with
 again with a folder you can write to that is on your PATH, for example
 `/doodlebot:setup --bin-dir C:\Users\you\bin`.
 
-## The agent suggests `/doodlebot:update`
+## The agent suggests `/doodlebot:setup --update`
 
-The plugin's version differs from the workspace's. Run `/doodlebot:update`. It can refuse:
+The plugin's version differs from the workspace's. Run `/doodlebot:setup --update`. It can refuse:
 
 | Message                                                                   | What to do                                                       |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `A harness Vortex is running; run doodlebot down before updating.`        | Run `/doodlebot:stop`, then update again                         |
+| `A harness Vortex is running; run doodlebot down before updating.`        | Have the agent run `doodlebot down`, then update again           |
 | `The workspace has local changes; commit or remove them before updating.` | Commit or remove the changes in the workspace, then update again |
 | `No tag or branch <ref> on origin.`                                       | The agent retries with `main`                                    |
 
@@ -56,7 +56,8 @@ A harness Vortex is running (pid 1234, cache C:\Users\you\doodlebot\harness\.cac
 A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
 ```
 
-Nothing was started or changed. Run `/doodlebot:stop`, then repeat your request. You do not need
+Nothing was started or changed. If your session started that test Vortex, have the agent run
+`doodlebot down`; if another session did, wait for it. Then repeat your request. You do not need
 to repeat the options the Vortex was started with: `doodlebot down` reads the record and stops
 that Vortex, whatever cache or port it uses.
 
@@ -87,7 +88,7 @@ in the run report.
 
 ## Sign-in or collection downloads fail
 
-Run [`/doodlebot:login`](guides/sign-in.md). An API key alone cannot authenticate collections,
+Run [`/doodlebot:setup --login`](guides/sign-in.md). An API key alone cannot authenticate collections,
 and unattended collection downloads need Nexus Mods Premium. A saved login that Nexus no longer
 accepts needs a new login.
 

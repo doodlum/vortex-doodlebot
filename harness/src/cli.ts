@@ -66,6 +66,8 @@ import { gameCommand } from "./gameCommand";
 import { inventoryCommand } from "./inventory";
 import { qaCommand } from "./qaCatalog";
 import { cleanCommand } from "./diskUse";
+import { checkCommand } from "./checkCommand";
+import { recordCollection } from "./content";
 import { releaseCli, windowsProductVersion } from "./releaseFetch";
 import { assertNoHarnessVortex, runningVortex } from "./runningVortex";
 import { settlePendingRestores } from "./userFolders";
@@ -148,8 +150,8 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
 
 const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot plugin, whose commands (/doodlebot:setup,
-drive, fix, design, compare and the others) run these.
+Used from Claude Code or Codex through the doodlebot plugin, whose eight commands
+(/doodlebot:setup, source, try, investigate, fix, qa, measure and pr) run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
@@ -169,6 +171,10 @@ Initial account setup (only for Nexus collections)
 
 Instance lifecycle
   doctor                 Report prerequisites and actionable fixes
+  check [--json]         The read-only status table /doodlebot:setup --check prints: the
+                         workspace, doctor, EGM, .vortex-src, the inventory, the login,
+                         the copy folder, pending restores, open kit gaps, local lessons
+                         KNOWLEDGE.md now holds, and disk use (warns below 10 GB free)
   up                     Start/restart the matching working profile
     --fresh              Reset working state from its baseline; reuse current OAuth
     --no-game            Global UI without managing a game
@@ -187,6 +193,8 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          Register an existing copy (never a store install)
   game restore <gameId>  List the user-folder files changed since the last backup;
     --all | --keep | --file <path>   restore them all, keep them all, or restore some
+  game folder [<dir>]    Store the folder game copy copies into (asked once); without a
+                         folder, print the stored one
   release get <version>  Download an official release, check its published SHA-256 and
                          extract it with 7-Zip into ~/.doodlebot/releases (never runs
                          the installer); use it with --release <version>
@@ -552,6 +560,30 @@ async function main(): Promise<number> {
     const result = qaCommand(positional, flags, lists, { vortexDir: vortexSourceDir() });
     log(result.text);
     return result.code;
+  }
+
+  if (command === "check") {
+    // Doctor for the installed target and the sandbox unless the person named others.
+    const targeted = ["installed", "exe", "dev-dir", "release"].some((name) => name in flags);
+    const gamed = ["sandbox", "bethesda-sandbox", "game", "no-game"].some((name) => name in flags);
+    const doctorFlags = {
+      ...flags,
+      ...(targeted ? {} : { installed: true }),
+      ...(gamed ? {} : { sandbox: true }),
+    };
+    log(
+      await checkCommand(flags, {
+        doctor: async () => {
+          const { config, targetError } = configFrom(doctorFlags, "doctor");
+          const report = await runDoctor(config, {
+            skipGame: flags["no-game"] === true,
+            ...(targetError === undefined ? {} : { targetError }),
+          });
+          return report.checks;
+        },
+      }),
+    );
+    return 0;
   }
 
   if (command === "clean") {
@@ -957,6 +989,8 @@ async function main(): Promise<number> {
           }
         }
         if (rendererCleanupFailure) throw rendererCleanupFailure.error;
+        // Recorded so content choice (inventory) and `test nexus` can use it later.
+        if (result.complete) recordCollection(result.ref);
         log("");
         log(`Installed collection ${result.ref.slug} (${result.ref.gameId})`);
         if (result.warnings.length > 0) log(`  Passed with ${result.warnings.length} warning(s)`);

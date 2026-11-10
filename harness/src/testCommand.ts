@@ -84,7 +84,8 @@ export const SUITES: Suite[] = [
   },
   {
     name: "nexus",
-    summary: "opt-in live service: a real Nexus collection (needs a login)",
+    summary:
+      "opt-in live service: --collection <game>/<slug> (or content.json's newest) from Nexus (needs a login)",
     argv: script("nexus-collection"),
   },
 ];

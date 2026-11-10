@@ -69,7 +69,24 @@ export function versionMatches(productVersion: string | undefined, version: stri
   return rest === "" || /^[.+-]/.test(rest);
 }
 
-/** A file's ProductVersion, through PowerShell. */
+/**
+ * A version resource as one dotted version. Most executables hold a plain `2.8.0.0`, but some
+ * write the parts separated by commas and blanks (Stardew Valley's is `1.6.15, , 24356,`): the
+ * numeric parts are joined with dots (`1.6.15.24356`). Anything after a plain version
+ * (`2.8.0-beta.1`, `1.2+abc`) is kept. Empty or part-less text gives undefined.
+ */
+export function normalizeVersionResource(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const text = raw.trim();
+  if (/^\d+(?:\.\d+)*(?:[-+][\w.+-]*)?$/.test(text)) return text;
+  const parts = text
+    .split(/[\s,]+/)
+    .map((part) => part.trim())
+    .filter((part) => /^\d+(?:\.\d+)*$/.test(part));
+  return parts.length === 0 ? (text === "" ? undefined : text) : parts.join(".");
+}
+
+/** A file's ProductVersion, through PowerShell, normalized (`normalizeVersionResource`). */
 export function windowsProductVersion(file: string): string | undefined {
   if (process.platform !== "win32") return undefined;
   try {
@@ -83,7 +100,7 @@ export function windowsProductVersion(file: string): string | undefined {
       ],
       { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
     ).trim();
-    return value === "" ? undefined : value;
+    return normalizeVersionResource(value);
   } catch {
     return undefined;
   }

@@ -57,7 +57,7 @@ the reviewers run on Sonnet.
 
 ## Install EGM for design review
 
-`/doodlebot:design` needs Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
+Designing features needs Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
 plugin (EGM), release `v0.1.1`. EGM runs inside your coding agent, not inside doodlebot. You can
 skip this section if you will not design features. The
 [EGM announcement](https://opensource.googleblog.com/2026/10/introducing-elephant-goldfish-model-plugin.html)

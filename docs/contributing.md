@@ -51,7 +51,8 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
    It checks types, lint, formatting, documentation, the QA catalogue (`doodlebot qa check`),
    unit tests and the extension build. It does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
    to its design: the manifests and icon, every skill's frontmatter, every plugin resource a
-   skill names, and both agents running on Sonnet. Tests that would reach GitHub (sharing,
+   skill names, both agents running on Sonnet, exactly the eight commands with a Learned section
+   in each report, and no text naming a removed command. Tests that would reach GitHub (sharing,
    pushing) use a stand-in for `gh`; none of them publishes anything.
 
 2. If formatting or lint fails, fix it with the repository's tools rather than by hand:

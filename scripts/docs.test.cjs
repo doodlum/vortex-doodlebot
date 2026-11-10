@@ -209,7 +209,7 @@ test("a stale commands reference fails the check", () => {
       /## Set up and run the test Vortex[\s\S]*## Work on Vortex[\s\S]*## Benchmark/,
     );
     assert.match(commands, /\| `\/doodlebot:setup` +\|/);
-    assert.match(commands, /\| `\/doodlebot:stop` +\| [^|]+\| none +\|/);
+    assert.match(commands, /\| `\/doodlebot:try` +\| [^|]+\| <code>[^|]+<\/code> +\|/);
     assert.ok(!/\| Doodlebot: /.test(commands), "the plugin prefix is removed");
 
     const skill = "plugins/doodlebot/skills/fix/SKILL.md";

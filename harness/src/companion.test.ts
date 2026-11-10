@@ -40,6 +40,10 @@ const REMOVED_FILES = [
   "harness/patches",
   "harness/src/tests/zoom.e2e.ts",
   "harness/src/tests/panels.e2e.ts",
+  // Commands 16 -> 8 (4.1): merged into setup, try, fix and measure.
+  ...["login", "baseline", "start", "stop", "status", "update", "drive", "ui-test", "compare"].map(
+    (skill) => `plugins/doodlebot/skills/${skill}`,
+  ),
 ];
 const BINARY = /\.(?:png|jpe?g|gif|ico|ttf|woff2?|zip|7z|exe|dll)$/i;
 

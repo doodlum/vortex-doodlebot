@@ -11,14 +11,14 @@ Read [How doodlebot works](how-it-works.md).
 
 A claim about a change is backed by something you or a reviewer can open:
 
-| Evidence          | Written by                                      | Shows                                                                        |
-| ----------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |
-| Run report        | `/doodlebot:drive`, `/doodlebot:qa`             | What a driven scenario did, which dialogs were answered, errors and warnings |
-| Benchmark report  | `/doodlebot:measure`, `/doodlebot:compare`      | Timings per build, their spread and the verdict                              |
-| Playwright report | `doodlebot test core`                           | Which regression tests passed                                                |
-| Command receipt   | `doodlebot evidence run`                        | A command, its exit code and output, and the source before and after it      |
-| Preflight report  | `doodlebot pr-preflight`                        | Callers, readers and the revert check for a Vortex branch                    |
-| Screenshots       | `doodlebot screenshot`, copied into run reports | What the window showed                                                       |
+| Evidence          | Written by                                                                    | Shows                                                                        |
+| ----------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Run report        | `/doodlebot:try`, `/doodlebot:investigate`, `/doodlebot:fix`, `/doodlebot:qa` | What a driven scenario did, which dialogs were answered, errors and warnings |
+| Benchmark report  | `/doodlebot:measure`                                                          | Timings per build, their spread and the verdict                              |
+| Playwright report | `doodlebot test core`                                                         | Which regression tests passed                                                |
+| Command receipt   | `doodlebot evidence run`                                                      | A command, its exit code and output, and the source before and after it      |
+| Preflight report  | `doodlebot pr-preflight`                                                      | Callers, readers and the revert check for a Vortex branch                    |
+| Screenshots       | `doodlebot screenshot`, copied into run reports                               | What the window showed                                                       |
 
 Reports and evidence go under `<workspace>/harness/.artifacts`, which Git ignores. Every run
 writes new files; existing evidence is never overwritten. A failed run's evidence is kept as

@@ -1,6 +1,6 @@
 # Sign in to Nexus Mods
 
-This page shows how to sign the test Vortex in to Nexus Mods once, with `/doodlebot:login`, so
+This page shows how to sign the test Vortex in to Nexus Mods once, with `/doodlebot:setup --login`, so
 the agent can work with collections.
 
 ## Before you begin
@@ -18,7 +18,7 @@ a password, API key or token.
 1. Run:
 
    ```text
-   /doodlebot:login
+   /doodlebot:setup --login
    ```
 
 2. The agent runs `doodlebot setup --oauth --installed --no-wait`. A test Vortex opens with
@@ -37,9 +37,9 @@ only whether credentials are present, never the credentials themselves.
 
 - The login is one file per target, installed Vortex or source build, in
   `~/.doodlebot/login`. It is outside the workspace. Every workspace on this machine uses it,
-  and it stays after `/doodlebot:update` and a new `/doodlebot:setup`.
-- `/doodlebot:login` signs in the installed target. To sign in a source build, name its
-  checkout: `/doodlebot:login --dev-dir <path>`. The agent uses `--dev-dir <path>` instead of
+  and it stays after `/doodlebot:setup --update` and a new `/doodlebot:setup`.
+- `/doodlebot:setup --login` signs in the installed target. To sign in a source build, name its
+  checkout: `/doodlebot:setup --login --dev-dir <path>`. The agent uses `--dev-dir <path>` instead of
   `--installed` on every command, `setup` and `save-login` included.
 - If the target already has a saved login present, the agent reports it and no click
   is needed.
@@ -56,7 +56,8 @@ only whether credentials are present, never the credentials themselves.
 
 ## If your login is lost or expired
 
-Run `/doodlebot:setup --login`, or `/doodlebot:login`, and sign in again. It takes about a minute.
+Run `/doodlebot:setup --login` and sign in again. It takes about a minute. `/doodlebot:setup --check`
+shows whether a login is present.
 
 There is no backup command. A copy of the login stops working the first time the real login
 refreshes, and it would leave a password-like file on disk. A saved login also does not prove
@@ -64,6 +65,6 @@ Nexus still accepts it: if Nexus refuses it, sign in again the same way.
 
 ## What's next
 
-- [Install a Nexus collection](drive-vortex.md#install-a-nexus-collection) with `/doodlebot:drive`.
+- [Install a Nexus collection](drive-vortex.md#install-a-nexus-collection) with `/doodlebot:try`.
 - [Use real games and baselines](games-and-baselines.md).
 - [Security and privacy](../security.md) explains where credentials are stored.

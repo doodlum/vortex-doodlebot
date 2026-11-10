@@ -7,7 +7,7 @@
     {
       "name": "doodlebot",
       "source": "./plugins/doodlebot",
-      "description": "The agent companion for Vortex: run a test Vortex, drive it, fix and design Vortex changes, and benchmark builds."
+      "description": "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds."
     }
   ]
 }

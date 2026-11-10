@@ -9,7 +9,7 @@ of it, and run your build in the test Vortex.
 - Have Vortex's own build prerequisites. The first build takes longer than doodlebot's setup.
 - A GitHub fork of Vortex is needed only to push your work. Without one, you can still build,
   try and test Vortex.
-- Stop any running test Vortex with `/doodlebot:stop`.
+- Make sure no test Vortex is running (`doodlebot down` stops one your session started).
 
 You do not need Vortex source to drive a released Vortex, add a regression test for doodlebot's
 suite, or measure a release.
@@ -72,7 +72,7 @@ session's runs is refused. Wait for the other session to finish; never stop its 
 
 ## Run your build
 
-- `/doodlebot:start with my source build and the sandbox game` starts the build with
+- `/doodlebot:try <scenario> on my source build` starts the build with
   `doodlebot up --dev-dir <workspace>/.vortex-src --sandbox`.
 - A source build runs in development mode, with React's slower development build. For timings
   that reflect users, the agent builds with `doodlebot build --checkout <dir> --production` and
@@ -89,12 +89,12 @@ refuse:
 A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
 ```
 
-Run `/doodlebot:stop`, then repeat the command. Stop it before you switch `.vortex-src` to
+Stop that test Vortex with `doodlebot down` if your session started it, then repeat the command. Stop it before you switch `.vortex-src` to
 another branch as well.
 
 ## Features and refactors start with a design
 
-Before you write code for a new feature or a refactor, run [`/doodlebot:design`](design-a-feature.md).
+Before you write code for a new feature or a refactor, write and approve a design with EGM ([Design a feature](design-a-feature.md)).
 A bug fix needs no design; use [`/doodlebot:fix`](fix-a-bug.md).
 
 When someone else checks your change, stop your test Vortex first. They start with

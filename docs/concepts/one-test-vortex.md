@@ -14,7 +14,7 @@ every workspace on the machine: a second workspace cannot start a test Vortex wh
 one's runs.
 
 Doodlebot does not queue commands from two sessions. Do not drive, rebuild or test the same test
-Vortex from two sessions at once. Stop it with `/doodlebot:stop` before you hand work to another
+Vortex from two sessions at once. Stop it with `doodlebot down` before you hand work to another
 session, start a different profile, run regression tests or benchmark.
 
 The rule covers only doodlebot's test Vortex. Your own Vortex is separate, and doodlebot never
@@ -72,14 +72,16 @@ A record counts as running only while its process is alive and is `Vortex.exe`, 
   A harness Vortex of another build is running from C:\work\vortex-a (branch fix-a) (pid 1234); run `doodlebot down` before starting Vortex.
   ```
 
-Nothing was started or changed. Run `/doodlebot:stop`, then repeat the command. Starting the
+Nothing was started or changed. If your session started that test Vortex, stop it with
+`doodlebot down`; if another session did, wait for it. Then repeat the command. Starting the
 same profile with the same build again is not refused: it restarts that profile. The first start
 with a different build on a profile starts fresh from its baseline. Each baseline records the
 build it was made with, and `doodlebot inventory` lists the baselines with their build and game.
 
 ## How stopping works
 
-`/doodlebot:stop` runs `doodlebot down`. It reads the record, so it stops the running test
+Every command that starts the test Vortex stops it at the end with `doodlebot down`. It reads
+the record, so it stops the running test
 Vortex whatever cache or port it uses, and first names the checkout and branch, or the
 executable, it runs. It asks Vortex to quit, waits up to 30 seconds for a clean exit, then clears
 the record and restores your `nxm://` handler and the game's user folders

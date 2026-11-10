@@ -16,6 +16,7 @@ export const commands: CommandEntry[] = [
   { name: "auth-status" },
   { name: "save-login" },
   { name: "doctor" },
+  { name: "check" },
   { name: "up" },
   { name: "bootstrap" },
   { name: "down" },
@@ -50,7 +51,7 @@ export const commands: CommandEntry[] = [
   { name: "knowledge", subcommands: ["add", "search", "list", "remove", "note", "share", "path"] },
   { name: "gap", subcommands: ["add", "list", "close", "share"] },
   // Content the kit may write to
-  { name: "game", subcommands: ["copy", "register", "restore"] },
+  { name: "game", subcommands: ["copy", "register", "restore", "folder"] },
   { name: "release", subcommands: ["get", "list"] },
   { name: "inventory" },
   { name: "clean" },

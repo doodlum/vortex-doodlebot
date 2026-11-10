@@ -13,7 +13,7 @@ The stores:
 
 - **Shared:** `<workspace>/KNOWLEDGE.md` holds reviewed lessons that ship with doodlebot.
   Never edit it from a skill. It changes only through a doodlebot pull request, and an edit in
-  the workspace would make `/doodlebot:update` refuse.
+  the workspace would make `/doodlebot:setup --update` refuse.
 - **Local:** `~/.doodlebot/knowledge.md` (lessons) and `~/.doodlebot/gaps.md` (kit gaps) hold
   what was found on this machine. Only the knowledge and gap commands below write them.
   They survive updates and re-setup, and Claude Code and Codex share them.
@@ -76,7 +76,7 @@ dialog `install` can't answer, a game inventory missed, a check that passed whil
 failed. A Vortex bug is not a gap (it is an issue report), and neither is something setup
 reports as missing (that is the inventory's `next` command).
 
-1. **Never patch the workspace in the middle of a task.** That would make `/doodlebot:update`
+1. **Never patch the workspace in the middle of a task.** That would make `/doodlebot:setup --update`
    refuse and mix a kit change into Vortex work. Finish or stop the task first.
 2. **Look for the same gap** (same command, same title), closed ones included, and reuse its
    title:

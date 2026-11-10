@@ -30,7 +30,7 @@ Setup asks before it enables pnpm. If you agree, it runs `corepack enable`, then
 | Task                               | Also needed                                                                                                                                |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Local checks with the sandbox game | Nothing more. No game and no Nexus account                                                                                                 |
-| Nexus collections                  | A Nexus Mods account, signed in once with [`/doodlebot:login`](../guides/sign-in.md)                                                       |
+| Nexus collections                  | A Nexus Mods account, signed in once with [`/doodlebot:setup --login`](../guides/sign-in.md)                                               |
 | Unattended collection downloads    | Nexus Mods Premium                                                                                                                         |
 | A real game                        | The game installed; a test machine or QA-only Windows account is safest ([Use real games and baselines](../guides/games-and-baselines.md)) |
 | Changing Vortex itself             | Vortex's own build prerequisites, and a GitHub fork of Vortex to push ([Work on Vortex source](../guides/source-development.md))           |

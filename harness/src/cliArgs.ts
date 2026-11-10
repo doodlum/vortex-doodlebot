@@ -95,7 +95,7 @@ function positionalPaths(command: string, positional: string[]): number[] {
     case "evidence":
       return positional[0] === "runtime" ? positional.map((_, i) => i).slice(1) : [];
     case "game":
-      return positional[0] === "register" ? [2] : [];
+      return positional[0] === "register" ? [2] : positional[0] === "folder" ? [1] : [];
     default:
       return [];
   }

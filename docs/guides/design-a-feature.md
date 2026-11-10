@@ -1,153 +1,65 @@
 # Design a feature
 
-This page shows how to have the agent write and review a design for a Vortex or doodlebot
-feature with `/doodlebot:design`, and how you approve it before any code is written.
+This page shows how to design a Vortex feature with Google's Elephant-Goldfish Model plugin
+(EGM) and doodlebot, approve it before any code is written, and carry it to a pull request.
+Bug fixes, documentation and test-only changes need no design; use
+[Fix a Vortex bug](fix-a-bug.md) instead.
 
 ## Before you begin
 
 - [Install EGM](../get-started/install.md#install-egm-for-design-review), release `v0.1.1`.
-- [Set up doodlebot](../get-started/set-up.md).
-- Have the feature request or the refactor you want. Bug fixes, documentation and test-only
-  changes need no design; use [Fix a Vortex bug](fix-a-bug.md) instead.
+- Open your agent **in the doodlebot workspace**, not in `.vortex-src`: the workspace's
+  `AGENTS.md` tells EGM where its files go and how to call doodlebot's runtime reviewer.
+- Run `/doodlebot:setup --check`: EGM is installed, the Vortex source is built, and a sandbox is
+  ready.
 
 [Design first](../concepts/design-first.md) explains why features start this way.
 
-## Write and review the design
+## The walk
 
-1. Run:
-
-   ```text
-   /doodlebot:design <the feature request>
-   ```
-
-2. Answer the agent's questions about the idea. The agent, the **Elephant**, keeps the context
-   of the task and writes a brief with EGM.
-
-3. Approve each section of the draft as the agent presents it.
-
-4. The agent runs EGM's review stages and fixes what they find. Then, after the last edit, it
-   runs a final **confirmation round**: two **Goldfish** reviewers, started without the
-   conversation, read the finished text before any implementation exists:
-
-   - `implementation_readiness`, from EGM, checks that someone could build the design without
-     asking questions;
-   - `vortex-runtime-goldfish`, from the doodlebot plugin, checks that every acceptance criterion
-     can be proved on a real Vortex: which app, which test game or collection, which command,
-     and what will be observed.
-
-5. Decide any findings the agent disagrees with. It lists them, with its reasons, in
-   `contested.md`.
-
-6. Approve the final text (below).
-
-The agent skips steps 2 and 3 only when you told it to in the task. It never approves a design
-for you.
+1. `/doodlebot:source --branch feat/<topic>` updates the Vortex source and cuts the branch from
+   upstream.
+2. `/egm:egm-brainstorm <the idea>`: tell it the code is in `.vortex-src`. Optionally
+   `/doodlebot:try` on the current build first, to see today's behaviour.
+3. `/egm:egm-draft`: at its save step, choose the Vortex checkout's `docs/designs/` folder.
+   Commit the design on the feature branch as `docs(design): <topic>`.
+4. `/egm:egm-review <design>`: EGM's staged review. Give it the Vortex files the design names.
+5. `/egm:egm-review-loop` with the arguments in the workspace's `AGENTS.md`: doodlebot's runtime
+   reviewer (`vortex-runtime-goldfish`, on Sonnet, read-only) checks that every acceptance
+   criterion can be proved on a real Vortex, with a negative control, the content it needs and
+   the build it runs on. The loop runs `egm-resolve` itself.
+6. **You approve.** Set the design's Status to Approved, or tell the agent to. The agent never
+   writes an approval you have not given.
+7. The agent implements on the branch, following Vortex's own rules, and writes the tests that
+   prove it in the same branch. `/doodlebot:try` shows it working.
+8. `/doodlebot:qa --design <design>`: from a fresh profile, each acceptance criterion with its
+   negative control, and the QA catalogue entries the change touches.
+9. `/doodlebot:pr`: pushes `pr/<topic>` without the design commits, and writes the description
+   with the design's Overview, criteria, approval line and a link to the design at its
+   `design/<topic>` tag on your fork.
 
 ## Where the files go
 
-| Files                                                   | Folder                                                                           |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| EGM's briefs, drafts and stage reports                  | `<workspace>/harness/.artifacts/egm`                                             |
-| A finished design for a change to Vortex                | `<workspace>/harness/.artifacts/designs/<topic>.md`                              |
-| A finished design for a change to doodlebot             | `designs/<topic>.md` in the doodlebot repository, listed in `designs/SITEMAP.md` |
-| Reports from the confirmation round, and `contested.md` | `<workspace>/harness/.artifacts/designs/<topic>.reviews/`                        |
+| Files                                  | Folder                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| EGM's briefs, drafts and stage reports | `<workspace>/harness/.artifacts/egm`                                      |
+| A design for a change to Vortex        | The Vortex branch's `docs/designs/<topic>.md`, in `docs(design)` commits  |
+| A design for a change to doodlebot     | `designs/<topic>.md` in the doodlebot repository, in `designs/SITEMAP.md` |
 
-Everything under `harness/.artifacts` stays on your machine and is ignored by Git. Vortex designs
-are not added to Vortex pull requests; the pull request links the approved copy instead.
+A Vortex design travels with its branch and is pushed to your fork with the work. The pull
+request never contains it: `doodlebot pr-branch <topic>` builds `pr/<topic>` without the
+`docs(design)` commits and tags the design `design/<topic>`, and the preflight fails if a design
+file is still in the pull request's branch. See [Open a pull request](pull-requests.md).
 
-A design you commit on a Vortex branch goes in its own `docs(design): <topic>` commit under
-`docs/designs/`. `doodlebot pr-branch <topic>` then builds `pr/<topic>` without those commits
-and tags the design `design/<topic>`, so the pull request can link it on your fork. The
-preflight fails if the design file is still in the pull request's branch. See
-[Open a pull request](pull-requests.md).
+## What a design must contain
 
-## What a design contains
+Doodlebot's runtime reviewer checks the design against the plugin's change standard:
 
-A design is a Markdown file. Its header is a list of bullets under the title:
-
-```markdown
-# Show download speed in the status bar
-
-- **Author:** coding agent, for <your name>
-- **Status:** In Review
-- **Target:** vortex
-- **Date:** 2026-11-09
-```
-
-`Status` is `Draft`, `Proposed`, `In Review` or `Approved`. `Target` is `vortex` or `doodlebot`.
-
-Read these sections most closely:
-
-| Section                         | What to check                                                                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Overview, The Problem and Goals | The design solves the problem you have, and Non-Goals excludes what you do not want                                                                    |
-| Open Questions                  | Empty, or `None.` An approved design can have no open questions and no `TBD`                                                                           |
-| Acceptance Criteria             | Each bullet is `` `id`: criterion ``. Each is something a test or observation could show to be false. The final evidence must cover every one          |
-| Affected Contracts              | Which kinds of behavior can change: `runtime`, `ui`, `persistent-data`, `public-api`, `performance`, or `None`. These decide which checks are required |
-| Target Scope & File Boundary    | Every file the change may create, modify or delete, by exact path, including tests and documentation                                                   |
-| Verification Plan               | For each acceptance criterion, the command or test that proves it, on which Vortex, with which test game or collection                                 |
-
-## Read the review reports
-
-The confirmation-round reports are named `round-<n>-implementation_readiness.md` and
-`round-<n>-vortex-runtime-goldfish.md`. Each starts with lines like these:
-
-```text
-Harness: Claude Code 2.1.271
-EGM: 0.1.1
-Checkout: 3b1f… 9c0a…
-Reviewed content sha256: d48335f6…
-```
-
-`Harness` and `EGM` name the coding agent and plugin versions that ran the review. `Checkout`
-identifies the source the reviewers saw. `Reviewed content sha256` is the digest of the text
-they reviewed; it must be the digest you approve.
-
-Each finding has a severity. **Blocker** and **Major** findings must be fixed or answered;
-**Nit** findings are optional. A round is clean when no Blocker or Major finding is left
-unanswered. Otherwise the agent edits the design and runs another round. After three rounds, the
-agent stops and asks whether to approve with the remaining findings listed in `contested.md`.
-Read `contested.md` before you approve: accepting the design means accepting those reasons.
-
-## Approve the design
-
-1. Ask the agent for the design's path, its content digest and `contested.md`. The agent prints
-   the digest with `doodlebot design check <file>`, which ends with `content sha256: <digest>`.
-2. Read the design and the reports.
-3. Tell the agent you approve, or that it should change something. The agent never writes an
-   approval you have not given.
-
-When you approve, the header changes to:
-
-```markdown
-- **Status:** Approved
-- **Approved:** <person>; content <digest>; <reference>
-```
-
-- `<person>` is who approved.
-- `<digest>` is the 64-character `content sha256` you approved.
-- `<reference>` lets someone else confirm the approval: a link to a pull request review or a
-  chat message, or your words quoted with the date.
-
-The digest covers the whole file except the `Status`, `Date` and `Approved` lines. Each of those
-lines stays on a single line: if an editor wraps it, the wrapped part counts as body text. **Any
-later edit to the body voids the approval**; `design check` then reports
-`approval digest <a> does not match content <d>`. An amended design needs a new confirmation
-round and a new approval.
-
-## What happens after approval
-
-1. The agent implements the design.
-2. It runs `doodlebot design scope <file> --checkout <dir> --base <sha>`, which prints
-   `IN SCOPE` or `outside: <file>` for each changed file the design does not list. A file outside
-   the boundary is either reverted, or the design is amended and approved again.
-3. It stops its test Vortex with `doodlebot down`.
-4. A fresh session checks the change with `/doodlebot:qa`, starting from `doodlebot up --fresh`.
-   Its `vortex-driver` starts checking only once that `up` has exited and its log shows
-   `Vortex is up in`; a first start launches Vortex up to three times, so an answering Vortex
-   alone does not mean the start has finished.
-5. The agent records its evidence and runs `doodlebot readiness`; see
-   [Evidence and the QA catalogue](../concepts/evidence.md).
+- acceptance criteria, each with an id;
+- for each criterion, the doodlebot command or test that proves it, the content it needs, the
+  build it runs on, and a negative control;
+- the QA catalogue entries to add or reuse;
+- the affected contracts, and the file boundary.
 
 ## What's next
 

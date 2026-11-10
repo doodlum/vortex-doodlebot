@@ -11,6 +11,7 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `build`
 - `build-extension`
 - `call`
+- `check`
 - `clean`
 - `click`
 - `collection`

@@ -152,6 +152,23 @@ function sharedSections(file: string): { title: string; text: string }[] {
   return sections;
 }
 
+/**
+ * Local lessons whose title (case-insensitive) is also a shared `KNOWLEDGE.md` entry, as an
+ * `### ` entry name or its `<area> › <entry>` title: once the maintainer has added a lesson, the
+ * local copy is a duplicate the person may remove (design 4.10).
+ */
+export function duplicateLessons(files: { local?: string; shared?: string } = {}): Lesson[] {
+  const shared = new Set(
+    sharedSections(files.shared ?? SHARED_KNOWLEDGE_FILE).flatMap((section) => [
+      section.title.toLowerCase(),
+      (section.title.split(" › ").at(-1) ?? section.title).toLowerCase(),
+    ]),
+  );
+  return readLessons(files.local ?? KNOWLEDGE_FILE).filter((lesson) =>
+    shared.has(lesson.title.toLowerCase()),
+  );
+}
+
 /** Entries holding every word (case-insensitive), local lessons first. */
 export function searchKnowledge(
   words: string[],

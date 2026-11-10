@@ -8,9 +8,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { ConfigError } from "./errors";
-import { findGameCopy, readContent, registerGameCopy, type GameCopy } from "./content";
+import {
+  findGameCopy,
+  readContent,
+  registerGameCopy,
+  updateContent,
+  type GameCopy,
+} from "./content";
 import { KNOWN_GAMES, USER_FOLDERS, findGamePath } from "./gameSetup";
-import { CONTENT_FILE, normalizedPath } from "./paths";
+import { CONTENT_FILE, REPO_ROOT, normalizedPath } from "./paths";
+import { normalizeVersionResource } from "./releaseFetch";
 import { gameRestore, type UserFolderDeps } from "./userFolders";
 
 export interface GameCommandDeps extends UserFolderDeps {
@@ -65,7 +72,7 @@ function versionOf(
   fileVersion: GameCommandDeps["fileVersion"],
 ): string | undefined {
   try {
-    return fileVersion?.(path.join(dir, executable));
+    return normalizeVersionResource(fileVersion?.(path.join(dir, executable)));
   } catch {
     return undefined;
   }
@@ -154,7 +161,8 @@ export async function copyGame(
       (copy) =>
         copy.gameId === gameId &&
         sourceVersion !== undefined &&
-        copy.gameVersion === sourceVersion &&
+        // A copy registered before the version was normalized holds the raw resource text.
+        normalizeVersionResource(copy.gameVersion) === sourceVersion &&
         fs.existsSync(path.join(copy.path, game.executable)),
     );
     if (same !== undefined) return { copy: same, reused: true };
@@ -189,9 +197,45 @@ export async function copyGame(
   return { copy, reused: false };
 }
 
-const describeCopy = (copy: GameCopy): string =>
-  `${copy.gameId} copy at ${copy.path} (${(copy.sizeBytes / 1024 ** 3).toFixed(1)} GB` +
-  `${copy.gameVersion === undefined ? "" : `, version ${copy.gameVersion}`})`;
+const describeCopy = (copy: GameCopy): string => {
+  const version = normalizeVersionResource(copy.gameVersion);
+  return (
+    `${copy.gameId} copy at ${copy.path} (${(copy.sizeBytes / 1024 ** 3).toFixed(1)} GB` +
+    `${version === undefined ? "" : `, version ${version}`})`
+  );
+};
+
+/**
+ * `game folder [<dir>]`: the folder `game copy` puts new copies in, stored in content.json so it
+ * is asked only once. Without a folder, prints the stored one. A store library or a folder inside
+ * the workspace is refused: copies are large and belong on a drive with room for them.
+ */
+export function setCopyFolder(
+  dir: string | undefined,
+  deps: { contentFile?: string; workspace?: string } = {},
+): string {
+  const file = deps.contentFile ?? CONTENT_FILE;
+  if (dir === undefined) {
+    const stored = readContent(file).copyFolder;
+    return stored === undefined
+      ? "No copy folder is stored. Set one with `doodlebot game folder <dir>`."
+      : `Copy folder: ${stored}`;
+  }
+  const folder = path.resolve(dir);
+  if (isStorePath(folder, undefined))
+    throw new ConfigError(`${folder} is inside a store library; choose another folder.`);
+  if (inside(folder, deps.workspace ?? REPO_ROOT))
+    throw new ConfigError(
+      `${folder} is inside the doodlebot workspace; game copies are large, so choose a folder outside it.`,
+    );
+  if (fs.existsSync(folder) && !fs.statSync(folder).isDirectory())
+    throw new ConfigError(`${folder} is a file, not a folder.`);
+  fs.mkdirSync(folder, { recursive: true });
+  updateContent((content) => {
+    content.copyFolder = folder;
+  }, file);
+  return `Copy folder set to ${folder}; \`doodlebot game copy <gameId>\` now copies into it.`;
+}
 
 /** The `game` command. Returns the text to print and the exit code. */
 export async function gameCommand(
@@ -202,8 +246,9 @@ export async function gameCommand(
 ): Promise<{ text: string; code: number }> {
   const [sub, gameId, dir] = positional;
   const usage =
-    "Use game copy <gameId> [--to <folder>] [--new], game register <gameId> <dir>, or " +
-    "game restore <gameId> [--all | --keep | --file <path>...].";
+    "Use game copy <gameId> [--to <folder>] [--new], game register <gameId> <dir>, " +
+    "game restore <gameId> [--all | --keep | --file <path>...], or game folder [<dir>].";
+  if (sub === "folder") return { text: setCopyFolder(gameId, deps), code: 0 };
   if (gameId === undefined) throw new ConfigError(usage);
   switch (sub) {
     case "copy": {

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -27,54 +28,54 @@ const PLUGINS: Record<string, PluginSpec> = {
   doodlebot: {
     displayName: "Doodlebot",
     description:
-      "The agent companion for Vortex: run a test Vortex, drive it, fix and design Vortex changes, and benchmark builds.",
-    // Set up and run the test Vortex; work on Vortex; benchmark.
-    skills: [
-      "setup",
-      "login",
-      "baseline",
-      "start",
-      "stop",
-      "status",
-      "update",
-      "source",
-      "fix",
-      "drive",
-      "qa",
-      "ui-test",
-      "pr",
-      "measure",
-      "compare",
-    ],
+      "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds.",
+    // The eight commands of designs/companion-simplified.md 4.1, one per use case.
+    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr"],
     shortDescription: "The agent companion for Vortex",
     capabilities: [
-      "Run a test copy of Vortex",
-      "Drive Vortex and report",
-      "Fix and design Vortex changes",
-      "Compare Vortex versions",
+      "Try things in a test Vortex",
+      "Investigate and fix Vortex bugs",
+      "QA pull requests and releases",
+      "Measure Vortex builds",
     ],
     defaultPrompt: [
       "Set up doodlebot on this machine.",
-      "Check that installing a mod works and report.",
-      "Compare 2.8.0 with my branch.",
+      "Try installing a mod in Vortex 2.8.0 and report.",
+      "Is my branch slower than 2.8.0?",
     ],
   },
 };
 const ICON = "./assets/icon.png";
 
+/** The commands the eight replaced (design 4.1); no text may name them as commands. */
+const REMOVED_SKILLS = [
+  "login",
+  "baseline",
+  "start",
+  "stop",
+  "status",
+  "update",
+  "drive",
+  "ui-test",
+  "compare",
+  "design",
+];
+
 /** Skills that run only when the person asks (`disable-model-invocation: true`). */
-const PERSON_ONLY = new Set(["setup", "update", "stop", "baseline", "measure", "compare"]);
+const PERSON_ONLY = new Set(["setup", "measure"]);
 /** Skills that take no input, so they carry no `argument-hint`. */
-const NO_ARGUMENTS = new Set(["stop"]);
+const NO_ARGUMENTS = new Set<string>();
 
 const RUN_REPORT_SECTIONS = [
   "Outcome",
+  "Tested against",
   "Scenario and target",
   "Steps",
   "Dialogs and prompts answered",
   "Errors and warnings",
   "Evidence",
   "Not checked",
+  "Learned",
 ];
 const BENCHMARK_REPORT_SECTIONS = [
   "Question",
@@ -85,6 +86,7 @@ const BENCHMARK_REPORT_SECTIONS = [
   "Verdict",
   "Evidence",
   "Caveats",
+  "Learned",
 ];
 const RUN_SEQUENCE = [
   "doodlebot up",
@@ -340,9 +342,36 @@ describe("skills", () => {
         expect(commandUses(text)[0]?.text).toBe("doodlebot version --json");
         expect(text).toContain("/doodlebot:setup");
         expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json");
-        if (skill !== "update") expect(text).toContain("/doodlebot:update");
+        expect(text).toContain("/doodlebot:setup --update");
+      });
+
+    // learned-section (4.9): every command's report ends with what it learned, and no command
+    // patches the kit mid-task.
+    if (skill !== "setup")
+      it(`${plugin}:${skill} ends its report with a Learned section and never patches the kit`, () => {
+        const text = body(read(file));
+        expect(text).toMatch(/\bLearned\b/);
+        expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md");
+        expect(text).toContain("doodlebot gap add");
+        expect(text.replace(/\s+/g, " ")).toMatch(/[Nn]ever patch the doodlebot workspace/);
       });
   }
+
+  it("gives setup its four modes, and --check runs the read-only status table", () => {
+    const setup = read(skillFile("doodlebot", "setup"));
+    for (const mode of [
+      "## Mode `setup`",
+      "## Mode `--check`",
+      "## Mode `--login`",
+      "## Mode `--update [<ref>]`",
+    ])
+      expect(setup).toContain(mode);
+    const uses = commandUses(setup).map((use) => use.text);
+    expect(uses).toContain("doodlebot check");
+    expect(uses).toContain("doodlebot game folder <dir>");
+    expect(uses).toContain("doodlebot setup --oauth <target> --no-wait");
+    expect(uses).toContain("doodlebot update --ref <ref>");
+  });
 
   it("names the legacy lease store in the setup skill", () => {
     const setup = read(skillFile("doodlebot", "setup"));
@@ -350,36 +379,114 @@ describe("skills", () => {
     expect(setup).toContain("~/.vortex-ai/leases");
   });
 
-  it("defines the run report in the drive skill", () => {
-    const drive = read(skillFile("doodlebot", "drive"));
-    for (const section of RUN_REPORT_SECTIONS) expect(drive).toContain(`\n## ${section}\n`);
-    expect(drive).toContain("doodlebot:vortex-driver");
+  it("defines the run report in the try skill, with Tested against and Learned", () => {
+    const tryText = read(skillFile("doodlebot", "try"));
+    for (const section of RUN_REPORT_SECTIONS) expect(tryText).toContain(`\n## ${section}\n`);
+    expect(tryText).toContain("doodlebot:vortex-driver");
+    expect(tryText).toContain("doodlebot inventory --json");
     expect(read(skillFile("doodlebot", "qa"))).toContain("doodlebot:vortex-driver");
+    expect(read("plugins/doodlebot/agents/vortex-driver.md")).toContain(
+      "${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md",
+    );
   });
 
-  it("defines the benchmark report in measure (no verdict) and compare", () => {
-    const compare = read(skillFile("doodlebot", "compare"));
-    for (const section of BENCHMARK_REPORT_SECTIONS) expect(compare).toContain(`\n## ${section}\n`);
+  it("logout-needs-go-ahead: try and qa run a logout only with the person's go-ahead", () => {
+    const tryText = read(skillFile("doodlebot", "try")).replace(/\s+/g, " ");
+    expect(tryText).toContain('"ends the login"');
+    expect(tryText).toContain("person's go-ahead");
+    expect(tryText).toContain("/doodlebot:setup --login");
+    const qa = read(skillFile("doodlebot", "qa")).replace(/\s+/g, " ");
+    expect(qa).toContain('`account: "logout"`');
+    expect(qa).toContain("skipped unless the person named it and gave their go-ahead");
+  });
+
+  it("investigate changes no code and never calls a different version not reproduced", () => {
+    const text = read(skillFile("doodlebot", "investigate")).replace(/\s+/g, " ");
+    expect(text).toContain("You change no code");
+    expect(text).toContain("doodlebot release get <version>");
+    expect(text).toContain("not reproduced on the user's version");
+    expect(text).toContain("blocked: the release publishes no digest");
+  });
+
+  it("fix puts the regression test in the Vortex branch and uses the testing procedure", () => {
+    const text = read(skillFile("doodlebot", "fix")).replace(/\s+/g, " ");
+    expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/resources/testing.md");
+    expect(text).toContain("regression test **in the Vortex branch**");
+    expect(text).toContain("Revert control");
+    expect(text).toContain("/doodlebot:pr");
+  });
+
+  it("qa compares base and PR builds, checks designs and releases, and posts only when told", () => {
+    const text = read(skillFile("doodlebot", "qa")).replace(/\s+/g, " ");
+    for (const phrase of [
+      "--design <file>",
+      "--release <version>",
+      "not proved by this PR",
+      "**regression**",
+      "**fixed**",
+      "**failing on both**",
+      "no previous result",
+      "Files no entry guards",
+      "only when the person says so",
+      "Go ahead?",
+      "must be clean",
+    ])
+      expect(text).toContain(phrase);
+  });
+
+  it("pr pushes only through pr-branch's fork check and keeps the design out", () => {
+    const uses = commandUses(read(skillFile("doodlebot", "pr"))).map((use) => use.text);
+    expect(uses).toContain("doodlebot pr-branch <topic> --checkout <checkout> --push");
+    expect(uses).toContain("doodlebot pr-checks <number>");
+    expect(read(skillFile("doodlebot", "pr"))).toContain("Design approved by <owner> on <date>");
+  });
+
+  it("defines the benchmark report in measure, with a Verdict only for two builds", () => {
     const measure = read(skillFile("doodlebot", "measure"));
-    for (const section of BENCHMARK_REPORT_SECTIONS.filter((s) => s !== "Verdict"))
-      expect(measure).toContain(`\n## ${section}\n`);
-    expect(measure).not.toContain("\n## Verdict\n");
+    for (const section of BENCHMARK_REPORT_SECTIONS) expect(measure).toContain(`\n## ${section}\n`);
+    expect(measure).toContain("--a <build> [--b <build>] --check <check>");
+    expect(measure.replace(/\s+/g, " ")).toContain("With one build there is no Verdict section");
   });
 
-  for (const skill of ["measure", "compare"])
-    it(`${skill} holds the per-run sequence and the run-outcome rules`, () => {
-      const text = read(skillFile("doodlebot", skill));
-      const run = text.slice(text.indexOf("Each run is"));
-      const uses = commandUses(run).map((use) => use.text);
-      let from = 0;
-      for (const prefix of RUN_SEQUENCE) {
-        const at = uses.findIndex((use, i) => i >= from && use.startsWith(prefix));
-        expect(at, `${prefix} after step ${String(from)}`).toBeGreaterThanOrEqual(0);
-        from = at + 1;
-      }
-      const flat = text.replace(/\s+/g, " ");
-      for (const sentence of RUN_OUTCOMES) expect(flat).toContain(sentence);
-    });
+  it("measure holds the per-run sequence and the run-outcome rules", () => {
+    const text = read(skillFile("doodlebot", "measure"));
+    const run = text.slice(text.indexOf("Each run is"));
+    const uses = commandUses(run).map((use) => use.text);
+    let from = 0;
+    for (const prefix of RUN_SEQUENCE) {
+      const at = uses.findIndex((use, i) => i >= from && use.startsWith(prefix));
+      expect(at, `${prefix} after step ${String(from)}`).toBeGreaterThanOrEqual(0);
+      from = at + 1;
+    }
+    const flat = text.replace(/\s+/g, " ");
+    for (const sentence of RUN_OUTCOMES) expect(flat).toContain(sentence);
+  });
+});
+
+describe("eight-commands: no text names a removed command", () => {
+  // Historic designs record what was removed; this test names them itself.
+  const exempt = (file: string): boolean =>
+    file.startsWith("designs/") || file === "harness/src/plugins.test.ts";
+
+  it("finds /doodlebot:<removed> nowhere in the repository", () => {
+    const files = execFileSync(
+      "git",
+      ["-C", REPO_ROOT, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      { encoding: "utf8", windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+    )
+      .split("\0")
+      .filter((file) => /\.(?:md|ts|cjs|js|json|yml|yaml)$/.test(file) && !exempt(file))
+      .filter((file) => fs.existsSync(path.join(REPO_ROOT, file)));
+    const pattern = new RegExp(`/doodlebot:(?:${REMOVED_SKILLS.join("|")})(?![\\w-])`);
+    const hits = files.flatMap((file) =>
+      read(file)
+        .split("\n")
+        .flatMap((line, i) =>
+          pattern.test(line) ? [`${file}:${String(i + 1)}: ${line.trim()}`] : [],
+        ),
+    );
+    expect(hits).toEqual([]);
+  });
 });
 
 describe("agents", () => {

@@ -1,158 +1,181 @@
 ---
 name: setup
-description: "Doodlebot: Install or repair the doodlebot workspace, its doodlebot command and a sandbox baseline on this machine; use once per machine, or when another command says doodlebot is not set up."
-argument-hint: "[folder] [--ref <tag or branch>] [--bin-dir <folder>]"
+description: "Doodlebot: Install, repair, check, sign in or update doodlebot on this machine (modes: setup, --check, --login, --update [<ref>]); use once per machine, to see what this machine can test, or when another command says doodlebot is not set up."
+argument-hint: "[--check | --login [--dev-dir <checkout>] | --update [<ref>]] [folder] [--ref <tag or branch>] [--bin-dir <folder>]"
 disable-model-invocation: true
 ---
 
 # Set up doodlebot
 
-This command takes a machine with Git, Node, pnpm and a released Vortex to a working
-companion. It clones doodlebot into a **workspace** folder, installs it, builds the Vortex
-extension, puts a `doodlebot` command on the PATH and prepares a sandbox baseline. The
-person never types a terminal command; you run everything and tell them what happened.
+One command with four modes. Each ends with the status table from `--check`, and nothing
+launches Vortex or signs in unless that mode says so.
+
+| Mode                     | Does                                                                |
+| ------------------------ | ------------------------------------------------------------------- |
+| `setup`                  | Clone the workspace, install, build, `link`, then `--check`         |
+| `setup --check`          | Read only: one status table, each gap with its exact next step      |
+| `setup --login`          | Sign the test Vortex in to Nexus Mods once; the person logs in      |
+| `setup --update [<ref>]` | Move the workspace to the plugin's version (or `<ref>`) and rebuild |
 
 Rules:
 
 - Never install Node, Git or Vortex, and never run a Vortex installer. Ask before enabling
   pnpm through corepack.
-- Never ask for a password, API key or token. Signing in to Nexus Mods is `/doodlebot:login`.
+- Never ask for a password, API key or token, and never put one in chat or a file. The person
+  signs in themselves, in their browser (`--login`).
 - Repair only what is missing. A second run on a set-up machine changes nothing.
 - Leave no Vortex running when you finish.
 
-## Inputs
+## The plugin version and the shim
 
-- **Folder** `<workspace>`: the first argument (the workspace folder). Without one, use the `workspace` that
-  `doodlebot version --json` reports if that command already works (confirm it with the
-  person); otherwise ask, offering `%USERPROFILE%\doodlebot` on Windows (`~/doodlebot`
-  elsewhere) or an existing doodlebot checkout.
-- **`--ref <tag or branch>`**: what to check out in a new clone. The default is
-  `v<plugin version>`, where the plugin version is `version` in
-  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or
-  `<plugin root>/.codex-plugin/plugin.json` (Codex; the plugin root is three folders above
-  this `SKILL.md`). If that tag does not exist, fall back to `main`.
-- **`--bin-dir <folder>`**: where `link` writes the shim. Without it, `link` picks a folder
-  on the PATH.
-- The cache is whatever `VORTEX_AI_CACHE_DIR` selects (by default `<workspace>/harness/.cache`).
-  Do not set it yourself.
+- The **plugin version** is `version` in `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`
+  (Claude Code) or `<plugin root>/.codex-plugin/plugin.json` (Codex; the plugin root is three
+  folders above this `SKILL.md`).
+- `<shim>` is the absolute path of the `doodlebot` command: with `--bin-dir`,
+  `<bin-dir>/doodlebot.cmd` on Windows (`<bin-dir>/doodlebot` elsewhere); otherwise on Windows
+  the first line ending in `.cmd` that `where.exe doodlebot` prints (never PowerShell's
+  `where`, which is `Where-Object`), elsewhere `command -v doodlebot`; once `link` has run, the
+  path on its `shim: <path>` line. Call doodlebot only through `<shim>` from then on.
+- `<workspace>` is the `workspace` that `<shim> version --json` reports.
 
-## The shim path `<shim>`
+## Mode `setup`: install or repair
 
-`<shim>` is the absolute path of the `doodlebot` command you run:
-
-- with `--bin-dir`: `<bin-dir>/doodlebot.cmd` on Windows, `<bin-dir>/doodlebot` elsewhere;
-- otherwise, on Windows, the first line ending in `.cmd` that `where.exe doodlebot` prints
-  (never PowerShell's `where`, which is `Where-Object`); elsewhere `command -v doodlebot`;
-- once `link` has run, the path it printed on its `shim: <path>` line. From then on, call
-  doodlebot only through that absolute path, so nothing depends on the shell's PATH.
-
-## 1. Check whether it is already set up
-
-It is already set up when **all** of these hold:
-
-1. `<workspace>/node_modules/.modules.yaml` exists;
-2. `<workspace>/dist/index.js` exists;
-3. `<shim> version --json` reports `workspace` equal to `<workspace>` (compare real paths,
-   case-insensitively on Windows, without a trailing separator);
-4. `<shim> doctor --installed --sandbox` (that is, `doodlebot doctor --installed --sandbox`)
-   lists the advisory check `Sandbox baseline` with a detail line that starts with `present`.
-
-When all hold, run nothing else except the lease-store offer in step 8 if doctor lists
-`Legacy lease store`. Tell the person "doodlebot is already set up", summarize the doctor
-report in plain words, and finish with the report in "Finish".
-
-## 2. Set up or repair, in this order
+**Folder.** The first argument; without one, the `workspace` of a working
+`doodlebot version --json` (confirm it with the person); otherwise ask, offering
+`%USERPROFILE%\doodlebot` on Windows (`~/doodlebot` elsewhere) or an existing doodlebot checkout.
+**Ref:** `--ref`, default `v<plugin version>`, falling back to `main` when that tag is absent.
 
 Skip each step whose result already exists, and say which you skipped.
 
-1. **Prerequisites.** Run `git --version`, `node --version` and `pnpm --version`.
-   - Git missing: tell the person to install Git for Windows (or their system's Git) and stop.
+1. **Prerequisites.** `git --version`, `node --version`, `pnpm --version`.
+   - Git missing: tell the person to install Git and stop.
    - Node missing or older than 20.19: tell them to install Node 20.19 or later and stop.
-   - pnpm missing or not 9.15.0: ask "May I enable pnpm 9.15.0 with corepack?" On yes, run
-     `corepack enable`, then `corepack prepare pnpm@9.15.0 --activate`, and check
-     `pnpm --version` again. On no, stop and say pnpm 9.15.0 is required.
-2. **Folder.** Settle `<workspace>` (see Inputs). If it exists, is not empty and has no `.git`,
-   ask for another folder.
+   - pnpm missing or not 9.15.0: ask "May I enable pnpm 9.15.0 with corepack?" On yes,
+     `corepack enable`, then `corepack prepare pnpm@9.15.0 --activate`; on no, stop.
+2. **Folder.** If it exists, is not empty and has no `.git`, ask for another.
 3. **Clone** (skip when `<workspace>/.git` exists; never change the ref of an existing checkout):
-   1. `git clone https://github.com/doodlum/vortex-doodlebot.git <workspace>`
-   2. Check out the ref:
-      - a tag: `git -C <workspace> rev-parse --verify --quiet refs/tags/<ref>` succeeds, then
-        `git -C <workspace> checkout --detach <ref>`;
-      - otherwise a branch: `git -C <workspace> rev-parse --verify --quiet refs/remotes/origin/<ref>`
-        succeeds, then `git -C <workspace> checkout --detach origin/<ref>`;
-      - otherwise, when the ref was the default `v<plugin version>`, use the branch `main`;
-        when the person named it, stop with "No tag or branch <ref> on origin."
+   `git clone https://github.com/doodlum/vortex-doodlebot.git <workspace>`, then
+   - a tag: `git -C <workspace> rev-parse --verify --quiet refs/tags/<ref>` succeeds, then
+     `git -C <workspace> checkout --detach <ref>`;
+   - a branch: `git -C <workspace> rev-parse --verify --quiet refs/remotes/origin/<ref>`
+     succeeds, then `git -C <workspace> checkout --detach origin/<ref>`;
+   - neither: use `main` for the default ref; for a ref the person named, stop with
+     "No tag or branch <ref> on origin."
 4. **Dependencies** (skip when `<workspace>/node_modules/.modules.yaml` exists):
    `pnpm -C <workspace> install --frozen-lockfile`. Allow up to 10 minutes.
 5. **Build** (skip when `<workspace>/dist/index.js` exists): `pnpm -C <workspace> run build`.
 6. **Shim** (skip when `<shim> version --json` already reports `<workspace>`):
-   `node <workspace>/bin/doodlebot.cjs link`, adding `--bin-dir <bin-dir>` when given. Read its
-   `shim: <path>` line (that is now `<shim>`) and its `on PATH: yes|no` line. When it says
-   `on PATH: no`, tell the person: "Add `<folder of the shim>` to your PATH, then open a new
-   terminal or restart your agent, so later commands find `doodlebot`." Keep going with
-   `<shim>` meanwhile.
-7. **Version.** `<shim> version` (`doodlebot version`) must print `at <workspace>`.
-8. **Doctor.** `<shim> doctor --installed --sandbox`.
-   - If the `Vortex` check fails because no Vortex is installed, tell the person to install
-     the released Vortex from Nexus Mods (https://www.nexusmods.com/site/mods/1) or its
-     GitHub releases, or to set `VORTEX_AI_EXE` to an extracted `Vortex.exe`, then run
-     `/doodlebot:setup` again. Stop.
-   - If doctor lists `Legacy lease store` with a path (an older doodlebot's
-     `~/.vortex-ai/leases`, which nothing reads any more), ask: "An old doodlebot left a
-     lease folder at `<path>`. Nothing uses it. Delete it?" Delete it only on a yes
-     (`Remove-Item -Recurse -Force <path>` or `rm -rf <path>`); otherwise leave it and
-     mention it in the report.
-9. **Baseline** (skip when doctor's `Sandbox baseline` detail starts with `present`): run
-   `<shim> setup --installed --sandbox` (`doodlebot setup --installed --sandbox`) **in the
-   background** with a log, as in "Commands that launch Vortex" below. Wait until the
-   process exits, then read the log. It must have the line `Ready:`. If it refused because
-   "A harness Vortex is running", tell the person a test Vortex is already running and ask
-   whether to stop it with `/doodlebot:stop`.
-10. **Stop.** `<shim> down` (`doodlebot down`). It must print `Vortex exited cleanly.` or
-    `Nothing is running.`.
+   `node <workspace>/bin/doodlebot.cjs link` (with `--bin-dir <bin-dir>` when given). Read its
+   `shim:` and `on PATH: yes|no` lines. On `no`, tell the person to add the shim's folder to
+   their PATH and restart their agent; keep going with `<shim>`.
+7. **Version.** `doodlebot version` must print `at <workspace>`.
+8. Run the `--check` mode below.
 
-Then run `<shim> doctor --installed --sandbox` once more: `Sandbox baseline` must now be
-`present`.
+## Mode `--check`: what this machine can test
+
+Read only. Run `doodlebot check` (add `--json` when you need to parse it). It prints one row per
+item, each `ready`, `MISSING` or `BLOCKED` with its `next:` step, or `advisory`/`info`:
+
+- the workspace: version, commit, local changes;
+- `doctor` for the installed Vortex and the sandbox: Vortex, the extension, the sandbox
+  baseline, 7-Zip (for `doodlebot release get`), the login folder's privacy, a running test
+  Vortex, an old `Legacy lease store`;
+- EGM, from the Claude Code settings and installed-plugins list;
+- `<workspace>/.vortex-src`: remotes (a fork as `origin`, Nexus-Mods/Vortex as `upstream`),
+  branch, and whether it is built;
+- `doodlebot inventory`: builds, games (a Steam install is never usable; a registered copy
+  is), snapshots, sandboxes, collections;
+- the Nexus login;
+- the game-copy folder, and pending user-folder restores with `doodlebot game restore <gameId>`;
+- the open kit gaps (`doodlebot gap list`) and local lessons that `KNOWLEDGE.md` now holds;
+- disk use: `<workspace>/harness/.artifacts`, `<workspace>/harness/.cache`,
+  `~/.doodlebot/releases`, each registered
+  game copy, and free space, with a warning below 10 GB that names `doodlebot clean`.
+
+Show the table to the person grouped as printed, then act only on these, each with their yes:
+
+1. **Copy folder** (asked once). When the `copy folder` row is MISSING, ask: "Where should
+   doodlebot put game copies? A folder on a drive with room, outside the workspace." Run
+   `doodlebot game folder <dir>` with their answer. If they decline, leave it; `game copy`
+   then needs `--to`.
+2. **Pending restore.** Explain that every launch refuses until it is settled. Run
+   `doodlebot game restore <gameId>`: it lists the changed files; the person chooses
+   `--all`, `--keep` or `--file <path>`.
+3. **Local lesson in `KNOWLEDGE.md`.** Offer `doodlebot knowledge remove <id>`; run it only on a yes.
+4. **Low disk.** Run `doodlebot clean --dry-run` and show what it would delete; run
+   `doodlebot clean --yes` only after the person agrees.
+5. **Legacy lease store** (`~/.vortex-ai/leases`, from an older doodlebot; nothing reads it):
+   offer to delete it, and do so only on a yes.
+6. **A running test Vortex** that another session started from another checkout: never stop it.
+
+Everything else MISSING is reported with its next step, not done: `doodlebot source` is
+`/doodlebot:source`, the login is `--login`, a game copy is `doodlebot game copy <gameId>`
+(it copies gigabytes; ask first). A sandbox baseline is built by the first `/doodlebot:try`.
+
+## Mode `--login`: sign in to Nexus Mods
+
+Collections and Nexus checks need a login; local checks, builds and benchmarks do not. The
+login is one file, `~/.doodlebot/login/oauth-<target>.json`, outside the workspace, used
+directly by the default cache and never copied. `<target>` is `--installed` unless the person
+names a source build (`--dev-dir <checkout>`); use it on every command below.
+
+1. `doodlebot status <target>`. If MCP is `answering`, ask whether to stop that test Vortex;
+   run `doodlebot down` on a yes, otherwise stop here.
+2. Run `doodlebot setup --oauth <target> --no-wait` **in the background** with a log (see
+   "Commands that launch Vortex"). Wait for the process to exit, then read the log:
+   - `Existing OAuth login cached and present after a fresh restore. Setup complete.`:
+     already signed in; go to step 5.
+   - `Initial setup: click Log in in the isolated Vortex and complete the browser flow.`:
+     go on.
+   - Neither: show the log's last lines and its `.err` file, and stop.
+3. Tell the person: "A test Vortex window is open. Click **Log in** in it and finish signing in
+   to Nexus Mods in your browser. Tell me when you are done."
+4. Then `doodlebot auth-status <target>` (booleans only). When it shows OAuth credentials, run
+   `doodlebot save-login <target>`; otherwise ask them to finish and check again.
+5. `doodlebot status <target>`; if MCP still answers, `doodlebot down`.
+
+There is no backup of the login: a lost, revoked or expired one means `--login` again. Never
+click Log out in a test Vortex of the default cache unless the person asked; it signs them out
+everywhere.
+
+## Mode `--update [<ref>]`: match the plugin
+
+1. `doodlebot version --json`. When `version` equals the plugin version and no ref was named,
+   say it is up to date and stop. When `dirty` is true, the update refuses: ask the person to
+   commit or remove the local changes, and stop.
+2. `doodlebot status`. If MCP is `answering`, ask whether to stop the test Vortex; run
+   `doodlebot down` on a yes, otherwise stop.
+3. `doodlebot update --ref <ref>` (default `v<plugin version>`), in the background with a log
+   if your tool times out sooner than 10 minutes. It fetches, checks out detached, installs and
+   builds. Read the result:
+   - `No tag or branch v<plugin version> on origin.` with the default ref: retry with
+     `doodlebot update --ref main`.
+   - `A harness Vortex is running; run doodlebot down before updating.`: back to step 2.
+   - `The workspace has local changes; commit or remove them before updating.`: step 1.
+4. `doodlebot version --json` again; report the old and new version and commit. If they still
+   differ from the plugin's, the plugin itself may need `/plugin marketplace update doodlebot`.
+5. Run the `--check` mode: an update brings new `KNOWLEDGE.md` entries and catalogue entries.
 
 ## Commands that launch Vortex
 
-`setup` starts Vortex. On Windows a Vortex launched from a command whose output is captured
-can keep that capture open, so the command never returns. Run it in the background with its
-output in a log under `<workspace>/harness/.artifacts/runs/` (create that folder first):
-
-PowerShell:
+On Windows a Vortex launched from a command whose output is captured can keep that capture
+open, so the command never returns. Run it in the background with a log under
+`<workspace>/harness/.artifacts/runs/` (create the folder first):
 
 ```powershell
-New-Item -ItemType Directory -Force <workspace>/harness/.artifacts/runs | Out-Null
-$log = "<workspace>/harness/.artifacts/runs/<UTC time>-setup.log"
-$p = Start-Process -FilePath <shim> -ArgumentList 'setup','--installed','--sandbox' -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+$log = "<workspace>/harness/.artifacts/runs/<UTC time>-login.log"
+$p = Start-Process -FilePath <shim> -ArgumentList 'setup','--oauth','--installed','--no-wait' -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
 $p.Id
 ```
 
-Bash:
-
-```bash
-mkdir -p <workspace>/harness/.artifacts/runs
-nohup <shim> setup --installed --sandbox > <workspace>/harness/.artifacts/runs/<UTC time>-setup.log 2>&1 & echo $!
-```
-
-Check every 15 seconds whether that pid still runs (`Get-Process -Id <pid>`, or
-`kill -0 <pid>`; the shell does not keep `$p` between calls), reading the log as you go.
-The setup is done when the process has exited and its log has the line `Ready:`. A first
-setup can take several minutes and launches Vortex up to three times on the same port, so
-`doodlebot status` answering is only a liveness hint, not completion. If it exits without
-that line, show the person the last lines of the log and its `.err` file, and stop.
+In Bash: `nohup <shim> <args> > <log> 2>&1 & echo $!`. Check every 10 seconds whether the pid
+still runs (`Get-Process -Id <pid>`, `kill -0 <pid>`). It is done when the process has exited
+and the log has its success line. A cold start launches Vortex up to three times on the same
+port, so `doodlebot status` answering is only a liveness hint.
 
 ## Finish
 
-Tell the person, in a few lines:
-
-- the workspace folder and the doodlebot version (from `<shim> version`);
-- where the `doodlebot` command is and whether it is on the PATH (and what to add if not);
-- which Vortex was found, from doctor's `Vortex` check;
-- that the sandbox baseline is ready and no test Vortex is running;
-- anything you skipped, left alone (such as the legacy lease store) or could not do.
-
-Then suggest what to try next: `/doodlebot:drive` to drive the test Vortex and get a report,
-and `/doodlebot:login` only if they will work with Nexus collections (local checks need no
-account).
+Tell the person, in a few lines: the mode run, the workspace and version, the status table's
+MISSING and BLOCKED rows with their next steps, and what you did with their yes. Suggest what
+to try next: `/doodlebot:try` to see Vortex do something, `/doodlebot:source` before working on
+Vortex's code, `--login` only for Nexus collections.

@@ -13,8 +13,9 @@ companion, without you typing a terminal command.
 
 Setup installs the doodlebot runtime into a **workspace**: a clone of the doodlebot repository,
 with its dependencies installed and its Vortex extension built. The default folder is
-`%USERPROFILE%\doodlebot`. Test profiles, saved logins, reports and the Vortex source clone live
-inside the workspace, so they survive plugin updates.
+`%USERPROFILE%\doodlebot`. Test profiles, reports and the Vortex source clone live inside the
+workspace. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
+`%USERPROFILE%\.doodlebot`, so they survive updates and a new workspace.
 
 Setup also writes a small launcher, the **shim**, so that the `doodlebot` command works from any
 folder. The agent uses that command for everything else.
@@ -62,22 +63,39 @@ folder. The agent uses that command for everything else.
    - If doctor lists `Legacy lease store`, a folder left by an older doodlebot
      (`~/.vortex-ai/leases`), the agent offers to delete it. It deletes it only if you say yes.
 
-5. The agent runs `doodlebot setup --installed --sandbox` in the background. This starts the
-   test Vortex once with the sandbox game and saves a clean **baseline** profile. A Vortex window
-   opens and closes again during this step.
-
-6. The agent runs `doodlebot down`, so no test Vortex is left running.
+5. The agent runs `doodlebot check`, the read-only status table of `/doodlebot:setup --check`
+   (below). Setup does not start Vortex: the first `/doodlebot:try` builds the sandbox
+   **baseline** profile.
 
 ## Expected result
 
 The agent reports what is ready: the workspace folder, the shim and whether it is on your PATH,
-the Vortex it found, and the sandbox baseline. It suggests `/doodlebot:login` and
-`/doodlebot:drive` as next steps.
+and the status table. It suggests `/doodlebot:try` as the next step, and
+`/doodlebot:setup --login` only if you will use Nexus collections.
 
-If you run `/doodlebot:setup` again on a set-up machine, the agent finds the dependencies, the
-built extension, a shim that reports the workspace, and the baseline (doctor shows
-`Sandbox baseline` with detail `present`). It then only runs `doctor` and reports that
-doodlebot is already set up. It changes nothing.
+If you run `/doodlebot:setup` again on a set-up machine, it finds the dependencies, the built
+extension and a shim that reports the workspace, and only prints the status table. It changes
+nothing.
+
+## Check what this machine can test
+
+Run `/doodlebot:setup --check` at any time. It is read only and prints one row per item, each
+ready, missing with the exact next step, or blocked with the reason:
+
+- the workspace and its version, and `doodlebot doctor` for the installed Vortex and the sandbox
+  (Vortex, the extension, the sandbox baseline, 7-Zip, the login folder's privacy, a running
+  test Vortex);
+- whether the EGM plugin is installed, and the Vortex source clone's remotes, branch and build;
+- `doodlebot inventory`: releases, game copies, snapshots, sandboxes and collections;
+- the Nexus login;
+- the folder game copies go in, and any pending restore of a game's user folders, with
+  `doodlebot game restore <gameId>`;
+- open kit gaps, and lessons on your machine that `KNOWLEDGE.md` now holds;
+- disk use, with a warning below 10 GB free that names `doodlebot clean`.
+
+The first time it finds no folder for game copies, the agent asks you for one and stores it
+(`doodlebot game folder <dir>`), so it never asks again. The agent acts on a row only with your
+yes: it deletes nothing on its own.
 
 If setup stops with an error, see [Troubleshooting](../troubleshooting.md).
 
@@ -92,7 +110,7 @@ The plugin and the workspace update separately.
 2. Update the workspace to match. Run:
 
    ```text
-   /doodlebot:update
+   /doodlebot:setup --update
    ```
 
    The agent stops any test Vortex (it asks first) and moves the workspace to the release that
@@ -100,13 +118,13 @@ The plugin and the workspace update separately.
    workspace has local changes, such as a regression test you added; commit or remove them
    first.
 
-The expected result: `/doodlebot:status` reports the same doodlebot version as your plugin.
+The expected result: `/doodlebot:setup --check` reports the same doodlebot version as your plugin.
 Lessons doodlebot has learned on your machine are kept outside the workspace, so an update
 keeps them ([What doodlebot learns](../concepts/knowledge.md)).
 
 ## Remove doodlebot
 
-1. Run `/doodlebot:stop`, so no test Vortex is left running.
+1. Make sure no test Vortex is left running (the agent can run `doodlebot down`).
 2. Uninstall the plugin. In Claude Code:
 
    ```text
@@ -131,5 +149,5 @@ Your own Vortex and its profile are not touched by any of these steps.
 ## What's next
 
 - Run [your first session](first-session.md).
-- To check a set-up machine later, run `/doodlebot:status`.
-- To use Nexus collections, [sign in to Nexus Mods](../guides/sign-in.md).
+- To check a set-up machine later, run `/doodlebot:setup --check`.
+- To use Nexus collections, [sign in to Nexus Mods](../guides/sign-in.md) with `/doodlebot:setup --login`.

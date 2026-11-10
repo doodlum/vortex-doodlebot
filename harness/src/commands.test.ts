@@ -61,10 +61,10 @@ describe("the command list", () => {
     ]);
     expect(findCommand("gap")?.subcommands).toEqual(["add", "list", "close", "share"]);
     expect(findCommand("pr-branch")?.subcommands).toBeUndefined();
-    expect(findCommand("game")?.subcommands).toEqual(["copy", "register", "restore"]);
+    expect(findCommand("game")?.subcommands).toEqual(["copy", "register", "restore", "folder"]);
     expect(findCommand("release")?.subcommands).toEqual(["get", "list"]);
     expect(findCommand("qa")?.subcommands).toEqual(["list", "check"]);
-    for (const name of ["inventory", "clean"])
+    for (const name of ["inventory", "clean", "check"])
       expect(findCommand(name)?.subcommands, name).toBeUndefined();
     expect(commands.filter((command) => command.subcommands !== undefined)).toHaveLength(7);
     expect(findCommand("help")).toBeUndefined();

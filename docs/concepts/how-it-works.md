@@ -48,21 +48,21 @@ The extension works with a stock, released Vortex. Nothing in doodlebot needs a 
 
 The plugins and the workspace each have a version. Every command except `/doodlebot:setup` first
 runs `doodlebot version --json`, which reports the workspace's version, commit and folder. If
-the plugin's version differs, the agent suggests `/doodlebot:update`.
+the plugin's version differs, the agent suggests `/doodlebot:setup --update`.
 
-`/doodlebot:update` runs `doodlebot update --ref v<plugin version>`, falling back to `main` when
+`/doodlebot:setup --update` runs `doodlebot update --ref v<plugin version>`, falling back to `main` when
 that tag does not exist. The update checks out the ref and runs `pnpm install --frozen-lockfile`
 and `pnpm run build`. It refuses while a test Vortex runs, and when the workspace has local
 changes.
 
 ## Where work happens
 
-| Kind            | Command                                    | Agent during the run   | Result            |
-| --------------- | ------------------------------------------ | ---------------------- | ----------------- |
-| Regression test | `/doodlebot:ui-test`                       | None                   | Playwright report |
-| Driven run      | `/doodlebot:drive`, `/doodlebot:qa`        | `vortex-driver`        | Run report        |
-| Benchmark       | `/doodlebot:measure`, `/doodlebot:compare` | Orchestrates only      | Benchmark report  |
-| Design review   | `/doodlebot:design`                        | EGM and the Goldfishes | Approved design   |
+| Kind            | Command                                                     | Agent during the run   | Result             |
+| --------------- | ----------------------------------------------------------- | ---------------------- | ------------------ |
+| Regression test | `/doodlebot:fix`, in the Vortex PR                          | None                   | Vortex test report |
+| Driven run      | `/doodlebot:try`, `/doodlebot:investigate`, `/doodlebot:qa` | `vortex-driver`        | Run report         |
+| Benchmark       | `/doodlebot:measure`                                        | Orchestrates only      | Benchmark report   |
+| Design review   | `/egm:egm-review-loop`                                      | EGM and the Goldfishes | Approved design    |
 
 In Claude Code, `vortex-driver` and every design reviewer run on Sonnet, a lower-cost model, and
 the reviewers run as read-only agents. In Codex, the plugin ships no agents: the driver's

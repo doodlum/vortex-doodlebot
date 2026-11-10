@@ -35,8 +35,8 @@ criteria. Do not silently replace a supplied design with a generic layout.
 
 Features and refactors, for Vortex or for this kit, start with a design written and reviewed
 with Google's Elephant-Goldfish Model (EGM) plugin. Follow the `design` skill of the `vortex`
-plugin (`/doodlebot:design`, `plugins/doodlebot/skills/design/SKILL.md`; Codex agents read it at that
-path). The approved design `designs/egm-workflow.md` defines the procedure;
+plugin (EGM's `/egm:egm-brainstorm` to `/egm:egm-resolve`, with doodlebot's runtime reviewer as
+`AGENTS.md` describes). The approved design `designs/egm-workflow.md` defines the procedure;
 `plugins/doodlebot/resources/vortex-change-standard.md` defines what a design must contain.
 
 When a design is required:
@@ -79,7 +79,7 @@ visual design is an input to the EGM design, not a replacement for it; see
 
 ## Reproduce, change, verify
 
-`/doodlebot:fix` follows this procedure for a bug report and `/doodlebot:drive` for a scenario; the
+`/doodlebot:fix` follows this procedure for a bug report and `/doodlebot:try` for a scenario; the
 steps below are what they do.
 
 1. Identify the target: stock Vortex for an automation-tool issue; the source
@@ -117,7 +117,7 @@ harness renderer (see "Scratch scripts and renderer diagnostics" in AGENTS.md). 
 are leads; the check that settles a question is the one added to the kit.
 
 For an authorized A/B, use the same fixture and comparable build settings at base and head.
-For timings, `/doodlebot:compare` runs a performance check alternately on both builds and
+For timings, `/doodlebot:measure --a <base> --b <head>` runs a performance check alternately on both builds and
 summarizes the evidence with `doodlebot perf-summary`. Run `doodlebot down` before switching the checkout or changing its build output, then
 build and `up` again; `build` refuses while a Vortex runs from that checkout. Do not switch a
 checkout the user is trying out; agree with them when their demo can go down. Do not

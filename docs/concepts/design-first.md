@@ -22,7 +22,7 @@ to it.
 
 ## The Elephant and the Goldfish
 
-`/doodlebot:design` uses Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
+Design work uses Google's [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
 plugin (EGM). EGM uses two kinds of agent:
 
 - The **Elephant** is the agent session you are talking to. It keeps the whole context of the

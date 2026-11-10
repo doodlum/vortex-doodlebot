@@ -210,7 +210,7 @@ baseline comparisons. Do not treat a measurements-only script's successful exit 
 performance test. Existing Vortex bugs may fail a targeted regression without invalidating
 doodlebot's core contract. Report each suite, failures and skips separately.
 
-Benchmarking uses the same checks: `/doodlebot:measure` and `/doodlebot:compare` run one of
+Benchmarking uses the same checks: `/doodlebot:measure --a <build> [--b <build>]` runs one of
 `mods-scroll`, `large-library`, `collection-scale`, `download-churn` or `plugins-page` on one or
 two builds, alternately, and `doodlebot perf-summary` turns their evidence files into medians,
 ranges and a rule-based verdict (AGENTS.md, "Benchmarking"). Only `mods-scroll`'s metric paths

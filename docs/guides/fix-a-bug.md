@@ -1,7 +1,7 @@
 # Fix a Vortex bug
 
-This page shows how to have the agent reproduce a Vortex bug, fix it on a branch, and verify the
-fix in the scenario that was reported, with `/doodlebot:fix`.
+This page shows how to find out why something in Vortex is broken, with
+`/doodlebot:investigate`, and how to have the agent fix it end to end, with `/doodlebot:fix`.
 
 ## Before you begin
 
@@ -9,38 +9,59 @@ fix in the scenario that was reported, with `/doodlebot:fix`.
 - Have Vortex's build prerequisites, and a GitHub fork of Vortex if you want to push the fix.
   The agent prepares the source clone if it does not exist yet; see
   [Work on Vortex source](source-development.md).
-- Have the bug report: what the user did, what they saw, and any collection, mod or files they
-  named. If the report depends on a Nexus collection, [sign in to Nexus Mods](sign-in.md).
+- Have the bug report: what the user did, what they saw, their Vortex version, and any
+  collection, mod or files they named; or a user's `vortex.log`. If the report depends on a
+  Nexus collection, [sign in to Nexus Mods](sign-in.md).
 
 A bug fix needs no design. If you supply one anyway, the agent holds the change to it.
 
-## Fix the bug
+## Find out why it is broken
 
-1. Run:
+Run:
 
-   ```text
-   /doodlebot:fix <the bug report or a link to it>
-   ```
+```text
+/doodlebot:investigate <the bug report, an issue link or the path to a user's vortex.log>
+```
 
-2. If the source clone is missing, the agent runs `doodlebot source`, which clones your fork
-   (or Nexus-Mods/Vortex, if you have none) into `<workspace>/.vortex-src` and builds it.
+The agent:
 
-3. The agent reproduces the bug on the unchanged base build, in the reported scenario. If it
-   cannot reproduce it, it stops and tells you what it tried.
+1. reads the report or log, and searches what doodlebot has learned for the symptom;
+2. gets **the user's Vortex version** with `doodlebot release get <version>`: an official
+   release, checked against its published SHA-256 and extracted without running the installer.
+   A release that publishes no digest makes the result _Blocked_;
+3. reproduces the scenario on that version with `/doodlebot:try`'s procedure;
+4. narrows it to the cause in the Vortex source, with the file and line.
 
-4. The agent makes a branch of `.vortex-src` and fixes the bug there.
+It changes no code. The expected result: an **issue report** that says reproduced or not, and
+on which version (a different version is "not reproduced on the user's version", never plain
+"not reproduced"), the cause with its file and line, how confident it is, and a proposed fix.
 
-5. The agent builds the branch with `doodlebot build --checkout <workspace>/.vortex-src`,
-   starts it with `doodlebot up --dev-dir <workspace>/.vortex-src --sandbox` (or with the
-   fixture the report needs, such as a copy of a real game or `--bethesda-sandbox`), and
-   verifies that the reported scenario now works.
+A user's log is someone else's data: the agent quotes only what it needs, and never shares it
+without asking you.
 
-6. The agent records evidence: the commands it ran, their results and the files they wrote.
+## Fix it
 
-7. The agent reports the cause, the fix, and the evidence, and offers `/doodlebot:pr`.
+Run:
 
-The expected result: a branch with the fix, a before-and-after observation of the reported
-scenario, and the evidence paths.
+```text
+/doodlebot:fix <the issue report, or the bug report>
+```
+
+Without an issue report, the agent investigates first, and continues only when the bug is
+reproduced. Then it:
+
+1. cuts a branch from upstream in `.vortex-src` (or your checkout);
+2. repeats the reproduction on the branch's base: the "before" run;
+3. fixes the bug, following Vortex's own contribution rules;
+4. writes a regression test **in the Vortex branch**, a Vortex unit test or a spec in Vortex's
+   e2e suite, so it goes into the pull request ([Add a regression test](regression-tests.md));
+5. proves the test fails without the fix: with your permission for a local commit, it reverts
+   the fix and checks that the test fails on its intended assertion (the revert control);
+6. repeats your scenario on the fixed build: the "after" run;
+7. runs Vortex's own gate, and offers `/doodlebot:pr`.
+
+The expected result: a branch with the fix and its test, before and after run reports, the
+revert control's result, and a report that ends with what doodlebot learned.
 
 ## Test the reported scenario
 
@@ -55,7 +76,6 @@ what is missing instead.
 
 ## What's next
 
-- [Add a regression test](regression-tests.md) for the fixed behavior.
 - [Open a pull request](pull-requests.md).
 - Have the fix checked independently with `/doodlebot:qa`; see
-  [Drive Vortex and get a report](drive-vortex.md#check-a-change-independently).
+  [Try things in Vortex](drive-vortex.md#check-a-change-a-pull-request-or-a-release).

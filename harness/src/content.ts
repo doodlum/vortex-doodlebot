@@ -126,6 +126,27 @@ export function findRelease(version: string, file = CONTENT_FILE): RegisteredRel
   return readContent(file).releases.find((r) => r.version === version);
 }
 
+/** Record (or refresh, same game and slug) a Nexus collection the kit installed. */
+export function recordCollection(
+  collection: { gameId: string; slug: string; revision?: number | undefined },
+  file = CONTENT_FILE,
+  now = new Date(),
+): void {
+  const same = (c: InstalledCollection): boolean =>
+    c.gameId === collection.gameId && c.slug.toLowerCase() === collection.slug.toLowerCase();
+  updateContent((content) => {
+    content.collections = [
+      ...content.collections.filter((c) => !same(c)),
+      {
+        gameId: collection.gameId,
+        slug: collection.slug,
+        ...(collection.revision === undefined ? {} : { revision: collection.revision }),
+        installedAt: now.toISOString(),
+      },
+    ];
+  }, file);
+}
+
 export function addPendingRestore(pending: PendingRestore, file = CONTENT_FILE): void {
   updateContent((content) => {
     content.pendingRestores = [...content.pendingRestores, pending];

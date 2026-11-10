@@ -44,6 +44,9 @@ function expectNextOnEveryNotReady(inventory: Inventory): void {
   expect(inventorySchema.parse(inventory)).toEqual(inventory);
   for (const item of inventory.items) {
     if (item.ready) expect(item.next, item.id).toBeUndefined();
+    // A store install whose game has a registered copy: nothing to do, the copy is named.
+    else if (item.id.startsWith("store:") && item.details?.copy !== undefined)
+      expect(item.next, item.id).toBeUndefined();
     else expect(item.next, item.id).toMatch(/^(doodlebot |Remove-Item )/);
   }
 }
@@ -104,17 +107,35 @@ describe("the inventory", () => {
         gameId: "fallout4",
         path: copy,
         sizeBytes: 3,
+        // As older kits recorded it, before the version resource was normalized.
+        gameVersion: "1.10.984, , 0,",
         registeredAt: "2026-11-10T10:00:00.000Z",
       });
     }, deps.contentFile);
     inventory = readInventory(deps);
+    expect(inventory.items.find((item) => item.id.startsWith("copy:fallout4:"))?.label).toContain(
+      "version 1.10.984.0",
+    );
     expectNextOnEveryNotReady(inventory);
-    expect(byId(inventory, "store:fallout4")?.next).toBe("doodlebot game copy fallout4");
+    // A registered copy exists: the store install no longer says to copy it.
+    const storeItem = byId(inventory, "store:fallout4");
+    expect(storeItem).toMatchObject({ ready: false, details: { copy } });
+    expect(storeItem?.next).toBeUndefined();
+    expect(storeItem?.label).toContain(`a copy is registered (${copy})`);
+    expect(formatInventory(inventory)).not.toContain("next: doodlebot game copy fallout4");
+    expect(formatInventory(inventory)).toContain(`a copy is registered: ${copy}`);
     expect(inventory.items.find((item) => item.id.startsWith("copy:fallout4:"))).toMatchObject({
       ready: true,
       gameId: "fallout4",
       path: copy,
     });
+    expect(chooseContent(["game:fallout4"], inventory).met).toBe(true);
+
+    // The copy gone from disk: the store install names the copy command again.
+    fs.rmSync(copy, { recursive: true });
+    inventory = readInventory(deps);
+    expectNextOnEveryNotReady(inventory);
+    expect(byId(inventory, "store:fallout4")?.next).toBe("doodlebot game copy fallout4");
   });
 
   it("reads snapshots through their marker; a stale one says how to rebuild it, an old one has no build", () => {

@@ -11,8 +11,10 @@ import {
   gameCommand,
   isStorePath,
   registerCopy,
+  setCopyFolder,
   type GameCommandDeps,
 } from "./gameCommand";
+import { normalizeVersionResource } from "./releaseFetch";
 
 let root: string;
 let deps: GameCommandDeps & { contentFile: string };
@@ -116,6 +118,47 @@ describe("game copies", () => {
     const updated = await copyGame("fallout4", folder, deps);
     expect(updated.reused).toBe(false);
     expect(updated.copy.path).toBe(path.join(folder, "fallout4-3"));
+  });
+
+  it("formats a comma-separated version resource as one dotted version (Stardew Valley's)", async () => {
+    expect(normalizeVersionResource("1.6.15, , 24356,")).toBe("1.6.15.24356");
+    expect(normalizeVersionResource("1, 2, 3, 4")).toBe("1.2.3.4");
+    expect(normalizeVersionResource("2.8.0.0")).toBe("2.8.0.0");
+    expect(normalizeVersionResource(" 2.8.0-beta.1 ")).toBe("2.8.0-beta.1");
+    expect(normalizeVersionResource("")).toBeUndefined();
+    expect(normalizeVersionResource(undefined)).toBeUndefined();
+
+    deps.fileVersion = () => "1.6.15, , 24356,";
+    const folder = path.join(root, "copies");
+    const first = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(first.text).toContain("version 1.6.15.24356)");
+    expect(first.text).not.toContain(", ,");
+    expect(readContent(deps.contentFile).games[0]?.gameVersion).toBe("1.6.15.24356");
+    // A copy registered with the raw text before this fix is still the same version.
+    const raw = readContent(deps.contentFile);
+    raw.games[0]!.gameVersion = "1.6.15, , 24356,";
+    fs.writeFileSync(deps.contentFile, JSON.stringify(raw));
+    const again = await gameCommand(["copy", "fallout4"], { to: folder }, {}, deps);
+    expect(again.text).toMatch(
+      /^Reused the registered fallout4 copy at .*version 1\.6\.15\.24356\)/,
+    );
+  });
+
+  it("game folder stores the copy folder once, and refuses a store library or the workspace", async () => {
+    expect(setCopyFolder(undefined, deps)).toMatch(/No copy folder is stored/);
+    expect(() => setCopyFolder(path.join(store, "copies"), deps)).toThrow(/store library/);
+    expect(() =>
+      setCopyFolder(path.join(root, "ws", "copies"), { ...deps, workspace: path.join(root, "ws") }),
+    ).toThrow(/inside the doodlebot workspace/);
+    const folder = path.join(root, "copies");
+    const result = await gameCommand(["folder", folder], {}, {}, deps);
+    expect(result.text).toContain(`Copy folder set to ${folder}`);
+    expect(fs.existsSync(folder)).toBe(true);
+    expect(readContent(deps.contentFile).copyFolder).toBe(folder);
+    expect((await gameCommand(["folder"], {}, {}, deps)).text).toBe(`Copy folder: ${folder}`);
+    // game copy now needs no --to.
+    const { copy } = await copyGame("fallout4", undefined, deps);
+    expect(copy.path).toBe(path.join(folder, "fallout4"));
   });
 
   it("a launch manages only a registered copy or the kit's own folders", () => {

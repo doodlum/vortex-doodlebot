@@ -1,16 +1,18 @@
 # Measure and compare performance
 
-This page shows how to have the agent measure a Vortex flow on one build with
-`/doodlebot:measure`, or compare two builds with `/doodlebot:compare`.
+This page shows how to have the agent measure a Vortex flow on one build, or compare two
+builds, with `/doodlebot:measure --a <build> [--b <build>] --check <check>`.
 
 ## Before you begin
 
 - [Set up doodlebot](../get-started/set-up.md).
-- Have each build you want to measure. Doodlebot never downloads or installs Vortex. A build is
-  either:
-  - an installed or extracted release, given by its executable (`--exe <path>`); or
+- Know each build you want to measure. A build is one of:
+  - an official release by version, such as `2.8.0`, which the agent fetches with
+    `doodlebot release get 2.8.0` (checked against the published SHA-256 and extracted without
+    running the installer);
+  - an executable (`--exe <path>`);
   - a source checkout (`--dev-dir <path>`), such as a branch of `<workspace>/.vortex-src`.
-- Stop any running test Vortex with `/doodlebot:stop`.
+- Make sure no test Vortex is running; the agent asks before stopping one.
 - Keep the machine quiet while it measures: close CPU-heavy programs and do not use the machine.
   A verdict is only as good as these conditions.
 
@@ -35,8 +37,10 @@ For example, "the Mods table with 3,000 mods" is `doodlebot test mods-scroll --m
 1. Run:
 
    ```text
-   /doodlebot:measure the Mods table with 3,000 mods on the released Vortex
+   /doodlebot:measure --a 2.8.0 --check mods-scroll --mods 3000
    ```
+
+   Plain words work too: "measure the Mods table with 3,000 mods on 2.8.0".
 
 2. The agent picks the check, states it, and runs it five times by default (three at least).
 
@@ -50,11 +54,11 @@ median, minimum, maximum and count. A measurement of one build has no verdict.
 1. Run:
 
    ```text
-   /doodlebot:compare 2.8.0 against my branch on the Mods table with 3,000 mods
+   /doodlebot:measure --a 2.8.0 --b my branch --check mods-scroll --mods 3000
    ```
 
-   Name both builds: a path to an executable, a source checkout, or a branch of
-   `.vortex-src`.
+   Name both builds: a release version, a path to an executable, a source checkout, or a
+   branch of `.vortex-src`.
 
 2. The agent fixes the builds. A source checkout is built in production mode with
    `doodlebot build --checkout <dir> --production` and launched with `--production`, so it runs

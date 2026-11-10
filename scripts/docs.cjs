@@ -131,19 +131,19 @@ const PLUGIN = "doodlebot";
 const COMMAND_GROUPS = [
   {
     title: "Set up and run the test Vortex",
-    description:
-      "Install the companion, sign in, and start, stop or check the test copy of Vortex.",
-    commands: ["setup", "login", "baseline", "start", "stop", "status", "update", "source"],
+    description: "Install, check, sign in and update the companion, and prepare the Vortex source.",
+    commands: ["setup", "source"],
   },
   {
     title: "Work on Vortex",
-    description: "Fix, drive and check Vortex changes, and prepare their pull requests.",
-    commands: ["fix", "drive", "qa", "ui-test", "pr"],
+    description:
+      "Try things in a test Vortex, investigate and fix bugs, QA changes and releases, and ship pull requests.",
+    commands: ["try", "investigate", "fix", "qa", "pr"],
   },
   {
     title: "Benchmark",
-    description: "Measure Vortex performance and compare two Vortex builds.",
-    commands: ["measure", "compare"],
+    description: "Measure a Vortex build, or compare two.",
+    commands: ["measure"],
   },
 ];
 

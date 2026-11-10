@@ -12,7 +12,7 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
   [Fix a Vortex bug](fix-a-bug.md#test-the-reported-scenario). Without that, the agent does not
   prepare a pull request, draft included.
 - For a feature or a refactor, have the approved design; see [Design a feature](design-a-feature.md).
-- Stop the test Vortex with `/doodlebot:stop`. The checks below refuse to change a checkout that
+- Stop the test Vortex (`doodlebot down`). The checks below refuse to change a checkout that
   a running test Vortex uses.
 
 ## Prepare the pull request
@@ -48,8 +48,9 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
 
    - **Problem**: the trigger, the user-visible result, the affected scope and the cause, with
      the issue link.
-   - **Change**: the resulting behavior and the relevant decisions, and the approved design
-     with its digest, or "None" for a bug fix.
+   - **Change**: the resulting behavior and the relevant decisions. With a design, its Overview
+     and acceptance criteria verbatim, and "Design approved by <owner> on <date>", with a link
+     to the design at its `design/<topic>` tag on your fork; "None" for a bug fix.
    - **Behaviour changes**: what users and extension authors can observe.
    - **Evidence**: revision and platform, design scope, scoped tests and controls, app
      checks, performance if relevant, and CI.
@@ -70,8 +71,10 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
    [Working with your fork](source-development.md#working-with-your-fork-and-worktrees). If you
    have no fork yet, the agent offers to make one.
 
-7. After you ask it to open the pull request, the agent runs `doodlebot pr-checks <number>` to
-   report the pull request's CI checks, with failed jobs expanded to their failed steps.
+7. After you ask it to open the pull request (a draft unless you say otherwise), the agent runs
+   `doodlebot pr-checks <number>` to report the pull request's CI checks, with failed jobs
+   expanded to their failed steps. When CI is red, it says why: a test failure, an upload or
+   infrastructure failure, or a known failure on the base.
 
 The expected result: a preflight report, a description ready to post, and, once the pull request
 exists, its check status.
@@ -79,5 +82,5 @@ exists, its check status.
 ## What's next
 
 - Have the change checked independently with `/doodlebot:qa`; see
-  [Drive Vortex and get a report](drive-vortex.md#check-a-change-independently).
+  [Try things in Vortex](drive-vortex.md#check-a-change-a-pull-request-or-a-release).
 - [Evidence and the QA catalogue](../concepts/evidence.md).

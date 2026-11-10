@@ -1,40 +1,39 @@
 # Your first session
 
-This page walks you through a first session: start the test Vortex, have the agent install and
-deploy a mod and report what happened, then stop Vortex. It needs no game and no Nexus account.
+This page walks you through a first session: have the agent try something in a test Vortex and
+report what happened. It needs no game and no Nexus account.
 
 ## Before you begin
 
 - [Set up doodlebot](set-up.md).
 - Make sure no other doodlebot test Vortex is running. Only one runs on a machine at a time.
 
-## Start the test Vortex
+## See what this machine can test
 
-1. In your agent, run:
+Run:
 
-   ```text
-   /doodlebot:start with the sandbox game
-   ```
+```text
+/doodlebot:setup --check
+```
 
-   The agent runs `doodlebot up --installed --sandbox` in the background and waits until the
-   test Vortex answers.
+The agent prints one status table: the doodlebot version, Vortex, EGM, the Vortex source, what
+doodlebot can test against (releases, game copies, sandboxes, collections), the Nexus login,
+pending restores, open kit gaps and disk use. Every row is ready, or missing with the exact next
+step. It changes nothing.
 
-2. Wait for the agent to report the MCP endpoint. A Vortex window opens with the **sandbox**: a
-   disposable game that supports real mod installs, enabling, deployment and purging, but is not
-   a playable game.
-
-The test Vortex uses its own profile. It does not touch your own Vortex, its mods or its
-settings.
-
-## Drive Vortex and get a report
+## Try something and get a report
 
 1. Run:
 
    ```text
-   /doodlebot:drive install a small test mod, enable it, deploy, and report anything odd
+   /doodlebot:try install a small test mod, enable it, deploy, and report anything odd
    ```
 
-2. The agent hands the scenario to the `vortex-driver` agent. In Claude Code, that agent runs on
+2. The agent chooses what to test against: the installed Vortex (or a release you name) and the
+   cheapest content that meets the scenario, here the **sandbox**, a disposable game that
+   supports real mod installs, enabling, deployment and purging, but is not a playable game. It
+   starts the test Vortex, which uses its own profile and never touches your own Vortex.
+3. The agent hands the scenario to the `vortex-driver` agent. In Claude Code, that agent runs on
    a lower-cost model (Sonnet); in Codex, your session carries out the same procedure. The
    driver:
 
@@ -43,43 +42,17 @@ settings.
    - reads the renderer console, the Vortex log and Vortex's notifications;
    - writes a run report.
 
-3. Read the summary in the chat. The full report is in
-   `<workspace>/harness/.artifacts/runs/<UTC time>-<slug>/report.md`, next to any screenshots the
-   driver took.
+4. The agent stops the test Vortex and summarizes the report in the chat. The full report is in
+   `<workspace>/harness/.artifacts/runs/<UTC time>-<slug>/report.md`, next to any screenshots.
 
-The expected result: a report whose **Outcome** is _Worked_, _Worked with errors_, _Blocked_ or
-_Failed_, followed by the steps, the dialogs answered, errors and warnings, evidence, and what
-was not checked. [Run report](../reference/run-report.md) describes each section.
-
-## Check the status
-
-Run:
-
-```text
-/doodlebot:status
-```
-
-The agent reports the doodlebot version and workspace, whether a test Vortex is running and
-answering, and, if it is, whether a Nexus login is saved.
-
-## Stop the test Vortex
-
-1. Run:
-
-   ```text
-   /doodlebot:stop
-   ```
-
-2. The agent runs `doodlebot down`, which asks the test Vortex to quit and waits for a clean
-   exit.
-
-The expected result: the Vortex window closes and the agent reports that no test Vortex is
-running. Stop it whenever you finish, before you start a different profile, and before a
-regression test or benchmark.
+The expected result: a report whose **Outcome** is _Worked_, _Worked with errors_, _Passed with
+workaround_, _Blocked_, _Not tested_ or _Failed_, with a **Tested against** line (the build, the
+content and why), the steps, the dialogs answered, errors and warnings, evidence, what was not
+checked, and what doodlebot **Learned**. [Run report](../reference/run-report.md) describes each
+section.
 
 ## What's next
 
-- [Drive Vortex and get a report](../guides/drive-vortex.md) covers longer scenarios and
-  independent QA.
+- [Try things in Vortex](../guides/drive-vortex.md) covers longer scenarios, collections and QA.
 - [Fix a Vortex bug](../guides/fix-a-bug.md).
 - [Measure and compare performance](../guides/benchmark.md).

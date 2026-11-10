@@ -21,13 +21,12 @@ Every report ends with a **Learned** section that lists what was recorded, or sa
 | Shared | `KNOWLEDGE.md` in doodlebot | Doodlebot's maintainers, through pull requests            | Everyone who installs doodlebot     |
 | Local  | `~/.doodlebot/knowledge.md` | The agent on your machine, with `doodlebot knowledge add` | You, in Claude Code and Codex alike |
 
-The local files sit outside the workspace. They survive `/doodlebot:update` and a new
+The local files sit outside the workspace. They survive `/doodlebot:setup --update` and a new
 `/doodlebot:setup`, and they never make the workspace look changed.
 
 ## When doodlebot reads lessons
 
-Before `/doodlebot:fix`, `/doodlebot:drive`, `/doodlebot:design` and `/doodlebot:ui-test`
-act, they search both stores for the symptom or the area they are working on.
+Before `/doodlebot:try`, `/doodlebot:investigate` and `/doodlebot:fix` act, they search both stores for the symptom or the area they are working on.
 
 Every match is treated as a lead, not a fact. The agent rechecks it against the current Vortex
 code and against what it observes. Its report says which lesson it used and whether the lesson
@@ -35,7 +34,7 @@ still held.
 
 ## When doodlebot records a lesson
 
-After `/doodlebot:fix`, `/doodlebot:drive` or `/doodlebot:qa`, the agent records a lesson only
+After `/doodlebot:try`, `/doodlebot:investigate`, `/doodlebot:fix` or `/doodlebot:qa`, the agent records a lesson only
 when all of these are true:
 
 - it confirmed the cause, for example from the source code, a control test, or a
@@ -102,7 +101,7 @@ the maintainer turns into a change.
 4. The issue link is saved, and the same entry is never shared twice.
 
 Without the GitHub CLI (`gh`), the agent gives you the text to paste into a new issue yourself.
-Once the maintainer adds the lesson to `KNOWLEDGE.md`, you get it with `/doodlebot:update`.
+Once the maintainer adds the lesson to `KNOWLEDGE.md`, you get it with `/doodlebot:setup --update`.
 
 ## What's next
 
