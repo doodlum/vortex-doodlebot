@@ -265,8 +265,13 @@ Both reviewers' blockers were checked against the code:
      - first refuses if a file changed after the run ended (an owner's save made meanwhile), and
        lists those files for the owner to decide.
        - **After a clean `down`:** the run lasts from the recorded start time until `down`
-         confirmed the exit. A changed file whose modification time falls inside the run is the
-         run's, and is restored. One modified outside it is the owner's, and blocks the restore.
+         confirmed the exit.
+         - **Restored automatically:** a changed file whose modification time falls inside the
+           run **and** that is one of the files Vortex writes for that game. The per-game table
+           names them: `plugins.txt`, `loadorder.txt`, `DLCList.txt`, `*.ini`.
+         - **Listed for the owner instead:** any other changed file (saves especially). The owner
+           may have played their own copy of the game during a long run, and the time window
+           can't tell their saves from the run's. Found by the safety review, 2026-11-10.
        - **After an unclean end** (a crash, a kill, a missed `down`): the end time is unknown, so
          `game restore` restores nothing automatically. It lists every file changed since the
          backup, with modification times, and the owner chooses to restore all of them, keep
