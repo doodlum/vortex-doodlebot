@@ -90,7 +90,7 @@ stale, missing and unpaired failures and that the site navigation lists every pa
 Workflow regression coverage must exercise actual boundaries: every launcher writes the
 instance record at spawn and a failed write stops the child; the record is cleared only after
 confirmed exit; legacy per-cache records are deleted; checkout commands (build, source install,
-`evidence run`, the revert check, `vortex-e2e`) refuse while a recorded Vortex runs from that
+`evidence run`, the revert check) refuse while a recorded Vortex runs from that
 checkout; a second cache is refused before anything is restarted; `script` returns the child's
 code, 130 after an abort and `128 + signal` after a signal death, and runs in `INIT_CWD`.
 Fixture shutdown errors preserve the app PID, profile and parent cache, and fail the run;
@@ -180,12 +180,17 @@ changes or before a release; never require an account for the fast or core gates
 The `doodlebot test <suite>` check scripts outside Playwright are explicit scenarios
 (`doodlebot test --list`; arguments after the suite are the script's):
 
-| Purpose                                   | Commands                                             |
-| ----------------------------------------- | ---------------------------------------------------- |
-| Collection recovery and Bethesda checks   | `collection-download-retry`, `bethesda`              |
-| Plugins, zoom and split panels            | `plugins-page`, `plugins-mod-link`, `zoom`, `panels` |
-| Performance/scale                         | `large-library`, `mods-scroll`, `collection-scale`   |
-| Measurement without a pass/fail threshold | `download-churn`                                     |
+| Purpose                                   | Commands                                           |
+| ----------------------------------------- | -------------------------------------------------- |
+| Collection recovery and Bethesda checks   | `collection-download-retry`, `bethesda`            |
+| Plugins page                              | `plugins-page`, `plugins-mod-link`                 |
+| Performance/scale                         | `large-library`, `mods-scroll`, `collection-scale` |
+| Measurement without a pass/fail threshold | `download-churn`                                   |
+
+Every suite runs on a released Vortex as well as a source build; a check that needs a source
+build is not kept. The fake Fallout 4 checks (`bethesda`, `collection-download-retry`,
+`plugins-page`, `plugins-mod-link`) start with `up --bethesda-sandbox`; the real Fallout 4 user
+folders are backed up before the launch and restored at `down`.
 
 Run the relevant scenarios when changing those Vortex features or the kit helpers they use.
 Use production React for performance runs, an idle machine, explicit fixture sizes, and

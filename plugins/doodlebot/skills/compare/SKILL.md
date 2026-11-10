@@ -34,13 +34,13 @@ Map "what" to one of the five checks and its options, and state the choice in on
 before running anything. Only these are supported; for anything else offer the nearest
 check, or decline.
 
-| Check              | Measures                                                    | Game flags           | Example options                      |
-| ------------------ | ----------------------------------------------------------- | -------------------- | ------------------------------------ |
-| `mods-scroll`      | Scrolling the Mods table with a real wheel                  | `--sandbox`          | `--mods 3000`                        |
-| `large-library`    | Filtering, clearing, installing and deploying a big library | `--sandbox`          | `--mods 3000 --installs 10`          |
-| `collection-scale` | Installing and updating a large offline collection          | `--sandbox`          | `--members 2000 --update`            |
-| `download-churn`   | Persisting state while downloads churn                      | `--sandbox`          | `--downloads 20 --seconds 60`        |
-| `plugins-page`     | Scrolling, filtering and toggling the Plugins page          | `--bethesda-sandbox` | `--plugins 500` (source builds only) |
+| Check              | Measures                                                    | Game flags           | Example options               |
+| ------------------ | ----------------------------------------------------------- | -------------------- | ----------------------------- |
+| `mods-scroll`      | Scrolling the Mods table with a real wheel                  | `--sandbox`          | `--mods 3000`                 |
+| `large-library`    | Filtering, clearing, installing and deploying a big library | `--sandbox`          | `--mods 3000 --installs 10`   |
+| `collection-scale` | Installing and updating a large offline collection          | `--sandbox`          | `--members 2000 --update`     |
+| `download-churn`   | Persisting state while downloads churn                      | `--sandbox`          | `--downloads 20 --seconds 60` |
+| `plugins-page`     | Scrolling, filtering and toggling the Plugins page          | `--bethesda-sandbox` | `--plugins 500`               |
 
 For example, "the Mods table with 3,000 mods" is `doodlebot test mods-scroll --mods 3000`.
 

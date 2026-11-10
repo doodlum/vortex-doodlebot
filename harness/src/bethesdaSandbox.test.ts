@@ -5,10 +5,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  assertRedirected,
+  assertFakeFallout4Active,
   bethesdaSandboxConfig,
+  bethesdaSandboxPaths,
   deterministicLoadOrder,
   ensureBethesdaSandbox,
+  ensureFallout4Inis,
+  isBethesdaSandbox,
   pluginBytes,
   setDeterministicLoadOrder,
 } from "./bethesdaSandbox";
@@ -59,54 +62,72 @@ describe("pluginBytes", () => {
 });
 
 describe("ensureBethesdaSandbox", () => {
-  it("creates the game, its master and the INI files, and keeps existing files", () => {
+  it("creates the game and its master inside the cache, and keeps existing files", () => {
     const cache = tempDir();
     const sandbox = ensureBethesdaSandbox(cache);
     expect(fs.existsSync(path.join(sandbox.gamePath, "Fallout4.exe"))).toBe(true);
-    expect(readHeader(fs.readFileSync(path.join(sandbox.dataPath, "Fallout4.esm"))).flags).toBe(1);
-    for (const ini of ["Fallout4.ini", "Fallout4Prefs.ini", "Fallout4Custom.ini"]) {
-      expect(fs.existsSync(path.join(sandbox.myGames, ini))).toBe(true);
-    }
-    fs.writeFileSync(path.join(sandbox.myGames, "Fallout4.ini"), "[Vortex wrote this]\r\n");
+    const master = path.join(sandbox.dataPath, "Fallout4.esm");
+    expect(readHeader(fs.readFileSync(master)).flags).toBe(1);
+    fs.writeFileSync(master, "kept");
     ensureBethesdaSandbox(cache);
-    expect(fs.readFileSync(path.join(sandbox.myGames, "Fallout4.ini"), "utf8")).toContain("Vortex");
+    expect(fs.readFileSync(master, "utf8")).toBe("kept");
+    expect(fs.readdirSync(path.join(cache, "bethesda-sandbox", "fallout4"))).toEqual(["game"]);
   });
 
-  it("points the config at the fake game with both folders redirected into the cache", () => {
+  it("points the config at the fake game, with no redirected folders", () => {
     const cache = tempDir();
     const config = bethesdaSandboxConfig({ cacheDir: cache } as HarnessConfig);
     expect(config.gameId).toBe("fallout4");
-    for (const dir of [
-      config.gamePath,
-      config.profileRedirect?.documents,
-      config.profileRedirect?.localAppData,
-    ]) {
-      expect(path.relative(cache, dir ?? "/elsewhere").startsWith("..")).toBe(false);
-    }
+    expect(path.relative(cache, config.gamePath ?? "/elsewhere").startsWith("..")).toBe(false);
+    expect(Object.keys(config)).not.toContain("profileRedirect");
+    expect(isBethesdaSandbox(config)).toBe(true);
+    expect(isBethesdaSandbox({ ...config, gamePath: path.join(cache, "elsewhere") })).toBe(false);
+    expect(isBethesdaSandbox({ ...config, gameId: "skyrimse" })).toBe(false);
   });
 });
 
-describe("assertRedirected", () => {
-  const expected = { documents: "C:\\cache\\Documents", localAppData: "C:\\cache\\Local" };
+describe("ensureFallout4Inis", () => {
+  it("writes only the missing INI files, creating the folder", () => {
+    const myGames = path.join(tempDir(), "My Games", "Fallout4");
+    expect(ensureFallout4Inis(myGames)).toHaveLength(3);
+    fs.writeFileSync(path.join(myGames, "Fallout4.ini"), "[Owner]\r\n");
+    fs.rmSync(path.join(myGames, "Fallout4Custom.ini"));
+    expect(ensureFallout4Inis(myGames)).toEqual([path.join(myGames, "Fallout4Custom.ini")]);
+    expect(fs.readFileSync(path.join(myGames, "Fallout4.ini"), "utf8")).toBe("[Owner]\r\n");
+  });
+});
 
-  it("accepts the sandbox's folders, in any case", () => {
-    expect(() =>
-      assertRedirected(expected, {
-        documents: "c:\\CACHE\\documents",
-        localAppData: "C:\\cache\\Local",
-      }),
-    ).not.toThrow();
+/** An MCP client reporting the active game and Fallout 4's discovered path. */
+const mcp = (active: string | null, discovered: string | undefined) =>
+  ({
+    call: vi.fn(async (_tool: string, args: { selector?: string }) =>
+      args.selector === "activeGameId"
+        ? active
+        : discovered === undefined
+          ? null
+          : { path: discovered },
+    ),
+  }) as unknown as VortexMcpClient;
+
+describe("assertFakeFallout4Active", () => {
+  it("accepts the fake game of this cache, in any case", async () => {
+    const cache = tempDir();
+    const gamePath = bethesdaSandboxPaths(cache).gamePath.toUpperCase();
+    await expect(assertFakeFallout4Active(mcp("fallout4", gamePath), cache)).resolves.toBe(
+      undefined,
+    );
   });
 
-  it("refuses the real folders, or ones Vortex could not report", () => {
-    expect(() =>
-      assertRedirected(expected, {
-        documents: "C:\\Users\\someone\\Documents",
-        localAppData: "C:\\cache\\Local",
-      }),
-    ).toThrow(/Refusing/);
-    expect(() => assertRedirected(expected, { documents: null, localAppData: null })).toThrow();
-    expect(() => assertRedirected(expected, undefined)).toThrow();
+  it("refuses another game, a real Fallout 4 and an unknown path", async () => {
+    const cache = tempDir();
+    const fake = bethesdaSandboxPaths(cache).gamePath;
+    await expect(assertFakeFallout4Active(mcp("skyrimse", fake), cache)).rejects.toThrow(
+      /--bethesda-sandbox/,
+    );
+    await expect(
+      assertFakeFallout4Active(mcp("fallout4", "C:\\Games\\Fallout 4"), cache),
+    ).rejects.toThrow(/fake Fallout 4/);
+    await expect(assertFakeFallout4Active(mcp("fallout4", undefined), cache)).rejects.toThrow();
   });
 });
 

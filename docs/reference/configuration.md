@@ -93,8 +93,7 @@ Both ports must be distinct integers between 1 and 65535.
 | `--release <version>`                                  | Run a release registered by `doodlebot release get`                       |
 | `--cache-dir`, `--port`, `--cdp-port`                  | Choose the profile cache and ports                                        |
 | `--sandbox`                                            | The disposable sandbox game                                               |
-| `--bethesda-sandbox`                                   | A fake Fallout 4 with private per-user folders; source builds only        |
-| `--isolate-user-folders`                               | Private per-user game folders for any game; source builds only            |
+| `--bethesda-sandbox`                                   | A fake Fallout 4; its real Fallout 4 folders are backed up and restored   |
 | `--game <id>`, `--game-path <dir>`, `--no-game`        | Manage a chosen game, or open only the global UI                          |
 | `--with-api-key`                                       | Seed the legacy API key in a sandbox; normally withheld                   |
 | `--headless`, `--production`                           | Hide the window; require production mode for a source build               |

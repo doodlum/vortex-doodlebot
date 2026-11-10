@@ -151,7 +151,6 @@ describe("path rules", () => {
         "args-file",
         "from",
         "cwd",
-        "compare",
         "ffmpeg",
         "a",
         "b",
@@ -209,7 +208,7 @@ describe("path rules", () => {
     });
   });
 
-  it("leaves pr-preflight's checkout-relative tests and vortex-e2e's specs alone", () => {
+  it("leaves pr-preflight's checkout-relative tests alone", () => {
     const preflight = parse([
       "pr-preflight",
       "--test",
@@ -229,7 +228,6 @@ describe("path rules", () => {
       "project-dir": "src/renderer",
     });
     expect(preflight.positional).toEqual(["src/c.test.ts"]);
-    expect(parse(["vortex-e2e", "--spec", "tests/x.spec.ts"]).flags.spec).toBe("tests/x.spec.ts");
     expect(parse(["design", "other", "d.md"]).positional).toEqual(["other", "d.md"]);
   });
 

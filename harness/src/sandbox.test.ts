@@ -26,19 +26,13 @@ function game(cacheDir: string, inside = true) {
 }
 
 describe("resetDisposableGameData", () => {
-  it("empties Data, keeping the fixture's own files and removing plugin lists", () => {
+  it("empties Data, keeping the fixture's own files", () => {
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), "reset-game-"));
     dirs.push(cache);
     const { config, data } = game(cache);
-    const lists = path.join(cache, "Local", "Fallout4");
-    fs.mkdirSync(lists, { recursive: true });
-    fs.writeFileSync(path.join(lists, "plugins.txt"), "*A.esp");
 
-    expect(resetDisposableGameData(config, { keep: ["fallout4.esm"], pluginLists: lists })).toBe(
-      true,
-    );
+    expect(resetDisposableGameData(config, { keep: ["fallout4.esm"] })).toBe(true);
     expect(fs.readdirSync(data)).toEqual(["Fallout4.esm"]);
-    expect(fs.existsSync(path.join(lists, "plugins.txt"))).toBe(false);
   });
 
   it("never touches a game outside the harness cache", () => {

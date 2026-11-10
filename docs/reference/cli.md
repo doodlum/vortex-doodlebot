@@ -49,5 +49,4 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `up`
 - `update`
 - `version`
-- `vortex-e2e`
 - `watch`

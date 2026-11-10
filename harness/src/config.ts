@@ -92,12 +92,6 @@ export interface HarnessConfig {
    */
   production: boolean;
   /**
-   * Private stand-ins for the per-user folders a Bethesda game writes to: plugins.txt
-   * under LocalAppData, INI files under Documents. Set by the Bethesda sandbox; when set,
-   * Vortex must start with both redirected or not at all.
-   */
-  profileRedirect?: { localAppData: string; documents: string };
-  /**
    * True when an API key is configured but deliberately not used: sandbox runs are
    * local-only, and a seeded key makes every local install wait on Nexus lookups.
    */

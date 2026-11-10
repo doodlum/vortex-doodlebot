@@ -49,6 +49,8 @@ report to `<workspace>/harness/playwright-report` and keeps traces of failures.
 - The test waits for a real state or visible result, not a fixed delay.
 - A test that changes shared state restores it, so the next test starts from a valid state.
 - Tests that need a Nexus account, a real game or network downloads stay out of the core suite.
+- Every test runs on a released Vortex as well as a source build. A check that only a source
+  build can run is not added.
 
 ## Four kinds of check
 

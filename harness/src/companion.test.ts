@@ -35,6 +35,11 @@ const REMOVED_FILES = [
   "harness/src/readiness.ts",
   "harness/readiness.example.json",
   "plugins/doodlebot/skills/design/SKILL.md",
+  "harness/src/mainPreload.ts",
+  "harness/src/vortexE2e.ts",
+  "harness/patches",
+  "harness/src/tests/zoom.e2e.ts",
+  "harness/src/tests/panels.e2e.ts",
 ];
 const BINARY = /\.(?:png|jpe?g|gif|ico|ttf|woff2?|zip|7z|exe|dll)$/i;
 

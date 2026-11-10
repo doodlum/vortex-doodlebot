@@ -38,7 +38,7 @@
     {
       "name": "Lifecycle and authentication",
       "sources": [
-        "^harness/src/(instance|runningVortex|processes|bootstrap|auth|loginImport|runningProfile|mainPreload|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
+        "^harness/src/(instance|runningVortex|processes|bootstrap|auth|loginImport|runningProfile|bethesdaSandbox|sandbox|gameSetup|electronRuntime)\\.ts$"
       ],
       "human": [
         "docs/concepts/one-test-vortex.md",
@@ -59,7 +59,7 @@
     {
       "name": "Builds and evidence",
       "sources": [
-        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|prChecks|prPreflight|vortexE2e)\\.ts$"
+        "^harness/src/(processRunner|source|vortexBuild|extensionBuild|extensionGeneration|hotReload|productionMode|evidence|prChecks|prPreflight)\\.ts$"
       ],
       "human": [
         "docs/guides/source-development.md",

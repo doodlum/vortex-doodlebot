@@ -268,8 +268,8 @@ suite or independent QA. A few refusals stop the cases where two would damage da
   per user whatever workspace or `--cache-dir` a command uses:
   `{pid, startedAt, cacheDir, userDataDir, mcpPort, sourceDir? | exe?, nxmHandler?}`
   (`runningVortex.ts`). Every kit
-  launcher writes it right after spawn, before readiness: `up`, `setup`, `bootstrap`, the core
-  fixture and `doodlebot test zoom --signed-out`. A failed write stops the child and fails the
+  launcher writes it right after spawn, before readiness: `up`, `setup`, `bootstrap` and the core
+  fixture. A failed write stops the child and fails the
   launch. Per-cache `instance.pid` and `<cache>/instance.json` files from older kits are deleted
   when found.
 - The older record `harness/.cache/instance.json` is read first and deleted unless it names a
@@ -302,16 +302,15 @@ suite or independent QA. A few refusals stop the cases where two would damage da
   `electron.exe`, `vortex` or `electron`. Otherwise it is stale (dead pid, or a pid reused after a
   crash) and is cleared when read.
 - A launch while another harness Vortex runs, the core suite (`doodlebot test core`, through
-  Playwright's global setup) and the signed-out zoom check refuse with
+  Playwright's global setup) refuse with
   ``A harness Vortex is running (pid <pid>, cache <cacheDir>); run `doodlebot down` before <action>.``
-  Actions: `starting Vortex`, `the core suite`, `the signed-out zoom check`. `up` and `bootstrap`
+  Actions: `starting Vortex`, `the core suite`. `up` and `bootstrap`
   first stop their own cache's leftover, so a repeated `up` on the same profile restarts it.
 - `doodlebot update` refuses while either record names a running Vortex (above).
-- `build`, source installs and builds, `evidence run`, `pr-preflight`'s revert check and
-  `vortex-e2e` refuse when the record's `sourceDir` is the checkout they would change:
+- `build`, source installs and builds, `evidence run` and `pr-preflight`'s revert check
+  refuse when the record's `sourceDir` is the checkout they would change:
   ``A harness Vortex is running from <checkout> (pid <pid>); run `doodlebot down` before <action>.``
-  Actions: `building it`, `installing it`, `recording evidence in it`, `reverting it`,
-  `patching it`.
+  Actions: `building it`, `installing it`, `recording evidence in it`, `reverting it`.
 - `down` follows the record (`stopRunningInstance`): it stops the running harness Vortex using
   the record's cache and MCP port, so one left in a test cache or another workspace, or started with
   another `--port`, needs no repeated options; for another cache it first prints
@@ -369,7 +368,6 @@ doodlebot game restore <gameId> [--all | --keep | --file <path>...]
   time (exit 1), then `--all` restores all, `--keep` keeps all, `--file <path>` (repeatable)
   restores those; each clears the pending restore. It refuses while the game or a harness Vortex
   runs. A failed restore keeps the backup and prints its path.
-- The fake Fallout 4 keeps its redirect guard on source builds as well (below).
 
 ### Released builds
 
@@ -733,7 +731,7 @@ doodlebot readiness --manifest <task-manifest.json> --json
 
 Readiness uses schema **v3** and rejects any other version before parsing
 (`readiness manifest schemaVersion <v> is not supported; this doodlebot reads schema 3`);
-command receipts use **v1**; preflight reports use **v4** and upstream E2E reports **v5**, each
+command receipts use **v1**; preflight reports use **v4**, each
 including producing kit identities before and after execution. Current and baseline
 native reports must use the manifest's unchanged kit code. Obsolete formats must be rerun.
 Scoped and control test receipts require nonempty execution with zero failures and zero skips
@@ -790,62 +788,22 @@ A local-diff result cannot certify a later commit.
   methods, renamed callers and `require()` are missed, member matches include unrelated objects.
   Read the list.
 
-### Vortex's own E2E suite
-
-Only when requested, `doodlebot vortex-e2e --checkout <dir>` runs `<checkout>/packages/e2e` as
-upstream CI does (`CI=1`, `VORTEX_E2E_HEADED` unset, one worker, no retries). It needs a built
-checkout and refuses while the harness Vortex runs from it (`... before patching it.`); a harness
-Vortex running from elsewhere is noted in the report because it may affect timings. Run one
-`vortex-e2e` at a time.
-Its temporary fixture writes require source-mutation authorization. For the run only it:
-
-- applies `harness/patches/` (`e2e-window-startup.patch`; KNOWLEDGE.md explains the local
-  startup problem). It refuses a dirty checkout, fails if `git apply --check` does,
-  skips patches already present, and restores exact bytes after confirmed child exit, including
-  handled Ctrl+C. Inspect state after forcible termination;
-- leaves out, via `--grep-invert`, tests needing absent `E2E_NEXUS_FREE_USER_*` /
-  `E2E_NEXUS_PREMIUM_USER_*` credentials (environment or `packages/e2e/.env`), reported as
-  credential-skipped, and refuses if Playwright's filtered count differs from its own.
-
-| Flag                      | Effect                                                             |
-| ------------------------- | ------------------------------------------------------------------ |
-| `--checkout <dir>`        | Vortex checkout (default `.vortex-src`)                            |
-| `--spec <file>`           | Relative to `packages/e2e` or `packages/e2e/src/tests`; repeatable |
-| `--grep`, `--grep-invert` | Passed to Playwright (credential filter added to the latter)       |
-| `--compare <report.json>` | Regressions, pre-existing and fixed against an earlier run         |
-| `--json`                  | Report as JSON; Playwright's output to stderr                      |
-
-Reports use schema v5 and go to `harness/.artifacts/vortex-e2e/<time>-<sha>.json`. Old or malformed
-baseline formats must be rerun. Comparison reports distinguish regressions, lost coverage,
-changed failure causes and execution-condition differences. A successful exploratory command
-does not establish final readiness; use the strict revision-bound readiness manifest described
-in AGENT-WORKFLOW.md. For a PR, run master as the baseline, then the
-branch with `--compare`. For an upstream CI failure, run its exact spec, save before/after
-reports, don't substitute the harness app, and read the workflow's flags, credentials and test
-summary. Animation tests need a rendered window (KNOWLEDGE.md). Test credential skips with the
-account variables empty.
-
-Final readiness is stricter than an exploratory comparison: skipped, credential-skipped and
-flaky tests block it. Regressions, changed failures, missing coverage and execution-condition
-drift cannot be dispositioned away. Only an unchanged pre-existing product failure can have
-an inspected disposition, bound to its exact failure fingerprint and supporting evidence.
-External blockers and unknown causes remain blocked.
-
 ### A Bethesda game without the game
 
-`up --dev-dir <checkout> --bethesda-sandbox` manages a fake Fallout 4 that Vortex's own support
-accepts (plugins, LOOT, the Plugins page, Missing Masters): a stand-in `Fallout4.exe` and
-`Fallout4.esm`, plugins with real TES4 headers (`pluginBytes`, `writePlugin` in
-`bethesdaSandbox.ts`), and a private `LocalAppData` and `Documents\My Games\Fallout4` under the
-cache (Documents moved by a `NODE_OPTIONS=--require` preload, `mainPreload.ts`).
+`up --bethesda-sandbox` manages a fake Fallout 4 that Vortex's own support accepts (plugins,
+LOOT, the Plugins page, Missing Masters): a stand-in `Fallout4.exe` and `Fallout4.esm` under the
+cache, and plugins with real TES4 headers (`pluginBytes`, `writePlugin` in `bethesdaSandbox.ts`).
+It runs on released builds (`--installed`, `--exe`, `--release`) as well as source builds.
 
-- **The harness refuses to manage the game unless `automation_status.paths` shows both
-  redirects**, so the operator's real Fallout 4 profile is never written.
-- **Source builds only**: packaged Vortex ignores NODE_OPTIONS and is stopped before a game
-  activates. For a release's behaviour, build its tag from source.
-- The real `Documents\My Games\Fallout4` and `%LOCALAPPDATA%\Fallout4` are also backed up before
-  each launch and restored at `down` ("Game copies and user folders").
-- `--isolate-user-folders` gives any game the same private folders.
+- **Its user folders are the real ones, backed up and restored.** Nothing redirects Vortex's
+  `Documents\My Games\Fallout4` or `%LOCALAPPDATA%\Fallout4` (plugins.txt). Every launch backs both
+  up first and `down` restores them, as for a registered copy ("Game copies and user folders").
+- After the backup the launch writes the INI files Vortex needs to activate the game
+  (`Fallout4.ini`, `Fallout4Prefs.ini`, `Fallout4Custom.ini`) when they are missing
+  (`ensureFallout4Inis`). They are the run's files, so `down` removes them again. Existing files
+  are left alone.
+- The checks refuse unless the active game is the fake Fallout 4 of this cache
+  (`assertFakeFallout4Active`).
 - `setDeterministicLoadOrder(mcp)` turns LOOT autosort off, orders natives, masters, light plugins
   and plugins by name, and verifies `state.loadOrder`, so Plugins page values compare across runs.
 - `doodlebot test bethesda`: Missing Masters flags an absent master before and after an offline
@@ -953,19 +911,17 @@ timing meant to reflect users needs production:
 Outside `doodlebot test core`; each runs against the running instance (`up` first, with the
 flags in "Needs") and writes JSON evidence (and screenshots or a `.cpuprofile`) under
 `harness/.artifacts`, printing `evidence: <path>` where it measures. Keep CPU-heavy work off the
-machine while they measure.
+machine while they measure. Every check runs on a released Vortex as well as a source build.
 
-| Command                                                       | Needs                              | Fails on                                                                    |
-| ------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
-| `doodlebot test collection-scale --members <n>`               | sandbox                            | a freeze over 10 s in a phase                                               |
-| `doodlebot test plugins-page --plugins <n> [--vortex-order]`  | fake Fallout 4                     | blocking on scroll, filter, clear or toggle; a row not following its toggle |
-| `doodlebot test collection-download-retry`                    | fake Fallout 4                     | a member whose downloads failed not being installed by a resume             |
-| `doodlebot test plugins-mod-link --mods <n>`                  | fake Fallout 4                     | the Mod link not scrolling the last-sorted mod (default 300) into view      |
-| `doodlebot test download-churn --downloads <n> --seconds <s>` | any                                | nothing; measures persist:diff, slow writes, dispatches, long tasks         |
-| `doodlebot test large-library`                                | sandbox                            | see below                                                                   |
-| `doodlebot test mods-scroll --mods <n>`                       | sandbox                            | see below                                                                   |
-| `doodlebot test zoom [--signed-out]`                          | source build with zoom             | zoom controls, shortcuts, timers, animation, layout                         |
-| `doodlebot test panels`                                       | source build, `--bethesda-sandbox` | right-hand split view behaviour                                             |
+| Command                                                       | Needs          | Fails on                                                                    |
+| ------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------- |
+| `doodlebot test collection-scale --members <n>`               | sandbox        | a freeze over 10 s in a phase                                               |
+| `doodlebot test plugins-page --plugins <n> [--vortex-order]`  | fake Fallout 4 | blocking on scroll, filter, clear or toggle; a row not following its toggle |
+| `doodlebot test collection-download-retry`                    | fake Fallout 4 | a member whose downloads failed not being installed by a resume             |
+| `doodlebot test plugins-mod-link --mods <n>`                  | fake Fallout 4 | the Mod link not scrolling the last-sorted mod (default 300) into view      |
+| `doodlebot test download-churn --downloads <n> --seconds <s>` | any            | nothing; measures persist:diff, slow writes, dispatches, long tasks         |
+| `doodlebot test large-library`                                | sandbox        | see below                                                                   |
+| `doodlebot test mods-scroll --mods <n>`                       | sandbox        | see below                                                                   |
 
 - **collection-scale** options (`collectionScale.ts`, deterministic; none = required members, no
   rules): `--optional <f>`, `--glob <f>`, `--duplicates <n>`, `--rules <n>`, `--update` (revision
@@ -983,19 +939,12 @@ machine while they measure.
   dropdown, the Status column narrowing back, or with `--conflicts <pairs>` over 200 conflict
   editor entries rendered. Rows kept after a scroll-through only warn unless
   `--max-accumulated <n>`; `--no-scroll-through` skips it.
-- **zoom** needs no game or account and restores zoom, layout and window size. `--signed-out`
-  starts its own anonymous profile (`<cache>/zoom-signed-out`) on the default ports, so it refuses
-  while a harness Vortex runs (`... before the signed-out zoom check.`); run `down` first. It
-  never logs out the main profile.
-- **panels**: runs against the running instance; it saves and restores workspaces and
-  window size. The toggle is `[data-split-view-toggle]` (`aria-pressed`), the chooser
-  `[data-panel-chooser="panel"]`; both panes stay at least 440 px.
 
 ### Benchmarking: `perf-summary` and the benchmark commands
 
 `/doodlebot:measure` and `/doodlebot:compare` (`plugins/doodlebot/skills/`) are agent procedures
 over the performance checks `mods-scroll`, `large-library`, `collection-scale` (sandbox),
-`download-churn` (any game) and `plugins-page` (`--bethesda-sandbox`, source builds only).
+`download-churn` (any game) and `plugins-page` (`--bethesda-sandbox`).
 Builds are given as `--exe <path>` or `--dev-dir <path>` (built with
 `doodlebot build --checkout <dir> --production` and launched with `--production`); nothing is
 downloaded. Each build gets its own new `VORTEX_AI_CACHE_DIR` with a null OAuth tombstone, and

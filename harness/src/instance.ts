@@ -35,7 +35,6 @@ import {
 } from "./extensionGeneration";
 import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
-import { preparePreload, verifyPreload } from "./mainPreload";
 import { readNxmHandler } from "./nxmHandler";
 import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { processAlive } from "./processes";
@@ -165,12 +164,6 @@ export function buildInstanceEnv(
   env.VORTEX_MCP_PORT = String(config.mcpPort);
   env.VORTEX_AI_AUTH_CACHE = authCacheFile(config);
   if (config.headless) env.VORTEX_E2E_HEADLESS = "1";
-  // Vortex reads LOCALAPPDATA straight from the environment for plugins.txt and
-  // loadorder.txt, in both processes. Documents cannot be moved this way; see
-  // mainPreload.ts.
-  if (config.profileRedirect !== undefined) {
-    env.LOCALAPPDATA = config.profileRedirect.localAppData;
-  }
   // A source checkout only loads its extensions and devtools wiring under
   // development; a released build ignores this.
   if (config.target.kind === "dev") {
@@ -354,7 +347,7 @@ async function stopStaleInside(config: HarnessConfig, action: string): Promise<b
       );
     };
     // A live record of another cache owns that profile even when its cache lies inside this
-    // one (the signed-out zoom check, the Nexus smoke test): never quit it from here.
+    // one (the Nexus smoke test): never quit it from here.
     const otherCache = running !== undefined && pid === undefined && inside(running.cacheDir);
     if (!inside(config.cacheDir) || otherCache) {
       throw new Error(
@@ -453,15 +446,7 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
     );
   }
 
-  const redirect = config.profileRedirect;
   const env = buildInstanceEnv(userDataDir, config);
-  const preload =
-    redirect !== undefined
-      ? preparePreload(userDataDir, { documents: redirect.documents })
-      : undefined;
-  if (preload !== undefined) {
-    env.NODE_OPTIONS = [env.NODE_OPTIONS, preload.nodeOptions].filter(Boolean).join(" ");
-  }
 
   // Every Vortex re-registers itself as the nxm link handler; the record keeps what was there,
   // and the confirmed end of this Vortex writes it back (clearInstanceRecord).
@@ -498,18 +483,6 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
       options.onProcessSpawn?.(spawned);
     },
   });
-
-  if (redirect !== undefined && preload !== undefined) {
-    try {
-      // The record is written on the main process's first line; game activation, the
-      // first thing that writes under Documents, is seconds later in the renderer.
-      await verifyPreload(preload.recordFile, { documents: redirect.documents }, 5_000);
-    } catch (err) {
-      // Stopped before a game could activate: nothing reached the real folders.
-      child.kill();
-      throw err;
-    }
-  }
 
   const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 

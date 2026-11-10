@@ -1,6 +1,6 @@
 /**
  * Opt-in check of Vortex's Bethesda-game health checks against the fake Fallout 4:
- * doodlebot test bethesda (instance started with `up --dev-dir <checkout> --bethesda-sandbox`).
+ * doodlebot test bethesda (instance started with `up --bethesda-sandbox`).
  *
  * Missing Masters is the warning that tells a player their load order will crash the
  * game. It can fail silently: its check simply stops being run. This drives the two
@@ -17,15 +17,15 @@
  *    prompt must appear, and Continue must complete the install.
  *
  * Check runs are counted by the extension's probe (check_probe_counts), so a check that
- * never runs is told apart from one that ran and found nothing. Needs a source build:
- * the sandbox's Documents folder can only be redirected there (see mainPreload.ts).
+ * never runs is told apart from one that ran and found nothing. Runs on released and source
+ * builds; the launch backs up the real Fallout 4 user folders and `down` restores them.
  */
 import fs from "node:fs";
 import path from "node:path";
 
 import { zipSync } from "fflate";
 
-import { bethesdaSandboxPaths, pluginBytes } from "../bethesdaSandbox";
+import { assertFakeFallout4Active, pluginBytes } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
 import { deployMods } from "../deployment";
 import { installLocalMod } from "../localMod";
@@ -40,18 +40,7 @@ const config = loadConfig();
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
 
-const status = await mcp.call<{ paths?: { documents: string | null } }>("automation_status");
-const sandbox = bethesdaSandboxPaths(config.cacheDir);
-if (
-  (await mcp.call<string | null>("vortex_query", { selector: "activeGameId" })) !== "fallout4" ||
-  path.resolve(status.paths?.documents ?? "").toLowerCase() !==
-    path.resolve(sandbox.documents).toLowerCase()
-) {
-  throw new Error(
-    "This check needs the fake Fallout 4 with its private Documents folder. Start the instance " +
-      "with `doodlebot up --dev-dir <checkout> --bethesda-sandbox`.",
-  );
-}
+await assertFakeFallout4Active(mcp, config.cacheDir);
 
 const runs = async (event: string): Promise<number> =>
   (await mcp.call<Array<{ event: string; runs: number }>>("check_probe_counts")).find(

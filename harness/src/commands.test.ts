@@ -47,7 +47,8 @@ describe("the command list", () => {
     for (const name of ["version", "test", "link", "fixture", "log", "perf-summary", "update"])
       expect(names).toContain(name);
     expect(findCommand("evidence")?.subcommands).toEqual(["identity", "run", "runtime"]);
-    for (const removed of ["design", "readiness"]) expect(findCommand(removed)).toBeUndefined();
+    for (const removed of ["design", "readiness", "vortex-e2e"])
+      expect(findCommand(removed)).toBeUndefined();
     expect(findCommand("fixture")?.subcommands).toEqual(["mod"]);
     expect(findCommand("knowledge")?.subcommands).toEqual([
       "add",

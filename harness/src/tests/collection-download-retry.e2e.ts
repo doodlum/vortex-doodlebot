@@ -12,7 +12,7 @@ import path from "node:path";
 
 import { zipSync } from "fflate";
 
-import { pluginBytes } from "../bethesdaSandbox";
+import { assertFakeFallout4Active, pluginBytes } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
 import { startArchiveServer } from "../downloadServer";
 import { VortexMcpClient } from "../mcpClient";
@@ -26,8 +26,7 @@ import {
 const config = loadConfig();
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
-if ((await mcp.call<string | null>("vortex_query", { selector: "activeGameId" })) !== "fallout4")
-  throw new Error("This check needs the fake Fallout 4: `doodlebot up --bethesda-sandbox`.");
+await assertFakeFallout4Active(mcp, config.cacheDir);
 
 const stamp = String(Date.now());
 const plugin = `Direct${stamp}.esp`;

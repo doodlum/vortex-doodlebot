@@ -1,7 +1,6 @@
 /**
  * Opt-in check of the Plugins page's Mod column link against the fake Fallout 4:
- * doodlebot test plugins-mod-link (instance started with
- * `up --dev-dir <checkout> --bethesda-sandbox`).
+ * doodlebot test plugins-mod-link (instance started with `up --bethesda-sandbox`).
  *
  * Clicking a plugin's mod name opens the Mods page scrolled to that mod, with it
  * highlighted. That is how users find which mod a plugin came from. On 2.7 the page opened at
@@ -14,10 +13,8 @@
  *
  *   --mods <n>   mods with one plugin each (default 300)
  */
-import path from "node:path";
-
 import { attachToRenderer } from "../cdp";
-import { bethesdaSandboxPaths, pluginBytes } from "../bethesdaSandbox";
+import { assertFakeFallout4Active, pluginBytes } from "../bethesdaSandbox";
 import { loadConfig } from "../config";
 import { deployMods } from "../deployment";
 import { fillFilterScript, seedLibrary } from "../largeLibrary";
@@ -34,16 +31,7 @@ const MODS = "mods";
 const config = loadConfig();
 const mcp = new VortexMcpClient({ port: config.mcpPort, token: config.mcpToken });
 await mcp.waitUntilReady();
-const status = await mcp.call<{ paths?: { documents: string | null } }>("automation_status");
-if (
-  (await mcp.call<string | null>("vortex_query", { selector: "activeGameId" })) !== "fallout4" ||
-  path.resolve(status.paths?.documents ?? "").toLowerCase() !==
-    path.resolve(bethesdaSandboxPaths(config.cacheDir).documents).toLowerCase()
-) {
-  throw new Error(
-    "This check needs the fake Fallout 4: `doodlebot up --dev-dir <checkout> --bethesda-sandbox`.",
-  );
-}
+await assertFakeFallout4Active(mcp, config.cacheDir);
 
 const { modIds } = await seedLibrary(mcp, {
   count,

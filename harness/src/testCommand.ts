@@ -30,6 +30,7 @@ const script = (file: string) => (args: string[]) => [
   ...args,
 ];
 
+/** Every suite runs on a released Vortex as well as a source build: none needs a source build. */
 export const SUITES: Suite[] = [
   {
     name: "core",
@@ -40,16 +41,6 @@ export const SUITES: Suite[] = [
     name: "oauth",
     summary: "opt-in: cached sandbox OAuth survives a fresh restore",
     argv: playwright("harness/oauth.playwright.config.ts"),
-  },
-  {
-    name: "zoom",
-    summary: "zoom controls, shortcuts and layout (source build)",
-    argv: script("zoom"),
-  },
-  {
-    name: "panels",
-    summary: "right-hand split view (source build, Bethesda sandbox)",
-    argv: script("panels"),
   },
   {
     name: "large-library",

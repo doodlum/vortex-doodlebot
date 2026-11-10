@@ -227,8 +227,8 @@ Only one doodlebot Vortex runs at a time on the machine, driven by one agent. Th
 convention, backed by a few refusals for the cases where a second command would damage data. No
 command asks who you are.
 
-- Every doodlebot launcher (`up`, `setup`, `bootstrap`, the core suite's fixture, the
-  signed-out zoom check) writes the instance record `~/.doodlebot/instance.json` right after it
+- Every doodlebot launcher (`up`, `setup`, `bootstrap`, the core suite's fixture)
+  writes the instance record `~/.doodlebot/instance.json` right after it
   starts Vortex: pid, start time, cache folder, profile folder, MCP port and, for a source
   build, the checkout. The path is per user, whatever workspace or `--cache-dir` is used, so
   the rule spans every workspace on the machine. The record is cleared after a confirmed exit.
@@ -241,7 +241,7 @@ command asks who you are.
   `doodlebot down` before <action>." `up` and `bootstrap` first stop their own cache's
   leftover Vortex; another cache's is never touched. `doodlebot update` refuses the same way.
 - Commands that rewrite or record a checkout (`build`, source install and build,
-  `evidence run`, `pr-preflight`'s revert check, `vortex-e2e`'s patch) refuse while Vortex runs
+  `evidence run`, `pr-preflight`'s revert check) refuse while Vortex runs
   from it: "A harness Vortex is running from <checkout> (pid N); run `doodlebot down`
   before <action>."
 - `down` waits for a clean exit and clears the record. An instance that does not exit is

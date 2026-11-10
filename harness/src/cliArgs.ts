@@ -23,7 +23,6 @@ export const BOOLEAN_FLAGS = new Set([
   "installed",
   "sandbox",
   "bethesda-sandbox",
-  "isolate-user-folders",
   "headless",
   "production",
   "oauth",
@@ -56,7 +55,7 @@ export const BOOLEAN_FLAGS = new Set([
  * Flags whose value is a path the caller typed, so it is resolved against the caller's directory
  * (`callerCwd()`), not the workspace the shim runs the CLI in. Every value of a repeated flag is.
  * pr-preflight's `--project-dir`, `--test`, `--revert` and `--revert-hunk` (relative to the
- * checkout) and vortex-e2e's `--spec` (relative to packages/e2e) are deliberately absent.
+ * checkout) are deliberately absent.
  */
 export const PATH_FLAGS = new Set([
   "dev-dir",
@@ -73,7 +72,6 @@ export const PATH_FLAGS = new Set([
   "args-file",
   "from",
   "cwd",
-  "compare",
   "ffmpeg",
   "a",
   "b",

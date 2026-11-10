@@ -38,7 +38,7 @@ import {
 } from "./instance";
 import { VortexMcpClient } from "./mcpClient";
 import { requireOAuth } from "./auth";
-import { bethesdaSandboxPaths } from "./bethesdaSandbox";
+import { ensureFallout4Inis, isBethesdaSandbox } from "./bethesdaSandbox";
 import { resetDisposableGameData } from "./sandbox";
 import { importLogin } from "./loginImport";
 import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
@@ -51,7 +51,12 @@ import {
 } from "./runningVortex";
 import { assertNoOwnVortex } from "./ownVortex";
 import { assertGamePathAllowed } from "./gameCommand";
-import { protectUserFolders, settlePendingRestores } from "./userFolders";
+import {
+  protectUserFolders,
+  settlePendingRestores,
+  userFolderRoots,
+  userFoldersOf,
+} from "./userFolders";
 import { missingBuildOutputs } from "./source";
 
 /**
@@ -279,6 +284,12 @@ export async function bootstrap(
   if (pending !== undefined)
     report(`backed up the user folders of ${config.gameId} to ${pending.backupDir}`);
   try {
+    // The fake Fallout 4 uses the real Fallout 4 folders, backed up just now. Vortex needs the
+    // game's INI files there; the ones written here are the run's, so `down` removes them.
+    if (pending !== undefined && isBethesdaSandbox(config)) {
+      const myGames = userFoldersOf("fallout4", userFolderRoots())![0]!;
+      for (const file of ensureFallout4Inis(myGames)) report(`wrote ${file} for this run`);
+    }
     const result = await launchProfile(config, { ...options, fresh }, apiKey, started);
     writeLastBuild(config.cacheDir, build);
     return result;
@@ -360,18 +371,9 @@ async function launchProfile(
     removeInstanceDir(live);
     fs.cpSync(snapshot, live, { recursive: true });
     // The reset profile has deployed nothing, so neither may its disposable game.
-    const bethesda = bethesdaSandboxPaths(config.cacheDir);
-    const isBethesdaSandbox =
-      config.gamePath !== undefined &&
-      path.resolve(config.gamePath).toLowerCase() === path.resolve(bethesda.gamePath).toLowerCase();
     if (
       options.preserveGameFixture !== true &&
-      resetDisposableGameData(
-        config,
-        isBethesdaSandbox
-          ? { keep: ["Fallout4.esm"], pluginLists: path.dirname(bethesda.pluginsTxt) }
-          : {},
-      )
+      resetDisposableGameData(config, isBethesdaSandbox(config) ? { keep: ["Fallout4.esm"] } : {})
     ) {
       report("cleared the disposable game's deployed files");
     }

@@ -33,8 +33,9 @@ own Vortex.
 
 A separate Vortex profile does not by itself protect a game folder: deployment writes to the
 game path the profile uses. Use the sandbox game, or a copy of a real game. Game support can also
-write the Windows account's Documents and AppData folders; back them up before a real-game run,
-or use a test machine or QA-only Windows account. See
+write the Windows account's Documents and AppData folders. Doodlebot backs them up before each
+run of a known game or the Bethesda sandbox, which uses your real Fallout 4 folders, and restores
+them at `down`. A test machine or QA-only Windows account is still safest. See
 [Use real games and baselines](guides/games-and-baselines.md).
 
 Benchmarks run in signed-out profiles, so their runs do not use your account.

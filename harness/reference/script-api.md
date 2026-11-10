@@ -97,12 +97,6 @@ export interface HarnessConfig {
    */
   production: boolean;
   /**
-   * Private stand-ins for the per-user folders a Bethesda game writes to: plugins.txt
-   * under LocalAppData, INI files under Documents. Set by the Bethesda sandbox; when set,
-   * Vortex must start with both redirected or not at all.
-   */
-  profileRedirect?: { localAppData: string; documents: string };
-  /**
    * True when an API key is configured but deliberately not used: sandbox runs are
    * local-only, and a seeded key makes every local install wait on Nexus lookups.
    */
@@ -116,7 +110,7 @@ export interface HarnessConfig {
 export function findInstalledVortex(): string | undefined;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L160).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L154).
 
 Resolve how to start Vortex.
 
@@ -130,7 +124,7 @@ export function resolveTarget(
 ): VortexTarget;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L173).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L167).
 
 Config loading must not throw just because Vortex is missing — `doctor` exists
 precisely to report that, and it can report nothing if building the config
@@ -144,13 +138,13 @@ export function resolveTargetSafely(
 ): VortexTarget;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L252).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L246).
 
 ```typescript
 export type ConfigOverrides = Partial<HarnessConfig>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L266).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L260).
 
 Flags (as overrides) first, then the environment, then the defaults.
 
@@ -158,7 +152,7 @@ Flags (as overrides) first, then the environment, then the defaults.
 export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L269).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L263).
 
 This repo — holds the built extension that gets copied into an instance.
 
@@ -166,13 +160,13 @@ This repo — holds the built extension that gets copied into an instance.
 export function extensionRoot(): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L296).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L290).
 
 ```typescript
 export const MCP_EXTENSION_ID;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L300).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L294).
 
 Earlier ids of this extension; removed from a profile before installing, so two servers never load.
 
@@ -180,7 +174,7 @@ Earlier ids of this extension; removed from a profile before installing, so two 
 export const LEGACY_EXTENSION_IDS;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L302).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L296).
 
 Optional helper for integrations that specifically need the legacy API key.
 Collections use requireOAuth instead. Credentials belong in local setup,
@@ -190,7 +184,7 @@ never in chat or committed files.
 export function requireApiKey(config: HarnessConfig): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L309).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L303).
 
 ## mcpClient
 
@@ -383,13 +377,13 @@ export async function registerLaunchedProcess(
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L66).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L65).
 
 ```typescript
 export function authCacheFile(config: HarnessConfig): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L116).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L115).
 
 ```typescript
 export interface VortexInstance {
@@ -400,7 +394,7 @@ export interface VortexInstance {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L124).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L123).
 
 Build the environment for an isolated Vortex instance.
 
@@ -423,7 +417,7 @@ Where the harness reads a Nexus API key from; stripped from Vortex's env unless 
 export const API_KEY_VARIABLES;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L148).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L147).
 
 ```typescript
 export function buildInstanceEnv(
@@ -432,7 +426,7 @@ export function buildInstanceEnv(
 ): Record<string, string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L150).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L149).
 
 Create the directory layout Vortex expects before first launch.
 
@@ -446,7 +440,7 @@ like a naming problem.
 export function prepareUserDataDir(userDataDir: string, appName: string): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L200).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L193).
 
 Copy the built extension into an instance's plugins directory.
 
@@ -457,7 +451,7 @@ match info.json's `id` or Vortex treats it as a different extension next run.
 export function installMcpExtension(userDataDir: string, source = extensionRoot()): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L211).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L204).
 
 Ensure the extension is built, building it when needed. Returns this repo's root.
 
@@ -467,7 +461,7 @@ export async function ensureExtensionBuilt(
 ): Promise<string>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L257).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L250).
 
 Remove an instance directory, retrying past transient Windows locks.
 
@@ -479,7 +473,7 @@ turns that into a short wait rather than a failed run.
 export function removeInstanceDir(dir: string, attempts = 5): void;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L275).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L268).
 
 Shut down an instance left behind by an earlier run.
 
@@ -495,7 +489,7 @@ that says nothing about the real cause. The PID is only waited on, never signall
 export async function stopStaleInstance(config: HarnessConfig): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L305).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L298).
 
 `down`: stop the one running harness Vortex, wherever its cache is. The record names its
 cache and MCP port, so a Vortex left in a test cache, or started with another
@@ -510,7 +504,7 @@ export async function stopRunningInstance(
 ): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L316).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L309).
 
 ```typescript
 export interface LaunchOptions {
@@ -525,7 +519,7 @@ export interface LaunchOptions {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L382).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L375).
 
 Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio.log`.
 
@@ -533,7 +527,7 @@ Where a detached Vortex's own stdout and stderr go: `<instance dir>/vortex-stdio
 export function stdioLogFile(userDataDir: string): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L394).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L387).
 
 How Vortex is spawned. Detached, so it outlives the `doodlebot` process that started it, and
 with none of that process's stdio: stdin is ignored and stdout/stderr go to a log file (or
@@ -549,7 +543,7 @@ export function launchStdio(logFd: number | undefined): {
 };
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L414).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L407).
 
 Start Vortex and wait until its MCP server answers.
 
@@ -568,7 +562,7 @@ screen, and every subsequent tool call would fail confusingly.
 export async function launchVortex(options: LaunchOptions): Promise<VortexInstance>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L437).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L430).
 
 Stop an instance, preferring Vortex's own graceful shutdown.
 
@@ -584,7 +578,7 @@ export async function stopInstance(
 ): Promise<void>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L593).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/instance.ts#L566).
 
 ## jsonFile
 
@@ -714,12 +708,6 @@ export interface BethesdaSandbox {
   gameId: "fallout4";
   gamePath: string;
   dataPath: string;
-  localAppData: string;
-  documents: string;
-  /** Where Fallout 4's plugins.txt lives inside the sandbox. */
-  pluginsTxt: string;
-  /** Where Fallout 4's INI files live inside the sandbox. */
-  myGames: string;
 }
 ```
 
@@ -731,45 +719,61 @@ The sandbox's layout, without creating anything.
 export function bethesdaSandboxPaths(cacheDir: string): BethesdaSandbox;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L101).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L95).
 
-Create the fake game and its private profile folders. Idempotent: an existing file is
-left alone, so mods deployed into it and settings Vortex wrote survive a restart.
+Create the fake game. Idempotent: an existing file is left alone, so mods deployed into it
+survive a restart.
 
 ```typescript
 export function ensureBethesdaSandbox(cacheDir: string): BethesdaSandbox;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L123).
-
-Any config, with Vortex's per-user folders moved into the cache: for games other than
-the fake Fallout 4 that write under Documents or LocalAppData.
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L104).
 
 ```typescript
-export function isolateUserFolders(config: HarnessConfig): HarnessConfig;
+export const FALLOUT4_INI_FILES;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L148).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L118).
 
-Harness config for the fake Fallout 4, with Vortex's per-user folders redirected.
+Write the Fallout 4 INI files missing from `myGames` (the real `Documents\My Games\Fallout4`).
+Vortex refuses to activate the game's profile without them. Call it only after that folder
+is backed up: the files are then the run's, and `down` removes them again. Existing files are
+left alone. Returns the files written.
+
+```typescript
+export function ensureFallout4Inis(myGames: string): string[];
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L126).
+
+Harness config for the fake Fallout 4.
 
 ```typescript
 export function bethesdaSandboxConfig(config: HarnessConfig): HarnessConfig;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L158).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L139).
 
-Whether Vortex resolved its per-user folders to the sandbox's. Anything else means
-managing the game would write to the operator's real profile, and must not happen.
+Whether the config manages the fake Fallout 4 of its cache.
 
 ```typescript
-export function assertRedirected(
-  expected: NonNullable<HarnessConfig["profileRedirect"]>,
-  actual: { documents: string | null; localAppData: string | null } | undefined,
-): void;
+export function isBethesdaSandbox(config: HarnessConfig): boolean;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L172).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L148).
+
+Throw unless the running instance's active game is the fake Fallout 4 of `cacheDir`, so a
+check never seeds plugins into a real game.
+
+```typescript
+export async function assertFakeFallout4Active(
+  mcp: VortexMcpClient,
+  cacheDir: string,
+): Promise<void>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L160).
 
 Fallout 4's own plugins, which always load first and in this order.
 
@@ -777,7 +781,7 @@ Fallout 4's own plugins, which always load first and in this order.
 export const FALLOUT4_NATIVES;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L198).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L182).
 
 An entry of Vortex's `state.loadOrder`, keyed by lower-case plugin id.
 
@@ -789,7 +793,7 @@ export interface LoadOrderEntry {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L210).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L194).
 
 A load order that depends only on which plugins exist: the game's natives first, then the
 other masters, light plugins and plugins, each by name. Vortex's own order after a deploy
@@ -803,7 +807,7 @@ export function deterministicLoadOrder(
 ): string[];
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L227).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L211).
 
 ```typescript
 export interface LoadOrderResult {
@@ -814,7 +818,7 @@ export interface LoadOrderResult {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L250).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L234).
 
 Put the active game's plugins in `deterministicLoadOrder`, with LOOT's automatic sorting off
 so it stays that way, and check that Vortex's state reads back in that order. Call it after
@@ -827,7 +831,7 @@ export async function setDeterministicLoadOrder(
 ): Promise<LoadOrderResult>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L262).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/bethesdaSandbox.ts#L246).
 
 ## collectionScale
 

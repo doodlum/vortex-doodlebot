@@ -45,7 +45,7 @@ On Windows a captured `doodlebot up` or `setup` can keep its output capture open
 return: run it in the background with output to a log file (KNOWLEDGE.md, harness/AGENTS.md).
 
 Only one doodlebot Vortex runs at a time **on the machine**, across every workspace. Every kit
-launcher (`up`, `setup`, `bootstrap`, the core suite's fixture, `doodlebot test zoom --signed-out`)
+launcher (`up`, `setup`, `bootstrap`, the core suite's fixture)
 writes the instance record `~/.doodlebot/instance.json` and refuses while a live one exists,
 including one started from another workspace or cache:
 "A harness Vortex is running (pid N, cache C); run `doodlebot down` before <action>."

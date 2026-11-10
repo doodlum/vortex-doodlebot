@@ -51,12 +51,12 @@ Run `/doodlebot:start` and name the target and game, for example:
 
 The games you can name:
 
-| Game                 | Flag                            | Notes                                                                                      |
-| -------------------- | ------------------------------- | ------------------------------------------------------------------------------------------ |
-| The sandbox          | `--sandbox`                     | A disposable game with real install, enable, deploy and purge; not playable                |
-| The Bethesda sandbox | `--bethesda-sandbox`            | A fake Fallout 4 with plugins and a private Documents and LocalAppData; source builds only |
-| A real game          | `--game <id> --game-path <dir>` | A registered copy of the game folder                                                       |
-| No game              | `--no-game`                     | Only the global Vortex UI                                                                  |
+| Game                 | Flag                            | Notes                                                                           |
+| -------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
+| The sandbox          | `--sandbox`                     | A disposable game with real install, enable, deploy and purge; not playable     |
+| The Bethesda sandbox | `--bethesda-sandbox`            | A fake Fallout 4 with plugins; its Fallout 4 folders are backed up and restored |
+| A real game          | `--game <id> --game-path <dir>` | A registered copy of the game folder                                            |
+| No game              | `--no-game`                     | Only the global Vortex UI                                                       |
 
 ## Keep a real game safe
 
@@ -76,7 +76,8 @@ a folder under `steamapps\common`, is never used: a start with it, or with `--ga
 
 Game support also writes the Windows account's Documents and AppData folders, for example a
 game's settings and plugin list (`Documents\My Games\<game>` and `%LOCALAPPDATA%\<game>`).
-Doodlebot protects them for every game it knows, and for the Bethesda sandbox:
+Doodlebot protects them for every game it knows, and for the Bethesda sandbox, which uses your
+real Fallout 4 folders on any Vortex build:
 
 - Before Vortex starts, it backs both folders up into the profile cache. It refuses to start
   while the game itself runs, or when the backup cannot be made.
@@ -87,8 +88,6 @@ Doodlebot protects them for every game it knows, and for the Bethesda sandbox:
   start is refused. Run `doodlebot game restore <gameId>` to see the changed files, then choose:
   `--all` restores them all, `--keep` keeps them all, and `--file <path>` restores the ones you
   name.
-
-`--isolate-user-folders` still redirects those folders for Vortex source builds.
 
 ## What's next
 

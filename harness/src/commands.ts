@@ -59,7 +59,6 @@ export const commands: CommandEntry[] = [
   { name: "evidence", subcommands: ["identity", "run", "runtime"] },
   { name: "pr-checks" },
   { name: "pr-preflight" },
-  { name: "vortex-e2e" },
 ];
 
 export function findCommand(name: string): CommandEntry | undefined {

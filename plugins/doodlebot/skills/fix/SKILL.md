@@ -74,7 +74,7 @@ before building or changing the checkout.
 7. **Gates.** Run the scoped checks first, then Vortex's own `pnpm run verify` in the
    checkout (with the test Vortex stopped). Keep failures, and say whether each is a
    regression, a known base failure or an external blocker. Never call a blocked gate
-   passed. Run Vortex's E2E only when asked (`doodlebot vortex-e2e --checkout <checkout>`).
+   passed. Run Vortex's E2E only when asked, with Vortex's own scripts in the checkout.
 8. **Evidence.** Keep the base and fixed observations, screenshots, test output and
    preflight report under `<workspace>/harness/.artifacts/` for the PR.
 

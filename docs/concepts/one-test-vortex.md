@@ -53,7 +53,7 @@ A record counts as running only while its process is alive and is `Vortex.exe`, 
   the regression suite.
 
 - **Changing or recording the checkout it runs from**: building it, installing into it,
-  recording evidence in it, reverting it or patching it:
+  recording evidence in it or reverting it:
 
   ```text
   A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.

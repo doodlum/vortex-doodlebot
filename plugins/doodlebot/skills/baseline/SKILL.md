@@ -26,12 +26,12 @@ restores. Each target, game and game folder has its own. Refreshing it keeps the
 
 ## Pick the flags
 
-| The person wants                   | Flags                                                    |
-| ---------------------------------- | -------------------------------------------------------- |
-| The sandbox game (default)         | `--installed --sandbox`                                  |
-| A real game                        | `--installed --game <id> --game-path <copy of the game>` |
-| A source build with the sandbox    | `--dev-dir <checkout> --sandbox`                         |
-| A source build with fake Fallout 4 | `--dev-dir <checkout> --bethesda-sandbox`                |
+| The person wants                | Flags                                                    |
+| ------------------------------- | -------------------------------------------------------- |
+| The sandbox game (default)      | `--installed --sandbox`                                  |
+| A real game                     | `--installed --game <id> --game-path <copy of the game>` |
+| A source build with the sandbox | `--dev-dir <checkout> --sandbox`                         |
+| Fake Fallout 4                  | `--installed --bethesda-sandbox`                         |
 
 For a real game, `--game-path` must be a **copy** of the game folder that the person made
 for testing. Doodlebot never copies the game; it deploys into the folder you give, so pass

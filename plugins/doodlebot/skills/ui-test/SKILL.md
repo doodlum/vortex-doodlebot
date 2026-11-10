@@ -105,23 +105,15 @@ the machine-wide instance record at launch and clears it after a confirmed exit.
 ## Opt-in checks
 
 These run outside the core suite, through `doodlebot test <suite>` (run `doodlebot test --list`
-for all of them):
-
-- `doodlebot test zoom` needs a source build with zoom; `doodlebot test zoom --signed-out`
-  starts its own anonymous profile, so `doodlebot down` first.
-- `doodlebot test panels` checks the right-hand split view against a running Bethesda
-  sandbox source build (`doodlebot up --dev-dir <checkout> --bethesda-sandbox`), with the
-  same cache and ports as that `up`. The toggle is `[data-split-view-toggle]`
-  (`aria-pressed`), the chooser `[data-panel-chooser="panel"]`; both panes stay at least
-  440 px wide.
+for all of them). Each runs on a released Vortex as well as a source build. The Plugins page and
+Bethesda checks need the fake Fallout 4 (`doodlebot up --bethesda-sandbox`), with the same cache
+and ports as that `up`.
 
 ## Vortex's own E2E suite
 
-Only when asked and when source mutation is authorized: run the failing spec with
-`doodlebot vortex-e2e --checkout <checkout> --spec src/tests/<spec>.spec.ts`. It runs in
-CI's hidden-window mode with the fixture's startup race patched for the run only, and
-refuses while a test Vortex runs from that checkout. Keep the failing report, then rerun
-the same command with `--compare <report>` after the change. For a PR's failing checks,
+Only when asked: run the failing spec in the Vortex checkout with Vortex's own scripts, after
+`doodlebot down` if a test Vortex runs from that checkout. Keep the failing output, then rerun
+the same spec after the change. For a PR's failing checks,
 start with `doodlebot pr-checks <pr>`, which separates test failures from upload failures.
 
 ## Finish

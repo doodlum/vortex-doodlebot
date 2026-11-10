@@ -35,7 +35,7 @@ on this profile.
 | A source build                | `--dev-dir <checkout>` (default `<workspace>/.vortex-src`)     |
 | Source build, production mode | `--dev-dir <checkout> --production` (after a production build) |
 | Sandbox game (default)        | `--sandbox`                                                    |
-| Fake Fallout 4 (source only)  | `--bethesda-sandbox`                                           |
+| Fake Fallout 4                | `--bethesda-sandbox`                                           |
 | A copy of a real game         | `--game <id> --game-path <copy>`                               |
 | No game                       | `--no-game`                                                    |
 | Reset to the baseline         | add `--fresh`                                                  |

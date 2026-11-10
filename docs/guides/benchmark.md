@@ -20,13 +20,13 @@ The agent measures with one of doodlebot's five performance checks. It maps your
 check and its options, and tells you its choice. A request outside them is answered with the
 nearest check, or declined.
 
-| Check              | What it measures                                                        | Needs                                    |
-| ------------------ | ----------------------------------------------------------------------- | ---------------------------------------- |
-| `mods-scroll`      | Scrolling the Mods table with many mods (`--mods <n>`, default 3,000)   | The sandbox                              |
-| `large-library`    | Filtering, clearing, installing and deploying with a large mod library  | The sandbox                              |
-| `collection-scale` | Installing and updating a large generated collection (`--members <n>`)  | The sandbox                              |
-| `download-churn`   | State writes and long tasks while many downloads run                    | Any game                                 |
-| `plugins-page`     | Scrolling, filtering and toggling on the Plugins page (`--plugins <n>`) | The Bethesda sandbox, source builds only |
+| Check              | What it measures                                                        | Needs                |
+| ------------------ | ----------------------------------------------------------------------- | -------------------- |
+| `mods-scroll`      | Scrolling the Mods table with many mods (`--mods <n>`, default 3,000)   | The sandbox          |
+| `large-library`    | Filtering, clearing, installing and deploying with a large mod library  | The sandbox          |
+| `collection-scale` | Installing and updating a large generated collection (`--members <n>`)  | The sandbox          |
+| `download-churn`   | State writes and long tasks while many downloads run                    | Any game             |
+| `plugins-page`     | Scrolling, filtering and toggling on the Plugins page (`--plugins <n>`) | The Bethesda sandbox |
 
 For example, "the Mods table with 3,000 mods" is `doodlebot test mods-scroll --mods 3000`.
 

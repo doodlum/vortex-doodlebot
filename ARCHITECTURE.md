@@ -175,8 +175,7 @@ read one file rather than coordinate processes.
   it. The older `harness/.cache/instance.json` is deleted when found, unless it names a running
   Vortex, which refuses the launch or `down` (`removeLegacyInstanceFiles` in `instance.ts`).
 - **Every kit launcher writes it** right after spawn and before readiness: `launchVortex` in
-  `instance.ts` (`up`, `setup`, `bootstrap`), the core suite's fixture and the signed-out zoom
-  check. A record that cannot be written stops the child and fails the launch. A Vortex started
+  `instance.ts` (`up`, `setup`, `bootstrap`) and the core suite's fixture. A record that cannot be written stops the child and fails the launch. A Vortex started
   outside these launchers, such as a raw Playwright or Electron launch, writes no record and is
   invisible to the refusals.
 - **It is cleared after a confirmed exit**: `stopInstance` and `down` clear it once Vortex has
@@ -186,11 +185,11 @@ read one file rather than coordinate processes.
   A reused pid that belongs to another Electron app still looks alive; deleting the file is
   the recovery.
 - **Refusals.** `assertNoHarnessVortex(action)` stops a second launch, the core suite (a
-  Playwright `globalSetup`) and the signed-out zoom check while a harness Vortex runs;
+  Playwright `globalSetup`) while a harness Vortex runs;
   `bootstrap` applies it before restarting anything when the running Vortex belongs to another
   cache, so a second workspace gets the refusal rather than a port error.
   `assertNoVortexRunningFrom(checkout, action)` stops `build`, source setup's builds and
-  installs, `evidence run`, `pr-preflight`'s revert check and `vortex-e2e`'s patch on the
+  installs, `evidence run` and `pr-preflight`'s revert check on the
   checkout the running Vortex was launched from. `bin/update.cjs` applies the same running rule
   to both records before updating a workspace. Each message names the pid and tells the caller
   to run `doodlebot down` first.

@@ -331,7 +331,7 @@ describe("stopping", () => {
 
   it("up never quits another live cache's Vortex, even one whose cache lies inside its own", async () => {
     const config = installedConfig({ mcpPort: await freePort() });
-    const nested = path.join(config.cacheDir, "zoom-signed-out");
+    const nested = path.join(config.cacheDir, "nexus-smoke");
     writeInstanceRecord(record(process.pid, nested));
     const ping = vi.spyOn(VortexMcpClient.prototype, "ping").mockResolvedValue(true);
     const call = vi

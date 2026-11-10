@@ -16,7 +16,8 @@ import {
 } from "./bootstrap";
 import { assertNoOwnVortex } from "./ownVortex";
 import { assertGamePathAllowed } from "./gameCommand";
-import { protectUserFolders, settlePendingRestores } from "./userFolders";
+import { protectUserFolders, settlePendingRestores, userFoldersOf } from "./userFolders";
+import { bethesdaSandboxPaths } from "./bethesdaSandbox";
 import type { HarnessConfig } from "./config";
 import { requireOAuth } from "./auth";
 import { authCacheFile, launchVortex, stopStaleInstance } from "./instance";
@@ -60,6 +61,8 @@ vi.mock("./gameCommand", () => ({ assertGamePathAllowed: vi.fn() }));
 vi.mock("./userFolders", () => ({
   protectUserFolders: vi.fn(async () => undefined),
   settlePendingRestores: vi.fn(async () => undefined),
+  userFolderRoots: vi.fn(() => ({ documents: "", localAppData: "" })),
+  userFoldersOf: vi.fn(() => []),
 }));
 
 vi.mock("./auth", () => ({
@@ -168,6 +171,26 @@ describe("one harness Vortex per machine", () => {
     expect(order(settlePendingRestores)).toBeLessThan(order(assertNoOwnVortex));
     expect(order(assertNoOwnVortex)).toBeLessThan(order(protectUserFolders));
     expect(order(protectUserFolders)).toBeLessThan(order(launchVortex));
+    await result.instance.stop();
+  });
+
+  it("backs up the fake Fallout 4's real folders on a released build, then writes its INI files", async () => {
+    const config = fakeConfig();
+    const fake = { ...config, gamePath: bethesdaSandboxPaths(config.cacheDir).gamePath };
+    const myGames = path.join(config.cacheDir, "real", "My Games", "Fallout4");
+    vi.mocked(userFoldersOf).mockReturnValueOnce([myGames, path.join(config.cacheDir, "local")]);
+    vi.mocked(protectUserFolders).mockImplementationOnce(async (gameId) => {
+      expect(fs.existsSync(myGames)).toBe(false);
+      return { gameId, backupDir: path.join(config.cacheDir, "backup"), startedAt: "now" };
+    });
+    const result = await bootstrap(fake, { fresh: true });
+    expect(protectUserFolders).toHaveBeenCalledWith("fallout4", config.cacheDir);
+    expect(fs.readdirSync(myGames).toSorted()).toEqual(
+      ["Fallout4.ini", "Fallout4Custom.ini", "Fallout4Prefs.ini"].toSorted(),
+    );
+    expect(vi.mocked(protectUserFolders).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(launchVortex).mock.invocationCallOrder[0]!,
+    );
     await result.instance.stop();
   });
 

@@ -92,6 +92,9 @@ client), `vortexWindow` (the rendered window), `managedGame` (the test game's ID
 consequence. [Add a regression test](guides/regression-tests.md) shows how the agent writes and
 runs one.
 
+Every test and check must run on a released Vortex as well as a source build. Testing that only a
+source build can run is not kept.
+
 ## Maintain the documentation
 
 The site is built with MkDocs Material. Pages live in `docs/`, and the navigation is in

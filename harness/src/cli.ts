@@ -49,14 +49,13 @@ import { buildCheckout } from "./vortexBuild";
 import { captureLogin } from "./bootstrap";
 import { requireOAuth, waitForOAuth, type AuthStatus } from "./auth";
 import { localOnlyConfig, sandboxConfig } from "./sandbox";
-import { bethesdaSandboxConfig, isolateUserFolders } from "./bethesdaSandbox";
+import { bethesdaSandboxConfig } from "./bethesdaSandbox";
 import { installLocalMod } from "./localMod";
 import { runSlowDownloads } from "./slowDownload";
 import { installCollection } from "./collections";
 import { deployMods, needsDeployment, purgeGame } from "./deployment";
 import { runE2e } from "./e2e";
 import { importLogin } from "./loginImport";
-import { e2eExitCode, formatE2eReport, playwrightRunner, runVortexE2e } from "./vortexE2e";
 import { versionCommand } from "./versionCommand";
 import { formatLink, link } from "./linkCommand";
 import { testCommand } from "./testCommand";
@@ -128,8 +127,7 @@ function configFrom(
   if (flags["bethesda-sandbox"] === true) {
     return result(localOnlyConfig(bethesdaSandboxConfig(config), keepKey));
   }
-  const chosen = flags.sandbox === true ? localOnlyConfig(sandboxConfig(config), keepKey) : config;
-  return result(flags["isolate-user-folders"] === true ? isolateUserFolders(chosen) : chosen);
+  return result(flags.sandbox === true ? localOnlyConfig(sandboxConfig(config), keepKey) : config);
 }
 
 function log(message: string): void {
@@ -221,15 +219,6 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
-  vortex-e2e             Run Vortex's own E2E suite (packages/e2e, CI=1, one worker, no
-                         retries), with the kit's fixture patches applied for the run
-                         and restored byte-identically, and account specs left out when
-                         their credentials are absent
-    --checkout <dir>     Vortex checkout (default: .vortex-src)
-    --spec <file>        Spec to run, relative to packages/e2e or src/tests; repeatable
-    --grep <re> --grep-invert <re>   Playwright title filters
-    --compare <json>     Diff against an earlier report: regressions vs pre-existing
-    --json               Print the report as JSON (Playwright's output goes to stderr)
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -298,11 +287,10 @@ Target and isolation (repeat the same flags for all commands)
   --release <version>    A release registered by release get
   --dev-dir <path>       Explicit source checkout
   --sandbox              Disposable test game for local install/deploy tests
-  --bethesda-sandbox     Fake Fallout 4 (plugins, LOOT, masters) with private
-                         LocalAppData and Documents; no game install needed
+  --bethesda-sandbox     Fake Fallout 4 (plugins, LOOT, masters); no game install needed.
+                         The real Fallout 4 user folders are backed up and restored at down
   --with-api-key         Seed harness/.env's API key into a sandbox profile too (off by
                          default: with a key, every local install waits on a Nexus lookup)
-  --isolate-user-folders Give any game private LocalAppData and Documents folders
   --game <id> --game-path <dir>   Real game integration: a registered copy only
   --cache-dir <dir>      Profiles and private OAuth cache
   --port <n> --cdp-port <n>      MCP/CDP endpoints (3701/9222 by default)
@@ -421,24 +409,6 @@ async function main(): Promise<number> {
     }
     log(flags.json === true ? JSON.stringify(report, null, 2) : formatPreflightReport(report));
     return report.passed ? 0 : 1;
-  }
-
-  // This suite owns its own disposable instances; never load the operator's app/profile config.
-  if (command === "vortex-e2e") {
-    const text = (name: string): string | undefined =>
-      typeof flags[name] === "string" ? flags[name] : undefined;
-    const report = await runVortexE2e({
-      checkout: text("checkout") ?? vortexSourceDir(),
-      artifactDir: text("artifact-dir") ?? path.join(REPO_ROOT, "harness", ".artifacts"),
-      specs: [...(lists.spec ?? []), ...positional],
-      grep: text("grep"),
-      grepInvert: text("grep-invert"),
-      compare: text("compare"),
-      runner: playwrightRunner(flags.json === true ? process.stderr : process.stdout),
-      onProgress: (message) => process.stderr.write(`${message}\n`),
-    });
-    log(flags.json === true ? JSON.stringify(report, null, 2) : formatE2eReport(report));
-    return e2eExitCode(report);
   }
 
   if (command === "build") {

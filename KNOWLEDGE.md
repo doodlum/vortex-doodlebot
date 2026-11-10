@@ -15,15 +15,10 @@ preventive tests. Existing undated entries require rechecking before a task reli
 
 ### Harness and extension invariants that broke once
 
-The next two entries were checked during the 2026-10-07 workflow rework on kit base
+The next entry was checked during the 2026-10-07 workflow rework on kit base
 `df5d2feef23b2dce2134d1433d299fad612741cb` plus its identified local changes. Recheck the linked
 source/tests when using another revision.
 
-- Repeated E2E test IDs can fail for different causes, and passed tests can disappear or skip.
-  Reconcile selection, outcome and failure evidence before declaring readiness.
-  Scope: native Vortex E2E reports and final readiness in the 2026-10-07 workflow rework.
-  Evidence: `compareRuns`/`e2eReportSchema` in [vortexE2e.ts](harness/src/vortexE2e.ts),
-  [vortexE2e.test.ts](harness/src/vortexE2e.test.ts) and [readiness.test.ts](harness/src/readiness.test.ts).
 - Configuration must not require Electron's auto-installing module. Resolve paths without
   side effects (`peekDevElectron`), then install only when launching or provisioning
   (`resolveDevElectron`).
@@ -246,13 +241,6 @@ out of memory…" (`NX_PARALLEL=2`).
 - `--inspect-brk` hangs every install: workers inherit break-on-start and Vortex hashes archives
   in one, while the renderer looks healthy. Stripping `process.execArgv` does not help.
 - `inspector.close()` from the attached session deadlocks main (0% CPU, no logging).
-- A `--require` preload's `require("electron")` resolves to the npm package's path string. Hook
-  `Module._load` and act on the app's own first `require("electron")`, as `mainPreload.ts` does.
-- In NODE_OPTIONS quoted backslashes are escapes; use forward slashes.
-
-Packaged Vortex ignores NODE_OPTIONS, so this works only on source builds. The harness checks the
-preload's record and kills the instance within 5 s otherwise; `automation_status.paths` shows what
-Vortex resolved.
 
 ### Vortex's E2E suite cannot give a local baseline as-is
 
@@ -260,11 +248,9 @@ Stock `packages/e2e` fails locally: account specs at once ("Missing required env
 E2E_NEXUS_FREE_USER_USERNAME"), and most others in fixture setup with "Vortex process exited
 unexpectedly with code 0 before the main window appeared" after a 6-minute timeout, a startup race
 in `packages/e2e/src/fixtures/vortex-app.ts`. Upstream CI runs E2E only for `packages/e2e` changes
-or on schedule, so for most PRs the local run is the only E2E gate. Use
-`doodlebot vortex-e2e --checkout <dir>` (harness/AGENTS.md, "Vortex's own E2E suite"): it
-applies `harness/patches/e2e-window-startup.patch` for the run, restores the file byte for byte,
-and leaves out account specs without credentials by reading each describe's
-`test.use({ nexusUser })` and tier title (files mix tiers). Don't run bare `playwright test`.
+or on schedule, so for most PRs the local run is the only E2E gate. doodlebot no longer runs this
+suite: run it in the Vortex checkout with Vortex's own scripts, and expect these failures until the
+race is fixed in Vortex. Account specs need their credentials.
 
 ## Games and profiles
 
@@ -486,7 +472,7 @@ Playwright summary (`pr-checks` flags this as a post-processing failure).
 
 Settled bounds can pass while chrome jumps mid-zoom: Electron's native zoom can replay an older
 factor after React compensated for a newer one. Modern zoom uses CSS scaling and a shared CSS
-variable, and `doodlebot test zoom` samples every frame of rapid scaling. At non-default zoom Playwright's
+variable; sample every frame of rapid scaling. At non-default zoom Playwright's
 viewport screenshot crops right and bottom, so title-bar buttons look off-screen; the harness uses
 CDP `Page.captureScreenshot` without a clip. Check rendered bounds too.
 
@@ -644,7 +630,7 @@ app after a crash, `down` reports it still running; check the process, then dele
 `~/.doodlebot/instance.json`. "A harness Vortex from an older doodlebot is running (pid N)…"
 comes from the older record `harness/.cache/instance.json`, which names a live Vortex started by
 an earlier kit; close it, and the file is deleted on the next launch. Scope: every kit launcher
-(`launchVortex` in `instance.ts`, the core fixture, `zoom.e2e.ts --signed-out`). Evidence:
+(`launchVortex` in `instance.ts`, the core fixture). Evidence:
 `runningVortex.ts`, `runningVortex.test.ts`, `instance.test.ts` and `bootstrap.test.ts`.
 
 ### What the instance record does not cover
@@ -810,9 +796,6 @@ JSON through `readJsonFile` (`harness/src/jsonFile.ts`), which strips it; new re
   Filter with `gh`'s own `--jq` instead.
 - Node one-liners through `bash -c`/heredocs lose backslashes: `"\r?\n"` in a regex, or
   `J:\tools\...`, come out as raw control characters. Put anything with escapes in a script file.
-- `doodlebot test zoom | tail -15` can hang after the test exits: a process it started keeps
-  the pipe open, and `tail` prints only at end of input, so the result is lost. Redirect to a
-  file (`> log 2>&1`) and read it.
 - A `doodlebot script` that ends with `await handle.close()` on an `attachToRenderer` handle can
   stay alive after writing its results. End it with `setTimeout(() => process.exit(0), 3000)`
   before `void handle.close()`.

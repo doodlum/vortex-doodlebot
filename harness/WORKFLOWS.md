@@ -174,10 +174,8 @@ not require a PR. After findings are resolved, run expensive final gates. Stop a
 the checkout before verify or any check that rewrites its output. Use the checkout's scoped
 non-writing checks while it is live.
 
-Vortex's own instructions say E2E runs only when asked. When requested, use
-`doodlebot vortex-e2e --checkout <dir>` for the baseline, then the
-head with `--compare <baseline-report.json>`. This runner temporarily patches fixtures and
-therefore needs source-mutation authorization. Preserve each first outcome and report
+Vortex's own instructions say E2E runs only when asked. When requested, run it in the Vortex
+checkout with Vortex's own scripts, for the baseline and then the head. Preserve each first outcome and report
 regressions, existing failures, skipped/missing tests, changed failure causes and execution
 conditions separately. Missing credentials and an all-skipped run cannot establish coverage.
 The kit's account-free core suite and upstream E2E prove different contracts.
@@ -194,11 +192,11 @@ independent QA and handoff. doodlebot runs one harness Vortex at a time on the m
 agent drives it. Nothing schedules or queues commands; the convention is yours to keep, backed by
 a few refusals where a second process would damage data:
 
-| What is protected                      | What refuses                                                                                                            |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| The running instance                   | Every kit launcher (`up`, `setup`, `bootstrap`, the core suite, `doodlebot test zoom --signed-out`), from any workspace |
-| The workspace code under it            | `doodlebot update`                                                                                                      |
-| The checkout a source Vortex runs from | `build`, `source` builds and installs, `evidence run`, `pr-preflight`'s revert check, `vortex-e2e`                      |
+| What is protected                      | What refuses                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| The running instance                   | Every kit launcher (`up`, `setup`, `bootstrap`, the core suite), from any workspace  |
+| The workspace code under it            | `doodlebot update`                                                                   |
+| The checkout a source Vortex runs from | `build`, `source` builds and installs, `evidence run`, `pr-preflight`'s revert check |
 
 Every kit launcher writes the instance record `~/.doodlebot/instance.json` (this path, whatever
 workspace or `--cache-dir` is used) when it starts Vortex, and refuses first if a recorded
@@ -225,7 +223,7 @@ user's own Vortex) writes no record and is invisible to these refusals.
   `pnpm run ci` passes (root AGENTS.md). If commit or publication is outside the brief,
   preserve the identified diff and hand it to the agent accountable for the task; candidate
   lessons go to that agent for verification and authorized integration.
-- `pnpm run verify` and `vortex-e2e` need any Vortex running from that checkout stopped first.
+- `pnpm run verify` and Vortex's own E2E need any Vortex running from that checkout stopped first.
   The core suite (`doodlebot test core`) starts its own Vortex, so it refuses while any harness
   Vortex runs.
 - **Timing needs a quiet machine.** Builds, a second Vortex (the user's own included) or other

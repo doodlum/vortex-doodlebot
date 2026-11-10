@@ -25,8 +25,6 @@ describe("doodlebot test", () => {
   });
 
   it.each([
-    "zoom",
-    "panels",
     "large-library",
     "bethesda",
     "collection-download-retry",
@@ -56,8 +54,6 @@ describe("doodlebot test", () => {
     expect(SUITES.map((suite) => suite.name)).toEqual([
       "core",
       "oauth",
-      "zoom",
-      "panels",
       "large-library",
       "bethesda",
       "collection-download-retry",
@@ -69,6 +65,21 @@ describe("doodlebot test", () => {
       "nexus",
     ]);
     expect(() => suiteCommand("nope", [])).toThrow(UnknownSuiteError);
+  });
+
+  // Criterion no-source-only-checks: testing that cannot run on a released Vortex is removed.
+  it("lists no suite that needs a source build", async () => {
+    const names = SUITES.map((suite) => suite.name);
+    for (const removed of ["zoom", "panels"]) expect(names).not.toContain(removed);
+    const lines: string[] = [];
+    await testCommand([], { list: true }, [], { write: (l) => lines.push(l) });
+    expect(lines.join("\n")).not.toMatch(/source build|--dev-dir|source only|source-only/i);
+    for (const suite of SUITES) {
+      const script = suite.argv([]).find((arg) => arg.endsWith(".e2e.ts"));
+      if (script === undefined) continue;
+      const text = fs.readFileSync(path.join(REPO_ROOT, script), "utf8");
+      expect(text, script).not.toMatch(/needs a source build|--dev-dir <checkout>/i);
+    }
   });
 
   it("runs the suite from the workspace root with this process's environment", async () => {
