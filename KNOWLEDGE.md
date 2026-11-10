@@ -540,12 +540,16 @@ in vortex.log. In the report that led here no optional shared a name or file wit
 member, and the `ignored` count matched declined optionals. A transient download failure alone
 leaves a member failed, and a resume installs it (`doodlebot test collection-download-retry`).
 
-### After a completed collection, Vortex stops running its checks
+### After a completed collection, Vortex 2.8 never resumes the Missing Masters check
 
 `InstallDriver.startInstall` suppresses `plugins-changed`, `mod-installed`, `mod-activated` and
 `settings-changed` checks during a collection install, and only cancel or pause released them, not
 the review's Done/Close. Missing Masters and the rest never run again until restart, with nothing
-logged. `doodlebot test bethesda` reproduces it; `check_probe_counts` shows `plugins-changed` stop rising.
+logged. `doodlebot test bethesda` reproduces it (its case B); `check_probe_counts` shows
+`plugins-changed` stop rising. Proved on released 2.8.0 on 2026-11-10 with the fake Fallout 4
+(`up --bethesda-sandbox`): a plugin with an absent master was flagged before an offline
+collection's install and not after its review was closed with Done. The fix,
+Nexus-Mods/Vortex#24282, was closed unmerged, so expect it on 2.8 and earlier.
 
 ### A Bethesda collection without a plugin list skips the end of its postprocessing
 
