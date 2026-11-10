@@ -946,9 +946,10 @@ Doodlebot learns from verified work. There are two stores, both searched by
 `doodlebot knowledge search <words...> [--json]`. Each word must appear (case-insensitive);
 local lessons are listed before shared sections.
 
-- **Shared:** `KNOWLEDGE.md` in the workspace, made of `## ` sections of reviewed lessons. Skills
-  never edit it: it changes through doodlebot pull requests, and an edit would make `update`
-  refuse.
+- **Shared:** `KNOWLEDGE.md` in the workspace, reviewed lessons as `### ` entries under `## `
+  area headings. Search matches each entry on its own, titled `<area> › <entry>`; text under an
+  area heading before its first entry is a section of its own. Skills never edit it: it changes
+  through doodlebot pull requests, and an edit would make `update` refuse.
 - **Local:** `~/.doodlebot/knowledge.md` (`KNOWLEDGE_FILE` in `knowledgeCommand.ts`), next to the
   instance record. It survives `update` and re-setup and is shared by Claude Code, Codex and
   every workspace. It is a Markdown file with one `## <title>` section per lesson, holding:

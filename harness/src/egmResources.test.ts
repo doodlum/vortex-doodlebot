@@ -21,7 +21,7 @@ function frontmatter(file: string): Record<string, string> {
 }
 
 describe("EGM resources", () => {
-  it("pins the EGM marketplace, registers this one and enables the four plugins", () => {
+  it("pins the EGM marketplace, registers this one and enables EGM and doodlebot", () => {
     expect(JSON.parse(read(".claude/settings.json"))).toEqual({
       extraKnownMarketplaces: {
         egm: {
