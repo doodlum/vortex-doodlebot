@@ -61,7 +61,7 @@ suite starts its own Vortex and refuses while another runs.
 
 To run a suite or check on an official release, add `--release <version>`, for example
 `doodlebot test core --release 2.8.0`. The release must be registered first with
-`doodlebot release get <version>`; `/doodlebot:qa --release <version>` does both.
+`doodlebot release get <version>`; `/doodlebot:qa --release <version>` does both. A machine with no installed Vortex needs nothing else: `doodlebot check` lists the registered releases as the available Vortex.
 
 ## What's next
 

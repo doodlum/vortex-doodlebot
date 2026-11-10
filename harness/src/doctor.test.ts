@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ANONYMOUS, markerFile, snapshotDir } from "./bootstrap";
 import { loadConfig, type HarnessConfig } from "./config";
-import { formatDoctorReport, runDoctor } from "./doctor";
+import { formatDoctorReport, missingVortexCheck, runDoctor } from "./doctor";
 
 let temp: string;
 let home: string;
@@ -118,5 +118,19 @@ describe("doctor with an unresolvable target", () => {
     const report = await runDoctor(config, { skipGame: true, homeDir: home });
     expect(report.targetError).toBeUndefined();
     expect(check(report, "Vortex (installed)")?.ok).toBe(true);
+  });
+});
+
+describe("the Vortex check without an installed Vortex", () => {
+  it("accepts a registered official release and names it", () => {
+    const check = missingVortexCheck(["2.8.0"]);
+    expect(check.ok).toBe(true);
+    expect(check.detail).toContain("--release 2.8.0");
+  });
+
+  it("is missing with nothing registered, and offers release get first", () => {
+    const check = missingVortexCheck([]);
+    expect(check.ok).toBe(false);
+    expect(check.fix).toMatch(/^doodlebot release get <version>/);
   });
 });

@@ -20,6 +20,7 @@ import { hasVortexSource, vortexSourceDir } from "./source";
 import { authCacheFile } from "./instance";
 import { checkLoginAcl, loginState, usesSharedLogin } from "./login";
 import { SEVEN_ZIP_HINT, find7Zip } from "./releaseFetch";
+import { readContent } from "./content";
 
 export interface Check {
   name: string;
@@ -221,18 +222,31 @@ async function checkSource(): Promise<Check> {
   };
 }
 
-function checkVortex(config: HarnessConfig): Check {
-  const { target } = config;
-  if (target.executable === "" || !fs.existsSync(target.executable)) {
+/**
+ * No installed Vortex is fine when an official release is registered (`release get`): every
+ * command takes `--release <version>`.
+ */
+export function missingVortexCheck(releases: string[]): Check {
+  if (releases.length > 0)
     return {
       name: "Vortex",
-      ok: false,
-      detail: "no installed Vortex found",
-      fix:
-        "Install it from https://www.nexusmods.com/about/vortex/ — the released build is " +
-        "all this needs. Or set VORTEX_AI_EXE / VORTEX_AI_DEV_DIR.",
+      ok: true,
+      detail: `no installed Vortex; registered releases: ${releases.join(", ")} (use --release ${releases[0]!})`,
     };
-  }
+  return {
+    name: "Vortex",
+    ok: false,
+    detail: "no installed Vortex found",
+    fix:
+      "doodlebot release get <version>   (an official release, never installed), or install " +
+      "Vortex from https://www.nexusmods.com/about/vortex/, or set VORTEX_AI_EXE / VORTEX_AI_DEV_DIR.",
+  };
+}
+
+function checkVortex(config: HarnessConfig): Check {
+  const { target } = config;
+  if (target.executable === "" || !fs.existsSync(target.executable))
+    return missingVortexCheck(readContent().releases.map((release) => release.version));
 
   if (target.kind === "dev") {
     const renderer = path.join(target.args[0] ?? "", "build", "renderer.js");

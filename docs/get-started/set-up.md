@@ -6,7 +6,7 @@ companion, without you typing a terminal command.
 ## Before you begin
 
 - [Install the plugin](install.md).
-- Install a released Vortex. Setup checks for it but never installs it.
+- A released Vortex: either install it yourself, or let doodlebot fetch an official release with `doodlebot release get <version>`, which it extracts without running the installer. Setup checks for either and never installs Vortex.
 - Close any test Vortex you started earlier with doodlebot. Your own Vortex can stay open.
 
 ## What setup creates

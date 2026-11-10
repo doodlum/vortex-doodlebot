@@ -566,8 +566,9 @@ doodlebot game folder [<dir>]                  # store the copy folder (asked on
 `api.github.com/repos/Nexus-Mods/Vortex/releases/tags/v<version>` (pre-releases count), downloads
 `vortex-setup-<version>.exe` into `~/.doodlebot/releases/<version>/`, and checks its SHA-256
 against the asset's `digest`. A mismatch refuses; a missing digest is
-`blocked: the release publishes no digest`. 7-Zip (on the PATH or under Program Files; `doctor`
-reports it) extracts `$PLUGINSDIR\app-64.7z` and then the app into `<version>/app`; the
+`blocked: the release publishes no digest`. With no installed Vortex, `doctor`'s `Vortex` check
+passes when a release is registered and names it (`missingVortexCheck`); with none it offers
+`release get` first. 7-Zip (on the PATH or under Program Files; `doctor` reports it) extracts `$PLUGINSDIR\app-64.7z` and then the app into `<version>/app`; the
 installer never runs, so the owner's installation is never replaced. `Vortex.exe`'s version
 resource must start with the version (`2.8.0.0` matches `2.8.0`). The release is then registered
 in `content.json`, and the installer and inner archive are deleted. `release list [--json]`
@@ -924,7 +925,9 @@ Features and refactors start with a design written and reviewed with EGM, exactl
 `AGENTS.md` gives it (`/egm:egm-brainstorm`, `/egm:egm-draft`, `/egm:egm-review`, then
 `/egm:egm-review-loop` with doodlebot's runtime reviewer `doodlebot:vortex-runtime-goldfish`,
 then the person's approval). Bug fixes, docs and test-only changes need no design unless the
-person supplies or asks for one. Doodlebot has no design command of its own.
+person supplies or asks for one. Doodlebot has no design command of its own. Doodlebot's own
+designs are listed in `designs/SITEMAP.md`; this version implements
+`designs/companion-simplified.md`.
 
 - A Vortex design lives on the Vortex branch, in the checkout's docs/designs folder, committed
   as `docs(design): <topic>`. `pr-branch` keeps it out of the PR, and with

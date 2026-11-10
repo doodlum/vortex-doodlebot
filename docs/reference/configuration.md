@@ -34,7 +34,9 @@ downloaded and registered. Doodlebot checks the download against the SHA-256 Git
 and extracts it with 7-Zip into `~/.doodlebot/releases/<version>`. It never runs the installer, so
 your own Vortex installation is not touched. A release that is not registered fails with
 `Release <version> is not registered. Get it with doodlebot release get <version>.`
-`doodlebot release list` lists the registered releases.
+`doodlebot release list` lists the registered releases. A machine with no installed Vortex
+needs nothing more: `doodlebot check` and `doctor` count a registered release as the available
+Vortex and tell you to use `--release <version>`.
 
 A `--dev-dir` that is not a built Vortex checkout fails with
 `--dev-dir <path> is not a built Vortex checkout: <reason>`. `doodlebot doctor` reports the
