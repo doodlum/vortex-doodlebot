@@ -164,24 +164,46 @@ describe("game copies", () => {
   it("a launch manages only a registered copy or the kit's own folders", () => {
     const cacheDir = path.join(root, "cache");
     const config = (gamePath: string | undefined) => ({ gameId: "fallout4", gamePath, cacheDir });
-    expect(() => assertGamePathAllowed(config(store), deps.contentFile)).toThrow(
+    const allowed = (c: { gameId: string; gamePath: string | undefined; cacheDir: string }) => () =>
+      assertGamePathAllowed(c, deps.contentFile, deps.storePath);
+    expect(allowed(config(store))).toThrow(/is a store install; the kit never manages one/);
+    expect(allowed(config(path.join(root, "elsewhere", "fallout4")))).toThrow(
       /is not a registered copy of fallout4/,
     );
-    expect(() => assertGamePathAllowed(config(undefined), deps.contentFile)).toThrow(
-      /needs --game-path <a registered copy>/,
-    );
+    expect(allowed(config(undefined))).toThrow(/needs --game-path <a registered copy>/);
     // The fake Fallout 4 lives under the cache.
-    expect(() =>
-      assertGamePathAllowed(
-        config(path.join(cacheDir, "bethesda-sandbox", "fallout4", "game")),
-        deps.contentFile,
-      ),
+    expect(
+      allowed(config(path.join(cacheDir, "bethesda-sandbox", "fallout4", "game"))),
     ).not.toThrow();
     const copy = fakeGame(path.join(root, "copies", "fallout4"));
     registerCopy("fallout4", copy, deps);
-    expect(() => assertGamePathAllowed(config(copy), deps.contentFile)).not.toThrow();
-    expect(() => assertGamePathAllowed(config(store), deps.contentFile)).toThrow(
-      `Registered copies: ${copy}.`,
-    );
+    expect(allowed(config(copy))).not.toThrow();
+    expect(allowed(config(store))).toThrow(`Registered copies: ${copy}.`);
+  });
+
+  it("a folder inside the cache is still refused when it is a store install or its game has no user-folder entry", () => {
+    // A cache that sits inside a Steam library does not make the store install the kit's own.
+    const cacheDir = path.join(root, "SteamLibrary", "steamapps", "common");
+    expect(() =>
+      assertGamePathAllowed(
+        { gameId: "fallout4", gamePath: store, cacheDir },
+        deps.contentFile,
+        deps.storePath,
+      ),
+    ).toThrow(/is a store install/);
+    const ownCache = path.join(root, "cache");
+    // The Nexus collection check's placeholder game folder: allowed for a game in USER_FOLDERS
+    // (its real user folders are then backed up: userFolders.test.ts), refused for any other.
+    const placeholder = (gameId: string) => ({
+      gameId,
+      gamePath: path.join(ownCache, "nexus-smoke", "game", gameId),
+      cacheDir: ownCache,
+    });
+    expect(() =>
+      assertGamePathAllowed(placeholder("stardewvalley"), deps.contentFile, () => undefined),
+    ).not.toThrow();
+    expect(() =>
+      assertGamePathAllowed(placeholder("fallout3"), deps.contentFile, () => undefined),
+    ).toThrow(/fallout3 has no entry in USER_FOLDERS/);
   });
 });

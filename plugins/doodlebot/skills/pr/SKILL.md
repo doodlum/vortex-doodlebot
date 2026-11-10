@@ -35,9 +35,16 @@ the person's real scenario passed on the change.
 2. **Stop the test Vortex** if this session runs one from that checkout: `doodlebot down`.
 3. **The PR branch.** `doodlebot pr-branch <topic> --checkout <checkout>` builds `pr/<topic>` in
    a temporary worktree from the merge-base with upstream, cherry-picking every commit except
-   the `docs(design): <topic>` ones, and tags the last design commit `design/<topic>`. It
-   refuses a non-design commit that touches the Vortex docs/designs folder (split that commit
-   first) and a cherry-pick conflict (report it). The checkout's own files never change.
+   the `docs(design): <topic>` ones. It refuses a non-design commit that touches the Vortex
+   docs/designs folder (split that commit first) and a cherry-pick conflict (report it). The
+   checkout's own files never change.
+   - **The design tag.** With a design, add `--design-commit <sha>`: the `docs(design)` commit
+     whose text the person approved (its Status says Approved, or they told you so). That
+     commit is tagged `design/<topic>`. Never name an unapproved revision: when the design
+     changed after its approval, ask for the new approval first, or leave `--design-commit` out
+     and the tag stays on the earlier approval.
+   - A later approved revision moves `design/<topic>` and keeps the earlier one as
+     `design/<topic>-v<n>`; `pr-branch` prints both.
 4. **Preflight** on the PR branch:
    `doodlebot pr-preflight --checkout <checkout> --head pr/<topic> --base upstream/master --skip-revert`
    for the static checks, then the revert check on the work branch, which needs it checked out:
@@ -60,10 +67,12 @@ the person's real scenario passed on the change.
    Save it as `<workspace>/harness/.artifacts/pr/<topic>.md` and show it to the person.
 
 6. **Publish, only when asked.** On the person's go-ahead:
-   `doodlebot pr-branch <topic> --checkout <checkout> --push`. It pushes `pr/<topic>` and the
-   `design/<topic>` tag to `origin` only after `gh` shows `origin` is the person's own fork of
+   `doodlebot pr-branch <topic> --checkout <checkout> --push` (with the same
+   `--design-commit`). It pushes `pr/<topic>` and the `design/<topic>` tag (and a
+   `design/<topic>-v<n>` it just made) to `origin` only after `gh` shows `origin` is the person's own fork of
    `Nexus-Mods/Vortex` (or the `VORTEX_AI_VORTEX_REPO` fork they can push to). It refuses an
-   absent `origin`, `Nexus-Mods/Vortex` itself and someone else's fork. Without a fork, offer
+   absent `origin`, `Nexus-Mods/Vortex` itself, someone else's fork, and an `origin` whose push
+   URL (`pushurl` or `pushInsteadOf`) is not that fork. Without a fork, offer
    `gh repo fork Nexus-Mods/Vortex --remote` and run it only when the person agrees. Never push
    by hand to any other remote. Then open the PR against `Nexus-Mods/Vortex` from
    `<fork owner>:pr/<topic>` with `gh pr create --draft --body-file <description>` (without

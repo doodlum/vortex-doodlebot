@@ -17,7 +17,8 @@ import { findInstalledVortex } from "./config";
 import { readContent, type Content } from "./content";
 import { normalizeVersionResource } from "./releaseFetch";
 import { ConfigError } from "./errors";
-import { KNOWN_GAMES, USER_FOLDERS, findGamePath } from "./gameSetup";
+import { inside, storePathOf } from "./fsWalk";
+import { KNOWN_GAMES, USER_FOLDERS } from "./gameSetup";
 import { sharedLoginDir, usesSharedLogin } from "./login";
 import { CONTENT_FILE, DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { gitBranch } from "./runningVortex";
@@ -60,7 +61,12 @@ export type InventoryKind = (typeof INVENTORY_KINDS)[number];
 export type InventoryItem = z.infer<typeof inventoryItemSchema>;
 export type Inventory = z.infer<typeof inventorySchema>;
 
-export const LOGIN_NEXT = "doodlebot setup --oauth --installed";
+/**
+ * The login is a plugin command, not a CLI one: a captured `doodlebot setup --oauth` can keep its
+ * output capture open and never return on Windows, and `/doodlebot:setup --login` runs it in the
+ * background for the person (as `check` says).
+ */
+export const LOGIN_NEXT = "/doodlebot:setup --login";
 
 export interface SourceInfo {
   built: boolean;
@@ -109,18 +115,8 @@ function managedSource(): { dir: string; info: SourceInfo } | undefined {
   };
 }
 
-const storePathOf = (gameId: string): string | undefined => {
-  const game = KNOWN_GAMES[gameId];
-  return game === undefined ? undefined : findGamePath(game);
-};
-
 /** A command-line argument, quoted when it holds a space. */
 const arg = (value: string): string => (/\s/.test(value) ? `"${value}"` : value);
-
-const inside = (child: string, parent: string): boolean => {
-  const relative = path.relative(path.resolve(parent), path.resolve(child));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-};
 
 /**
  * A Nexus login is present when an `oauth-*.json` in the folder (the shared login folder, or a
@@ -436,15 +432,24 @@ export function formatInventory(inventory: Inventory): string {
   return lines.join("\n");
 }
 
-/** `doodlebot inventory [--json]`. */
+/**
+ * `doodlebot inventory [--json]`, and with `--need <need>` (repeatable) the content choice for
+ * those needs (`describeChoice`) instead of the whole inventory.
+ */
 export function inventoryCommand(
   flags: Record<string, string | boolean>,
   deps: InventoryDeps = {},
+  lists: Record<string, string[]> = {},
 ): string {
   const inventory = readInventory({
     ...deps,
     ...(typeof flags["cache-dir"] === "string" ? { cacheDir: flags["cache-dir"] } : {}),
   });
+  const needs = lists.need ?? [];
+  if (needs.length > 0) {
+    const choice = describeChoice(chooseContent(needs, inventory));
+    return flags.json === true ? JSON.stringify(choice, null, 2) : formatChoice(choice);
+  }
   return flags.json === true ? JSON.stringify(inventory, null, 2) : formatInventory(inventory);
 }
 
@@ -572,4 +577,35 @@ export function chooseContent(needs: string[], inventory: Inventory): Choice {
     });
   }
   return { met: unmet.length === 0, chosen, unmet };
+}
+
+/** A choice as `inventory --need … --json` and `qa list --json` give it to the skills. */
+export interface DescribedChoice {
+  met: boolean;
+  chosen: { need: string; id: string; label: string; flag?: string; why: string }[];
+  unmet: Unmet[];
+}
+
+export function describeChoice(choice: Choice): DescribedChoice {
+  return {
+    met: choice.met,
+    chosen: choice.chosen.map(({ need, item, why }) => ({
+      need,
+      id: item.id,
+      label: item.label,
+      ...(typeof item.details?.flag === "string" ? { flag: item.details.flag } : {}),
+      why,
+    })),
+    unmet: choice.unmet,
+  };
+}
+
+function formatChoice(choice: DescribedChoice): string {
+  return [
+    choice.met ? "Every need is met:" : "Not every need is met (the run is not tested):",
+    ...choice.chosen.map(
+      (c) => `  ${c.need}: ${c.id}${c.flag === undefined ? "" : ` (${c.flag})`}; ${c.why}`,
+    ),
+    ...choice.unmet.map((u) => `  ${u.need}: not met (${u.reason}); next: ${u.next}`),
+  ].join("\n");
 }

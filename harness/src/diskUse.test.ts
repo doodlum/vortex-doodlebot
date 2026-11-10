@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { markerFile } from "./bootstrap";
 import { updateContent } from "./content";
-import { MB, cleanCommand, placeEvidenceFile, planClean, type CleanDeps } from "./diskUse";
+import { MB, cleanCommand, planClean, type CleanDeps } from "./diskUse";
 import type { InstanceRecord } from "./runningVortex";
 
 let root: string;
@@ -175,23 +175,5 @@ describe("clean", () => {
     expect(cleanCommand({ "older-than": "7" }, deps).text).toBe(
       "Nothing to clean (older than 7 days).",
     );
-  });
-});
-
-describe("the evidence rule", () => {
-  it("copies a small file into the evidence folder and links a large one instead", () => {
-    const evidence = path.join(root, "artifacts", "runs", "r1");
-    const small = write(path.join(root, "out", "trace.json"), 10);
-    expect(placeEvidenceFile(small, evidence)).toEqual({
-      path: path.join(evidence, "trace.json"),
-      linked: false,
-    });
-    expect(fs.readFileSync(path.join(evidence, "trace.json")).length).toBe(10);
-
-    const disk = write(path.join(root, "vm", "disk.vhdx"), 2048);
-    const placed = placeEvidenceFile(disk, evidence, { limitBytes: 1024 });
-    expect(placed).toEqual({ path: path.join(evidence, "disk.vhdx.link.txt"), linked: true });
-    expect(fs.existsSync(path.join(evidence, "disk.vhdx"))).toBe(false);
-    expect(fs.readFileSync(placed.path, "utf8")).toContain(disk);
   });
 });

@@ -25,9 +25,11 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
 
 2. The agent builds the branch the pull request is opened from:
    `doodlebot pr-branch <topic>`. It makes `pr/<topic>` from your commits, without the
-   `docs(design)` commits, so the design never reaches the pull request. It tags the last design
-   commit `design/<topic>`, so the description can link the design. A commit that mixes code with
-   a change to `docs/designs/` is refused: split it first.
+   `docs(design)` commits, so the design never reaches the pull request. With a design, it tags
+   the design commit you approved `design/<topic>` (`--design-commit <sha>`), so the description
+   can link the design; a revision you have not approved is never tagged. When you approve a
+   later revision, the tag moves to it and the earlier one is kept as `design/<topic>-v<n>`. A
+   commit that mixes code with a change to `docs/designs/` is refused: split it first.
 
 3. The agent runs `doodlebot pr-preflight` on `pr/<topic>`. It compares the committed branch with
    its merge base and reports PASS, WARN, FAIL or SKIP for each check:
@@ -68,7 +70,8 @@ This page shows how to have the agent check a Vortex branch and prepare its pull
    request unless you ask it to.
 
 6. When you ask, it pushes with `doodlebot pr-branch <topic> --push`. That pushes `pr/<topic>`
-   and the `design/<topic>` tag only to your own fork; see
+   and the `design/<topic>` tag only to your own fork, and refuses when your `origin` would push
+   anywhere else (a push URL or `pushInsteadOf` rule pointing elsewhere); see
    [Working with your fork](source-development.md#working-with-your-fork-and-worktrees). If you
    have no fork yet, the agent offers to make one.
 

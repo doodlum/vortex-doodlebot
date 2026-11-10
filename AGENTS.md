@@ -11,7 +11,7 @@ hard-won knowledge. Nothing here requires a patched or self-built Vortex.
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `src/`                            | The Vortex extension: an MCP server exposing Vortex's state **and** its UI                                           |
 | `harness/`                        | The `doodlebot` CLI and Playwright suite: launch, cache, drive, verify                                               |
-| `bin/doodlebot.cjs`               | The CLI entry point; `bin/update.cjs` is `doodlebot update`                                                          |
+| `bin/doodlebot.cjs`               | The CLI entry point; `bin/update.cjs` is `doodlebot update`; `bin/nodeVersion.cjs` checks Node first                 |
 | `plugins/`                        | The `doodlebot` plugin: skills, agents, EGM resources and its icon                                                   |
 | `.claude-plugin/marketplace.json` | The `doodlebot` marketplace for Claude Code; `.agents/plugins/marketplace.json` is Codex's                           |
 | `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard and the runtime Goldfish persona                                           |

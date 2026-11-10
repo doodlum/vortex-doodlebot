@@ -25,7 +25,7 @@ writes new files; existing evidence is never overwritten. A failed run's evidenc
 failed evidence.
 
 Evidence folders hold reports, logs, JSON and screenshots, not large binaries. A file over 100 MB
-stays where it is, and the evidence folder gets a `.link.txt` file with its path instead.
+stays where it is, and the report gives its path instead.
 `doodlebot clean` removes old binaries and keeps each report; see
 [Use real games and baselines](../guides/games-and-baselines.md).
 
@@ -61,15 +61,23 @@ doodlebot qa list --touching src/renderer/src/extensions/collections/index.ts
 
 The output also lists the entries not selected, with the reason, and the touched files that no
 entry guards. Those files are tested by hand, and the agent proposes a new entry for them.
+An entry that logs out of your Nexus account is selected only with `--allow-logout`, which the
+agent adds only after you agree.
+
+With `--json`, each selected entry also says what it would run against on this machine (the
+sandbox, a game copy, a collection, the login) and why, or, for a need nothing meets, the
+command that meets it. It also gives the results the entry can still report. The agent reads
+this instead of choosing by itself.
 
 Each result is one of:
 
-| Result     | Meaning                                                               |
-| ---------- | --------------------------------------------------------------------- |
-| Pass       | The check ran and met its pass criterion                              |
-| Fail       | The check ran and did not                                             |
-| Measured   | The check only measures; it reports numbers, never a pass             |
-| Not tested | Nothing on this machine met its needs; the report gives the next step |
+| Result                         | Meaning                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| Pass                           | The check ran and met its pass criterion                                        |
+| Passed with workaround: &lt;x> | It passed only after a step the scenario did not ask for; the report names it   |
+| Fail                           | The check ran and did not                                                       |
+| Measured                       | The check only measures; it reports numbers, never a pass or a fail             |
+| Not tested                     | Nothing here met its needs (the report gives the next step), or no numbers came |
 
 The catalogue is checked in, and `doodlebot qa check` validates it in every CI run. Results are
 not checked in: each run writes `harness/.artifacts/qa/<Vortex version>/<entry>/<time>/report.md`.

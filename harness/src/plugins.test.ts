@@ -88,6 +88,8 @@ const BENCHMARK_REPORT_SECTIONS = [
   "Caveats",
   "Learned",
 ];
+/** The skills whose report is a markdown template; each must hold a `## Learned` heading. */
+const REPORT_TEMPLATES = new Set(["try", "investigate", "qa", "measure"]);
 const RUN_SEQUENCE = [
   "doodlebot up",
   "doodlebot call automation_status",
@@ -351,6 +353,12 @@ describe("skills", () => {
       it(`${plugin}:${skill} ends its report with a Learned section and never patches the kit`, () => {
         const text = body(read(file));
         expect(text).toMatch(/\bLearned\b/);
+        // A report template (a fenced markdown block) has the section as a heading of its own.
+        const templates = [...text.matchAll(/```markdown\n([\s\S]*?)\n```/g)].map((m) => m[1]!);
+        if (REPORT_TEMPLATES.has(skill)) {
+          expect(templates.length, skill).toBeGreaterThan(0);
+          for (const template of templates) expect(template, skill).toMatch(/^## Learned$/m);
+        }
         expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md");
         expect(text).toContain("doodlebot gap add");
         expect(text.replace(/\s+/g, " ")).toMatch(/[Nn]ever patch the doodlebot workspace/);
@@ -383,8 +391,17 @@ describe("skills", () => {
     const tryText = read(skillFile("doodlebot", "try"));
     for (const section of RUN_REPORT_SECTIONS) expect(tryText).toContain(`\n## ${section}\n`);
     expect(tryText).toContain("doodlebot:vortex-driver");
-    expect(tryText).toContain("doodlebot inventory --json");
+    // The content choice is read from the kit, never re-derived (inventory --need, qa list).
+    expect(tryText).toContain("doodlebot inventory --need <need>");
+    expect(tryText).toContain("doodlebot qa list --json");
     expect(read(skillFile("doodlebot", "qa"))).toContain("doodlebot:vortex-driver");
+    // release-version-reported: the report gives the Vortex version that ran, and a version
+    // other than the one asked for is a mismatch.
+    const testedAgainst = /\n## Tested against\n\n([\s\S]*?)\n## /.exec(tryText)?.[1] ?? "";
+    expect(testedAgainst).toContain("Vortex <vortexVersion>");
+    expect(tryText.replace(/\s+/g, " ")).toContain(
+      "A `vortexVersion` that differs from the requested release is reported as a mismatch.",
+    );
     expect(read("plugins/doodlebot/agents/vortex-driver.md")).toContain(
       "${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md",
     );
@@ -411,7 +428,44 @@ describe("skills", () => {
     expect(tryText).toContain("/doodlebot:setup --login");
     const qa = read(skillFile("doodlebot", "qa")).replace(/\s+/g, " ");
     expect(qa).toContain('`account: "logout"`');
-    expect(qa).toContain("skipped unless the person named it and gave their go-ahead");
+    expect(qa).toContain(
+      "unless you pass `--allow-logout`, which you do only when the person named it and gave their go-ahead",
+    );
+  });
+
+  it("try and qa record the kit gaps the driver proposes, and qa reports workarounds", () => {
+    for (const skill of ["try", "qa"]) {
+      const text = read(skillFile("doodlebot", skill)).replace(/\s+/g, " ");
+      expect(text, skill).toContain("doodlebot gap add --title <t> --command <c>");
+      expect(text, skill).toMatch(/proposes? kit gaps|kit gaps it proposes/);
+    }
+    const qa = read(skillFile("doodlebot", "qa"));
+    expect(qa).toMatch(/\| Result \([^)]*passed with workaround: <x>/);
+    expect(qa).toContain("**passed with workaround: <x>**");
+  });
+
+  it("stops only a test Vortex this session started, read from the instance record", () => {
+    for (const skill of ["qa", "setup"]) {
+      const text = read(skillFile("doodlebot", skill)).replace(/\s+/g, " ");
+      expect(text, skill).toContain("~/.doodlebot/instance.json");
+      expect(text, skill).toMatch(/this session started/);
+      expect(text, skill).not.toMatch(
+        /ask whether to stop (?:that|the) test Vortex; run `doodlebot down` on a yes/,
+      );
+    }
+  });
+
+  it("qa and investigate put .vortex-src back, and qa fetches upstream before the merge-base", () => {
+    const qa = read(skillFile("doodlebot", "qa")).replace(/\s+/g, " ");
+    expect(qa.indexOf("git -C <checkout> fetch upstream`")).toBeGreaterThan(-1);
+    expect(qa.indexOf("git -C <checkout> fetch upstream`")).toBeLessThan(
+      qa.indexOf("git -C <checkout> merge-base upstream/master qa/<pr>"),
+    );
+    expect(qa).toContain("**Put the checkout back.**");
+    const investigate = read(skillFile("doodlebot", "investigate")).replace(/\s+/g, " ");
+    expect(investigate).toContain(
+      "put it back: `git -C <workspace>/.vortex-src switch <that branch>`",
+    );
   });
 
   it("investigate changes no code and never calls a different version not reproduced", () => {

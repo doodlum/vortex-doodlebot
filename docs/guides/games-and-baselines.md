@@ -91,14 +91,24 @@ some games keep saves and settings in `%APPDATA%\<game>` (Stardew Valley uses
 Bethesda sandbox, which uses your real Fallout 4 folders on any Vortex build:
 
 - Before Vortex starts, it backs these folders up into the profile cache. It refuses to start
-  while the game itself runs, or when the backup cannot be made.
-- `doodlebot down` puts them back after Vortex has closed, and checks every restored file.
-- A file changed outside the run, such as a save you made meanwhile, stops the restore. Doodlebot
-  lists the files and restores nothing.
+  while the game itself runs, when the backup cannot be made, or for a game it has no folder
+  list for. This holds inside the profile cache too, and a Steam install is refused there as
+  anywhere.
+- `doodlebot down` puts back, after Vortex has closed, only the files Vortex itself writes:
+  the plugin list (`plugins.txt`, `loadorder.txt`, `DLCList.txt`) and the game's `.ini` files,
+  and only those changed during the run. It checks every restored file.
+- Every other changed file is kept as it is and listed for you, a save above all, even one
+  made during the run: you may have played your own copy of the game while the test ran.
+  The next start is refused until you decide with `doodlebot game restore <gameId>`.
 - If Vortex crashed or was closed without `down`, nothing is restored automatically and the next
   start is refused. Run `doodlebot game restore <gameId>` to see the changed files, then choose:
   `--all` restores them all, `--keep` keeps them all, and `--file <path>` restores the ones you
   name.
+- If the backup itself is gone, doodlebot says so. Check the folders, then run
+  `doodlebot game restore <gameId> --keep` to keep them as they are.
+- These protections, and the checks for your own Vortex and for the game running, work on
+  Windows only. On another system the start goes ahead with a warning; close your own Vortex
+  and the game yourself.
 
 ### Put game copies on a Dev Drive
 

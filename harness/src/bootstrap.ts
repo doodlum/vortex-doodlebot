@@ -49,7 +49,7 @@ import {
   runningVortex,
   sameBuild,
 } from "./runningVortex";
-import { assertNoOwnVortex } from "./ownVortex";
+import { assertNoOwnVortex, windowsOnlyWarning } from "./ownVortex";
 import { assertGamePathAllowed } from "./gameCommand";
 import {
   protectUserFolders,
@@ -280,6 +280,10 @@ export async function bootstrap(
   await settlePendingRestores({ clean: running !== undefined || stopped, write: report });
   // Checked once this cache's own leftover is gone, so its processes never count.
   assertNoOwnVortex(runningVortex()?.pid);
+  // Off Windows those checks find nothing: say so, whether or not progress is reported.
+  const platformWarning = windowsOnlyWarning();
+  if (platformWarning !== undefined)
+    (options.onProgress ?? ((m: string) => process.stderr.write(`${m}\n`)))(platformWarning);
 
   const lastBuild = readLastBuild(config.cacheDir);
   const fresh = options.fresh === true || buildChanged(lastBuild, build);

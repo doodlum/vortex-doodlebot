@@ -12,7 +12,14 @@ const root = path.resolve(__dirname, "..");
 const args = process.argv.slice(2);
 const command = args[0];
 
-if (command === "update") {
+// First: an older Node fails later with a TypeError that never names Node.
+const { minimumNode, nodeVersionProblem } = require("./nodeVersion.cjs");
+const nodeProblem = nodeVersionProblem(process.version, minimumNode(root));
+
+if (nodeProblem !== undefined) {
+  process.stderr.write(`\n${nodeProblem}\n\n`);
+  process.exitCode = 1;
+} else if (command === "update") {
   const { update, parseUpdateArgs } = require("./update.cjs");
   try {
     update(root, parseUpdateArgs(args.slice(1)));

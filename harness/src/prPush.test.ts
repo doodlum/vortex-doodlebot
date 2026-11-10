@@ -99,6 +99,23 @@ describe("the push check", () => {
     expect(calls[0]).toEqual(["api", "repos/doodlum/Vortex"]);
   });
 
+  it("refuses when origin's push URL is not the fork it fetches from", () => {
+    const { gh, calls } = ghFor(fork("doodlum"));
+    const git: GitRunner = (_dir, args) => {
+      const command = args.join(" ");
+      if (command === "remote get-url origin") return ok("https://github.com/doodlum/Vortex.git\n");
+      if (command === "remote get-url --push --all origin")
+        return ok(
+          "https://github.com/doodlum/Vortex.git\nhttps://github.com/Nexus-Mods/Vortex.git\n",
+        );
+      return ok();
+    };
+    expect(() => checkPushRemote("x", { git, gh })).toThrow(
+      /pushes to https:\/\/github\.com\/Nexus-Mods\/Vortex\.git.*Nothing was pushed/,
+    );
+    expect(calls).toEqual([]);
+  });
+
   it("accepts a configured VORTEX_AI_VORTEX_REPO fork only when the person can push to it", () => {
     const origin = gitWithOrigin("https://github.com/acme/Vortex.git");
     const pushable = ghFor(fork("acme", { permissions: { push: true } }));
@@ -153,7 +170,7 @@ describe("pr-branch", { timeout: 60_000 }, () => {
   it("cherry-picks every non-design commit onto the merge-base and tags the design", () => {
     const repo = featureRepo();
     const lastDesign = run(repo, "rev-parse", "HEAD~1");
-    const built = buildPrBranch(repo, "zoom", { base: "master" });
+    const built = buildPrBranch(repo, "zoom", { base: "master", designCommit: lastDesign });
     expect(built.branch).toBe("pr/zoom");
     expect(built.picked).toHaveLength(2);
     expect(built.skipped).toHaveLength(2);
@@ -171,6 +188,35 @@ describe("pr-branch", { timeout: 60_000 }, () => {
     expect(run(repo, "symbolic-ref", "--short", "HEAD")).toBe("feat/zoom");
     expect(run(repo, "status", "--porcelain")).toBe("");
     expect(run(repo, "worktree", "list").split("\n")).toHaveLength(1);
+  });
+
+  it("tags only the approved design commit, and keeps an earlier approval when it moves", () => {
+    const repo = featureRepo();
+    const first = run(repo, "rev-parse", "HEAD~3");
+    const approved = run(repo, "rev-parse", "HEAD~1");
+    // No approval named: no tag, even though the branch has design commits.
+    expect(buildPrBranch(repo, "zoom", { base: "master" }).tag).toBeUndefined();
+    expect(run(repo, "tag", "--list", "design/*")).toBe("");
+    expect(() =>
+      buildPrBranch(repo, "zoom", { base: "master", designCommit: run(repo, "rev-parse", "HEAD") }),
+    ).toThrow(/not one of this branch's docs\(design\) commits/);
+    expect(buildPrBranch(repo, "zoom", { base: "master", designCommit: first }).tag).toEqual({
+      name: "design/zoom",
+      commit: first,
+    });
+    // A later approved revision moves the tag; the first approval is kept.
+    expect(buildPrBranch(repo, "zoom", { base: "master", designCommit: approved }).tag).toEqual({
+      name: "design/zoom",
+      commit: approved,
+      archived: "design/zoom-v1",
+    });
+    expect(run(repo, "rev-parse", "design/zoom")).toBe(approved);
+    expect(run(repo, "rev-parse", "design/zoom-v1^{commit}")).toBe(first);
+    // Without a new approval the tag stays where it is.
+    expect(buildPrBranch(repo, "zoom", { base: "master" }).tag).toEqual({
+      name: "design/zoom",
+      commit: approved,
+    });
   });
 
   it("refuses a non-design commit that touches docs/designs/", () => {
@@ -203,7 +249,11 @@ describe("pr-branch", { timeout: 60_000 }, () => {
     };
     const { gh } = ghFor(fork("doodlum"));
     expect(
-      prBranchCommand(["zoom"], { base: "master", push: true }, { checkout: repo, git: real, gh }),
+      prBranchCommand(
+        ["zoom"],
+        { base: "master", push: true, "design-commit": run(repo, "rev-parse", "HEAD~1") },
+        { checkout: repo, git: real, gh },
+      ),
     ).toContain("pushed to doodlum/Vortex");
     expect(pushes).toEqual([
       ["push", "--force-with-lease", "origin", "pr/zoom"],
@@ -232,7 +282,7 @@ describe("pr-branch", { timeout: 60_000 }, () => {
     );
     expect(onBranch.passed).toBe(false);
 
-    buildPrBranch(repo, "zoom", { base: "master" });
+    buildPrBranch(repo, "zoom", { base: "master", designCommit: run(repo, "rev-parse", "HEAD~1") });
     run(repo, "checkout", "-q", "pr/zoom");
     const clean = await runPreflight({ checkout: repo, base: "master", skipRevert: true });
     expect(clean.checks.find((check) => check.id === "design")?.status).toBe("pass");

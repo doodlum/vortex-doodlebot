@@ -119,8 +119,9 @@ login is one file, `~/.doodlebot/login/oauth-<target>.json`, outside the workspa
 directly by the default cache and never copied. `<target>` is `--installed` unless the person
 names a source build (`--dev-dir <checkout>`); use it on every command below.
 
-1. `doodlebot status <target>`. If MCP is `answering`, ask whether to stop that test Vortex;
-   run `doodlebot down` on a yes, otherwise stop here.
+1. `doodlebot status <target>`. If MCP is `answering`, a test Vortex runs: see "A running test
+   Vortex" below. Stop here unless this session started it and the person says yes to
+   stopping it.
 2. Run `doodlebot setup --oauth <target> --no-wait` **in the background** with a log (see
    "Commands that launch Vortex"). Wait for the process to exit, then read the log:
    - `Existing OAuth login cached and present after a fresh restore. Setup complete.`:
@@ -132,7 +133,8 @@ names a source build (`--dev-dir <checkout>`); use it on every command below.
    to Nexus Mods in your browser. Tell me when you are done."
 4. Then `doodlebot auth-status <target>` (booleans only). When it shows OAuth credentials, run
    `doodlebot save-login <target>`; otherwise ask them to finish and check again.
-5. `doodlebot status <target>`; if MCP still answers, `doodlebot down`.
+5. `doodlebot status <target>`; if MCP still answers, `doodlebot down`: the Vortex of step 2,
+   which this session started.
 
 There is no backup of the login: a lost, revoked or expired one means `--login` again. Never
 click Log out in a test Vortex of the default cache unless the person asked; it signs them out
@@ -143,8 +145,8 @@ everywhere.
 1. `doodlebot version --json`. When `version` equals the plugin version and no ref was named,
    say it is up to date and stop. When `dirty` is true, the update refuses: ask the person to
    commit or remove the local changes, and stop.
-2. `doodlebot status`. If MCP is `answering`, ask whether to stop the test Vortex; run
-   `doodlebot down` on a yes, otherwise stop.
+2. `doodlebot status`. If MCP is `answering`, a test Vortex runs: see "A running test Vortex"
+   below. Stop here unless this session started it and the person says yes to stopping it.
 3. `doodlebot update --ref <ref>` (default `v<plugin version>`), in the background with a log
    if your tool times out sooner than 10 minutes. It fetches, checks out detached, installs and
    builds. Read the result:
@@ -155,6 +157,16 @@ everywhere.
 4. `doodlebot version --json` again; report the old and new version and commit. If they still
    differ from the plugin's, the plugin itself may need `/plugin marketplace update doodlebot`.
 5. Run the `--check` mode: an update brings new `KNOWLEDGE.md` entries and catalogue entries.
+
+## A running test Vortex
+
+Run `doodlebot down` only for a test Vortex **this session started**. Read the instance record
+`~/.doodlebot/instance.json` (`pid`, `cacheDir`, `startedAt`, and `sourceDir` for a source
+build or `exe` for a release): it is this session's only when its `sourceDir` or `exe` is the
+build this session launched and its `startedAt` is after this session's own launch. Otherwise
+another session started it: never stop it, even with the person's yes. Stop and report its
+pid, cache and build, and ask the person to stop it from the session that started it, as
+`/doodlebot:try`'s "Start and stop" says.
 
 ## Commands that launch Vortex
 

@@ -5,8 +5,9 @@
  * - **pr/<topic>** is built from the merge-base with upstream by cherry-picking every commit of
  *   the work branch except its `docs(design)` commits, so the design never reaches the PR. A
  *   non-design commit that touches `docs/designs/` is refused: split it first.
- * - **design/<topic>** is a tag on the last `docs(design)` commit, so the PR description can link
- *   the design at its commit on the person's fork.
+ * - **design/<topic>** is a tag on the approved `docs(design)` commit (`--design-commit`), so the
+ *   PR description can link the design at its commit on the person's fork. An unapproved
+ *   revision is never tagged.
  * - **Pushes go only to the person's own fork.** Before any push, `gh api repos/<origin>` must show
  *   that `origin` is a fork of Nexus-Mods/Vortex owned by the person's GitHub login, or the
  *   repository `VORTEX_AI_VORTEX_REPO` names when it is such a fork the person can push to. An
@@ -95,6 +96,20 @@ export function checkPushRemote(dir: string, deps: PushCheckDeps = {}): string {
     throw new ConfigError(
       `origin is ${UPSTREAM} itself. doodlebot never pushes there, even with push rights: fork it (\`${fork}\`) and push to your fork.`,
     );
+  // `git push origin` goes to the push URLs (remote.origin.pushurl, url.*.pushInsteadOf), not to
+  // the fetch URL read above. Every one of them must be the same repository.
+  const pushed = git(dir, ["remote", "get-url", "--push", "--all", "origin"]);
+  const pushUrls = pushed.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  for (const url of pushUrls)
+    if (!same(parseGitHubRepo(url), repo))
+      throw new ConfigError(
+        `origin fetches from ${repo} but pushes to ${url}. doodlebot pushes only to the fork it ` +
+          `checked; remove the push URL (\`git remote set-url --delete --push origin ${url}\`) or ` +
+          `the pushInsteadOf rule. Nothing was pushed.`,
+      );
   const looked = gh(["api", `repos/${repo}`]);
   if (looked.code !== 0)
     throw new ConfigError(
@@ -149,8 +164,11 @@ export interface PrBranchResult {
   mergeBase: string;
   picked: string[];
   skipped: string[];
-  /** `design/<topic>` and the commit it marks, when the branch has design commits. */
-  tag?: { name: string; commit: string };
+  /**
+   * `design/<topic>` and the approved design commit it marks; `archived` names the tag that now
+   * keeps the earlier approval when this run moved it.
+   */
+  tag?: { name: string; commit: string; archived?: string };
 }
 
 /** `upstream/<its default branch>`, the base work branches start from. */
@@ -167,7 +185,13 @@ export function defaultBase(dir: string, git: GitRunner = defaultGit): string {
 export function buildPrBranch(
   dir: string,
   topic: string,
-  options: { base?: string; git?: GitRunner; onProgress?: (message: string) => void } = {},
+  options: {
+    base?: string;
+    /** The approved design commit, to tag `design/<topic>` (tagApprovedDesign). */
+    designCommit?: string;
+    git?: GitRunner;
+    onProgress?: (message: string) => void;
+  } = {},
 ): PrBranchResult {
   const git = options.git ?? defaultGit;
   const report = options.onProgress ?? ((): void => undefined);
@@ -242,13 +266,54 @@ export function buildPrBranch(
   }
   run(git, dir, ["branch", "-f", branch, head], `Setting ${branch}`);
   const result: PrBranchResult = { branch, head, mergeBase, picked, skipped };
-  const designCommit = skipped.at(-1);
-  if (designCommit !== undefined) {
-    const name = `design/${topic}`;
-    run(git, dir, ["tag", "-f", name, designCommit], `Tagging ${name}`);
-    result.tag = { name, commit: designCommit };
-  }
+  const tag = tagApprovedDesign(dir, topic, skipped, options.designCommit, git);
+  if (tag !== undefined) result.tag = tag;
   return result;
+}
+
+const tagged = (git: GitRunner, dir: string, name: string): string | undefined => {
+  const found = git(dir, ["rev-parse", "--verify", "--quiet", `refs/tags/${name}^{commit}`]);
+  return found.code === 0 && found.stdout.trim() !== "" ? found.stdout.trim() : undefined;
+};
+
+/**
+ * `design/<topic>` marks the approved design commit, and only that: it is set from
+ * `--design-commit`, which the person's approval names, never from the branch's last design
+ * commit. A later approved revision moves it, and the commit it marked is kept as
+ * `design/<topic>-v<n>` (git cannot hold both `design/<topic>` and `design/<topic>/v<n>`).
+ * Without `--design-commit` an existing tag is left where it is.
+ */
+function tagApprovedDesign(
+  dir: string,
+  topic: string,
+  designCommits: string[],
+  designCommit: string | undefined,
+  git: GitRunner,
+): PrBranchResult["tag"] {
+  const name = `design/${topic}`;
+  const current = tagged(git, dir, name);
+  if (designCommit === undefined)
+    return current === undefined ? undefined : { name, commit: current };
+  const approved = run(
+    git,
+    dir,
+    ["rev-parse", "--verify", `${designCommit}^{commit}`],
+    `Reading ${designCommit}`,
+  );
+  if (!designCommits.includes(approved))
+    throw new ConfigError(
+      `${designCommit} is not one of this branch's docs(design) commits; --design-commit names the approved design commit.`,
+    );
+  if (current === approved) return { name, commit: approved };
+  let archived: string | undefined;
+  if (current !== undefined) {
+    let n = 1;
+    while (tagged(git, dir, `${name}-v${String(n)}`) !== undefined) n++;
+    archived = `${name}-v${String(n)}`;
+    run(git, dir, ["tag", archived, current], `Keeping the earlier approval as ${archived}`);
+  }
+  run(git, dir, ["tag", "-f", name, approved], `Tagging ${name}`);
+  return { name, commit: approved, ...(archived === undefined ? {} : { archived }) };
 }
 
 /** Push `pr/<topic>` (and its design tag) to origin, after checkPushRemote. */
@@ -256,6 +321,13 @@ export function pushPrBranch(dir: string, built: PrBranchResult, deps: PushCheck
   const git = deps.git ?? defaultGit;
   const fork = checkPushRemote(dir, deps);
   run(git, dir, ["push", "--force-with-lease", "origin", built.branch], `Pushing ${built.branch}`);
+  if (built.tag?.archived !== undefined)
+    run(
+      git,
+      dir,
+      ["push", "origin", `refs/tags/${built.tag.archived}`],
+      `Pushing ${built.tag.archived}`,
+    );
   if (built.tag !== undefined)
     run(
       git,
@@ -276,6 +348,7 @@ export function prBranchCommand(
     throw new ConfigError("pr-branch needs a topic: doodlebot pr-branch <topic> [--push].");
   const built = buildPrBranch(deps.checkout, topic, {
     base: typeof flags.base === "string" ? flags.base : undefined,
+    ...(typeof flags["design-commit"] === "string" ? { designCommit: flags["design-commit"] } : {}),
     git: deps.git,
     onProgress: deps.onProgress,
   });
@@ -283,8 +356,11 @@ export function prBranchCommand(
     `${built.branch} at ${built.head.slice(0, 7)}: ${String(built.picked.length)} commit(s) from ${built.mergeBase.slice(0, 7)}, ` +
       `${String(built.skipped.length)} docs(design) commit(s) left out`,
     built.tag === undefined
-      ? "no design commits, so no design tag"
-      : `${built.tag.name} -> ${built.tag.commit.slice(0, 7)}`,
+      ? "no design tag (--design-commit <approved design commit> sets one)"
+      : `${built.tag.name} -> ${built.tag.commit.slice(0, 7)}` +
+        (built.tag.archived === undefined
+          ? ""
+          : `; the earlier approval is kept as ${built.tag.archived}`),
   ];
   if (flags.push === true) {
     const fork = pushPrBranch(deps.checkout, built, deps);

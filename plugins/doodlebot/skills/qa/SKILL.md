@@ -27,9 +27,15 @@ the checks Vortex's own e2e suite lacks). Three forms:
    `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this `SKILL.md`).
    If they differ, say so and suggest `/doodlebot:setup --update`, then continue.
 3. `<shim>` is the absolute path of the `doodlebot` command (as in `/doodlebot:try`).
-4. **The author's instance is gone.** `doodlebot status`: if MCP is `answering`, ask the person
-   to confirm the author is done; then `doodlebot down` only if this session or the author
-   (with their go-ahead) started it. QA never reuses a running instance.
+4. **The author's instance is gone.** `doodlebot status`: if MCP is `answering`, read the
+   instance record `~/.doodlebot/instance.json` (`pid`, `cacheDir`, `startedAt`, and `sourceDir`
+   for a source build or `exe` for a release). QA never reuses a running instance, and runs
+   `doodlebot down` only for one **this session started**: its `sourceDir` or `exe` is the build
+   this session built and launched, and its `startedAt` is after this session's own `up`.
+   Anything else (the author's instance included) belongs to another session: **stop and
+   report** its pid, cache and build, and ask the person to stop it from the session that
+   started it. Never stop it yourself, even with a go-ahead, as `/doodlebot:try`'s "Start and
+   stop" says.
 5. **The change is settled.** QA starts only when the person says the direction is settled
    (for a feature, its design is approved), and runs only the head it was given: when a new
    head arrives, stop, check out that head and rebuild before the next run. The shared rules
@@ -42,18 +48,32 @@ holds only the steps, the flags and the content choice, `<workspace>`, `<shim>`,
 and "start with `doodlebot up --fresh`, do not reuse an instance"; never the author's reasoning
 or results. In Codex, run the procedure inline.
 
+**Kit gaps the driver proposes.** When a driver's report proposes kit gaps in its Learned
+section, record each yourself: `doodlebot gap list --json` (reuse a matching title), then
+`doodlebot gap add --title <t> --command <c> --needed <x> --happened <x> --workaround <x> --blocked yes|no --json`.
+Put each returned id in the QA report's Learned section, with the outcome the gap changed.
+
 ## Selecting catalogue entries
 
 - For a branch or PR: `doodlebot qa list --touching <changed files> --json`, the files from
   `git -C <checkout> diff --name-only <base>...<head>`. It selects the entries whose guards
   match, lists the others with the reason, and ends with **files no entry guards**.
-- Each entry's `needs` are matched against `doodlebot inventory --json` as
-  `/doodlebot:try`'s "Choose the build and content" says. An unmet need makes the entry
-  **not tested**, with the `next` command; it never passes.
-- An entry with `account: "logout"` ends the person's one shared login: it is skipped unless
-  the person named it and gave their go-ahead, and its report then ends with
-  `/doodlebot:setup --login`. An entry with `account: true` needs the `login` need.
-- An entry whose `pass` is `"measured"` reports its values, never pass or fail.
+- **Read the choice from that JSON; do not re-derive it.** Each selected entry has:
+  - `content`: the inventory items chosen for its `needs` (`chosen[].flag` are the flags to
+    run with, `chosen[].why` goes in "Tested against"), or, when `content.met` is false, the
+    `unmet` needs with their `next` command. An unmet need makes the entry **not tested**, with
+    that command; it never passes, and nothing is substituted;
+  - `verdict.possible`: the results the entry can still report, and `verdict.rule`. Report
+    only one of them.
+- An entry with `account: "logout"` ends the person's one shared login: `qa list` leaves it out
+  unless you pass `--allow-logout`, which you do only when the person named it and gave their
+  go-ahead; its report then ends with `/doodlebot:setup --login`. An entry with
+  `account: true` or `"logout"` lists the `login` need (`qa check` enforces it).
+- An entry whose `pass` is `"measured"` reports **measured** with its values, or **not
+  tested** when it produced none; never pass or fail.
+- A result that needed a workaround (a step the scenario did not ask for, or one that bypassed
+  the UI) is **passed with workaround: <x>**, never a plain pass
+  (`${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md`).
 
 ## Form 1: a PR or a branch (base build, then PR build)
 
@@ -64,9 +84,12 @@ or results. In Codex, run the procedure inline.
    build of a PR from anyone but the person, ask: "Building PR <n> runs its code on this
    machine. Go ahead?" Stop on a no.
 4. **Checkout.** `<workspace>/.vortex-src` (or `--dev-dir <checkout>`) must be clean:
-   `git -C <checkout> status --porcelain` prints nothing, or QA refuses. Fetch the PR to a new
-   branch `qa/<pr>` (`git -C <checkout> fetch upstream pull/<pr>/head:qa/<pr>`; a branch: its
-   name). The base is the merge-base: `git -C <checkout> merge-base upstream/master qa/<pr>`.
+   `git -C <checkout> status --porcelain` prints nothing, or QA refuses. Note the branch it is
+   on (`git -C <checkout> symbolic-ref --short HEAD`, or the commit from
+   `git -C <checkout> rev-parse HEAD` when detached): QA puts it back at the end. Fetch the PR to
+   a new branch `qa/<pr>` (`git -C <checkout> fetch upstream pull/<pr>/head:qa/<pr>`; a branch:
+   its name). Bring upstream up to date first, `git -C <checkout> fetch upstream`, so the base is
+   today's: the merge-base, `git -C <checkout> merge-base upstream/master qa/<pr>`.
 5. **Base build.** `git -C <checkout> switch --detach <merge-base>`, then
    `doodlebot build --checkout <checkout>`. Run every claim and every selected entry on it
    (`--dev-dir <checkout>`, `--fresh`). Entries with a check run `doodlebot test <check> <args>`
@@ -76,10 +99,16 @@ or results. In Codex, run the procedure inline.
 7. **Judge:**
    - a claim is **proved** only when the base shows the old behaviour and the PR the new one;
      the same result on both is **not proved by this PR**;
-   - an entry is **pass** (both passed), **regression** (passed on base, failed on PR),
-     **fixed** (failed on base, passed on PR), **failing on both**, or **not tested**;
-   - a measured entry reports both values.
-8. **Posting.** The report is posted to the PR only when the person says so, with
+   - an entry is **pass** (both passed), **passed with workaround: <x>** (it passed only with
+     a named workaround), **regression** (passed on base, failed on PR), **fixed** (failed on
+     base, passed on PR), **failing on both**, or **not tested**;
+   - a measured entry reports **measured** with both values (or **not tested** on a build
+     where it produced none).
+8. **Put the checkout back.** After the last run and `doodlebot down`:
+   `git -C <checkout> switch <the branch noted in step 4>` (or
+   `git -C <checkout> switch --detach <commit>` when it was detached). Say so in the report; a
+   switch that fails is reported with git's message.
+9. **Posting.** The report is posted to the PR only when the person says so, with
    `gh pr comment <pr> --repo Nexus-Mods/Vortex --body-file <report>`, showing them the text first.
 
 ## Form 2: `--design <file>` (a design's acceptance criteria)
@@ -88,7 +117,8 @@ or results. In Codex, run the procedure inline.
    **negative control**. A criterion without a control gets one you derive (the same check
    with the behaviour removed or the input changed), stated in the report.
 2. The subject is the branch that implements it; build it with
-   `doodlebot build --checkout <checkout>`.
+   `doodlebot build --checkout <checkout>`. If you switch the checkout to it (or to the base),
+   note the branch it was on first and switch back at the end, as Form 1's step 8 says.
 3. For each criterion run the proof and then its negative control, each from a fresh profile.
    A criterion **passes** only when the proof holds and the control shows the difference; a
    control that also "passes" means the proof does not test the criterion: **not proved**.
@@ -99,11 +129,15 @@ or results. In Codex, run the procedure inline.
 
 1. `doodlebot release get <version>` (pre-releases count). A mismatch or missing digest makes
    the run **Blocked** with that reason.
-2. `doodlebot down`, then `doodlebot test core` with `VORTEX_AI_EXE` set to the release's
-   `Vortex.exe` (from `doodlebot release list --json`) and `VORTEX_AI_INSTALLED=1` in the same
-   invocation, in the background with a log. Record pass, fail and skip counts.
-3. The catalogue's entries with `cost` `<2m`, `account: false`, run on `--release <version>`
-   from a fresh profile. Entries with `account: "logout"` are never part of this run.
+2. No test Vortex may be running: if `doodlebot status` answers, apply "The author's instance
+   is gone" above (stop and report unless this session started it). Then
+   `doodlebot test core --release <version>`, in the background with a log. `--release` is the
+   kit's, not Playwright's: it runs the suite on that registered release (`VORTEX_AI_EXE` and
+   `VORTEX_AI_INSTALLED=1`). Record pass, fail and skip counts.
+3. The catalogue's entries with `cost` `<2m`, `account: false`, from `doodlebot qa list --json`
+   (without `--allow-logout`: logout entries are never part of this run), each run on
+   `--release <version>` from a fresh profile with the content its `content` gives. A check
+   entry runs `doodlebot test <check> <args> --release <version>`.
 4. Write each entry's result to
    `<workspace>/harness/.artifacts/qa/<version>/<entry id>/<UTC time>/report.md`, and the core
    result to `<workspace>/harness/.artifacts/qa/<version>/core/<UTC time>/report.md`.
@@ -135,7 +169,7 @@ Write `<workspace>/harness/.artifacts/runs/<UTC time>-qa-<slug>/report.md`:
 
 ## Catalogue entries
 
-| Entry | Base | PR | Result (pass / regression / fixed / failing on both / not tested / measured: values) |
+| Entry | Base | PR | Result (pass / passed with workaround: <x> / regression / fixed / failing on both / not tested / measured: values) |
 
 ## Not tested
 
@@ -151,7 +185,10 @@ Write `<workspace>/harness/.artifacts/runs/<UTC time>-qa-<slug>/report.md`:
 
 ## Learned
 
-- Lessons, kit gaps, catalogue entries proposed, or "nothing"
+- Lessons: <recorded with knowledge add, noted as not holding, or removed, with ids>
+- Kit gaps: <ids from gap add, including each the driver proposed, and the outcome they changed>
+- Catalogue entries proposed: <area, guards, run, pass>
+- (or "nothing")
 ```
 
 ## Finish
@@ -161,5 +198,6 @@ and not-tested item, and the proposed catalogue entries (added only when they ag
 a `[qa]` issue only on request). Ask before posting anything to the PR. A missing login, game or
 network is Blocked or not tested, never passed. The Learned section follows
 `${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md` (`doodlebot knowledge add`, `doodlebot gap add`);
-never patch the doodlebot workspace mid-task. Stop with `doodlebot down` and confirm with
-`doodlebot status`.
+never patch the doodlebot workspace mid-task. Stop with `doodlebot down` (only the instance
+this session started) and confirm with `doodlebot status`. For Forms 1 and 2, the checkout is
+back on the branch it was on before QA.

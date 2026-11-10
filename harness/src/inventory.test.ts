@@ -10,6 +10,7 @@ import {
   LOGIN_NEXT,
   chooseContent,
   formatInventory,
+  inventoryCommand,
   inventorySchema,
   isKnownNeed,
   readInventory,
@@ -47,7 +48,7 @@ function expectNextOnEveryNotReady(inventory: Inventory): void {
     // A store install whose game has a registered copy: nothing to do, the copy is named.
     else if (item.id.startsWith("store:") && item.details?.copy !== undefined)
       expect(item.next, item.id).toBeUndefined();
-    else expect(item.next, item.id).toMatch(/^(doodlebot |Remove-Item )/);
+    else expect(item.next, item.id).toMatch(/^(doodlebot |\/doodlebot:[a-z]+ |Remove-Item )/);
   }
 }
 
@@ -69,6 +70,28 @@ describe("the inventory", () => {
     expect(byId(inventory, "login")).toMatchObject({ ready: false, next: LOGIN_NEXT });
     expect(byId(inventory, "source")).toMatchObject({ ready: false, next: "doodlebot source" });
     expect(formatInventory(inventory)).toContain(`next: ${LOGIN_NEXT}`);
+    // A captured `doodlebot setup --oauth` can hang on Windows; the plugin command runs it.
+    expect(LOGIN_NEXT).toBe("/doodlebot:setup --login");
+  });
+
+  it("inventory --need gives the content choice for those needs, as the skills read it", () => {
+    const json = JSON.parse(
+      inventoryCommand({ json: true }, deps, { need: ["sandbox:fallout4", "login"] }),
+    ) as unknown;
+    expect(json).toEqual({
+      met: false,
+      chosen: [
+        {
+          need: "sandbox:fallout4",
+          id: "sandbox:fallout4",
+          label: expect.any(String),
+          flag: "--bethesda-sandbox",
+          why: "the only item that meets sandbox:fallout4",
+        },
+      ],
+      unmet: [{ need: "login", next: LOGIN_NEXT, reason: expect.any(String) }],
+    });
+    expect(inventoryCommand({}, deps, { need: ["login"] })).toContain(`next: ${LOGIN_NEXT}`);
   });
 
   it("counts a login only when an oauth file holds one, never the null tombstone", () => {

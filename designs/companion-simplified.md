@@ -167,7 +167,9 @@ What doodlebot does:
          `docs(design)` but touches `docs/designs/`.
      - **The tag after a revision:** a design revised after approval needs a new approval. Then
        `design/<topic>` moves to the newly approved commit, and the old one is kept as
-       `design/<topic>/v<n>`.
+       `design/<topic>-v<n>` (git cannot hold a tag `design/<topic>` beside
+       `design/<topic>/v<n>`). `pr-branch --design-commit <sha>` names the approved commit; an
+       unapproved revision is never tagged.
      - `pr-preflight` FAILs when the PR branch adds or changes a `docs/designs/` file that came
        from a `docs(design)` commit of this branch. Upstream's own `docs/designs` edits are
        untouched.
@@ -268,7 +270,8 @@ Both reviewers' blockers were checked against the code:
          confirmed the exit.
          - **Restored automatically:** a changed file whose modification time falls inside the
            run **and** that is one of the files Vortex writes for that game. The per-game table
-           names them: `plugins.txt`, `loadorder.txt`, `DLCList.txt`, `*.ini`.
+           names them: `plugins.txt`, `loadorder.txt`, `DLCList.txt`, `*.ini`. A deleted file
+           has no time of its own; its nearest existing folder's modification time dates it.
          - **Listed for the owner instead:** any other changed file (saves especially). The owner
            may have played their own copy of the game during a long run, and the time window
            can't tell their saves from the run's. Found by the safety review, 2026-11-10.
@@ -835,7 +838,9 @@ The owner removed them, keeping the VM.
 2. **Evidence holds reports, not binaries.**
    - Run, QA and benchmark folders keep reports, logs, JSON and screenshots.
    - Game copies, VM disks, packages and downloads go in the cache or the copy folder.
-   - A run that would put a file over 100 MB in an evidence folder writes a link to it instead.
+   - The skills that write evidence follow the rule: a file over 100 MB is not copied into an
+     evidence folder; the report names its path instead. (No kit command copies such files, so
+     the rule lives in the skills, not in code.)
 3. **`doodlebot clean`:**
    - lists, then deletes after confirmation:
      - run, QA and benchmark folders older than `--older-than <days>` (default 30), keeping each
@@ -1012,7 +1017,7 @@ references in the same step. "Docs" below means:
      tests;
    - the docs: "Sign in" gains "If your login is lost or expired".
      7e. **Disk use (4.13):** `game copy` reuse with `--new`, `doodlebot clean` with its test,
-     the 100 MB evidence rule in the run-report writers, and disk use in `setup --check` (step 8).
+     the 100 MB evidence rule in the skills that write evidence, and disk use in `setup --check` (step 8).
 8. **Commands 16 → 8 (4.1):**
    - skills renamed or merged: `drive` → `try`, `ui-test` into `fix`, `compare` into `measure`,
      login, baseline, update and status into `setup`, start and stop into `try`;

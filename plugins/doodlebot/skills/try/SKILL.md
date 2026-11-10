@@ -39,6 +39,10 @@ save time", "Commands that block" and "The report procedure".
     complete brief: the scenario in the person's words, the build and game flags and why they
     were chosen (below), `<workspace>`, `<shim>`, the run folder, whether it starts and stops
     the instance, and what counts as done. Wait for it, check its report exists, and read it.
+    **Record the kit gaps it proposes:** the driver cannot. For each proposed gap in its
+    Learned section, `doodlebot gap list --json` (reuse a matching title), then
+    `doodlebot gap add --title <t> --command <c> --needed <x> --happened <x> --workaround <x> --blocked yes|no --json`,
+    and write each returned id into the report's Learned section under "Kit gaps".
   - **Codex** (plugins ship no agents): run the procedure inline yourself.
 
 ## Choose the build and content
@@ -57,21 +61,23 @@ release when none is installed.
 `doodlebot release get <version>` downloads only official releases, checks the published
 SHA-256 and never runs the installer. A release without a published digest is **blocked**.
 
-**The content** (design 4.5). Run `doodlebot inventory --json` and write down what the scenario
-**needs**, as kinds: `sandbox` (the fake game), `sandbox:fallout4` (the fake Fallout 4:
-plugins, LOOT, masters), `game` (any game the kit may manage), `game:<id>` (a registered copy
-of that game), `collection`, `collection:offline`, `collection:nexus`, `login`. Then take, for
-each need, the cheapest **ready** item that meets it:
+**The content** (design 4.5). Write down what the scenario **needs**, as kinds: `sandbox` (the
+fake game), `sandbox:fallout4` (the fake Fallout 4: plugins, LOOT, masters), `game` (any game
+the kit may manage), `game:<id>` (a registered copy of that game), `collection`,
+`collection:offline`, `collection:nexus`, `login`. Then let doodlebot choose; **read its
+choice, do not re-derive it**:
 
-1. a sandbox before a registered game copy, and the smallest copy first;
-2. an offline collection before a Nexus one;
-3. a named override from the person ("use my Skyrim copy") wins, recorded as their choice.
+- a QA catalogue entry: its `content` in `doodlebot qa list --json`;
+- any other scenario: `doodlebot inventory --need <need> [--need <need>...] --json`.
 
-Each item's `details.flag` gives the flags (`--sandbox`, `--bethesda-sandbox`,
-`--game <id> --game-path <copy>`). A need nothing ready meets makes that part **not tested**,
-with the item's `next` command; never substitute something else silently, and never use a
-store install (`store:<id>` is never usable). Write the choice as the report's "Tested against"
-line: build, content, and why.
+Both print `{met, chosen: [{need, id, label, flag, why}], unmet: [{need, next, reason}]}`. The
+choice is the cheapest ready item per need: a sandbox before a registered game copy (the
+smallest copy first), an offline collection before a Nexus one. Run with each `chosen[].flag`
+(`--sandbox`, `--bethesda-sandbox`, `--game <id> --game-path <copy>`) and put each `why` in
+the report's "Tested against" line. An `unmet` need makes that part **not tested**, with its
+`next` command; never substitute something else silently, and never use a store install
+(`store:<id>` is never usable). A named override from the person ("use my Skyrim copy") wins
+over the choice, recorded as their choice.
 
 ## Start and stop
 

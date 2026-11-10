@@ -11,7 +11,14 @@ import path from "node:path";
 import { z } from "zod";
 
 import { ConfigError } from "./errors";
-import { isKnownNeed, type Choice } from "./inventory";
+import {
+  chooseContent,
+  describeChoice,
+  isKnownNeed,
+  readInventory,
+  type Choice,
+  type Inventory,
+} from "./inventory";
 import { readJsonFile } from "./jsonFile";
 import { DEFAULT_ARTIFACT_DIR, HARNESS_ROOT } from "./paths";
 import { SUITES } from "./testCommand";
@@ -163,10 +170,13 @@ export function selectEntries(
 
 export type Verdict = "pass" | "fail" | "measured" | "not tested";
 
+export const isMeasured = (entry: Pick<CatalogEntry, "pass">): boolean =>
+  entry.pass.trim().toLowerCase() === "measured";
+
 /**
  * How a run of an entry is reported. A run whose needs were unmet, or that did not run, is
- * "not tested". An entry whose `pass` is "measured" reports a measurement or a failure, never a
- * pass.
+ * "not tested". An entry whose `pass` is "measured" reports "measured" when the run produced its
+ * measurement (`ok`) and "not tested" when it produced none: never pass, never fail.
  */
 export function judgeResult(
   entry: Pick<CatalogEntry, "pass">,
@@ -174,8 +184,23 @@ export function judgeResult(
 ): Verdict {
   if (run.choice !== undefined && !run.choice.met) return "not tested";
   if (!run.ran) return "not tested";
-  if (run.ok !== true) return "fail";
-  return entry.pass.trim().toLowerCase() === "measured" ? "measured" : "pass";
+  if (isMeasured(entry)) return run.ok === true ? "measured" : "not tested";
+  return run.ok === true ? "pass" : "fail";
+}
+
+/** The verdicts an entry can still report with this content choice, and the rule behind them. */
+export function verdictRule(
+  entry: Pick<CatalogEntry, "pass">,
+  choice: Pick<Choice, "met">,
+): { possible: Verdict[]; rule: string } {
+  const runs = [{ ran: false }, { ran: true, ok: false }, { ran: true, ok: true }];
+  const possible = [...new Set(runs.map((run) => judgeResult(entry, { ...run, choice })))];
+  const rule = !choice.met
+    ? "not tested: a need is unmet (content.unmet gives the command that meets it)"
+    : isMeasured(entry)
+      ? "measured: report the values it measured; not tested when it produced none; never pass or fail"
+      : `pass when: ${entry.pass}; fail otherwise; not tested when it did not run`;
+  return { possible, rule };
 }
 
 /** The newest local report of an entry, from `harness/.artifacts/qa/<version>/<id>/<time>/`. */
@@ -246,6 +271,10 @@ export function checkCatalog(
     if (entry.needs.length === 0) problems.push(`${entry.id}: no needs`);
     for (const need of entry.needs)
       if (!isKnownNeed(need)) problems.push(`${entry.id}: unknown need "${need}"`);
+    if (entry.account !== false && !entry.needs.includes("login"))
+      problems.push(
+        `${entry.id}: account is ${JSON.stringify(entry.account)}, so its needs must list "login"`,
+      );
     if ("check" in entry.run && !suites.includes(entry.run.check))
       problems.push(
         `${entry.id}: its check "${entry.run.check}" is not a suite (doodlebot test --list)`,
@@ -358,6 +387,14 @@ export interface QaDeps {
   catalogFile?: string;
   vortexDir?: string;
   readTree?: (dir: string) => VortexTree | undefined;
+  /** What doodlebot can test against (inventory.ts), read without launching anything. */
+  inventory?: () => Inventory;
+}
+
+/** An entry's content choice (chooseContent), as `qa list --json` gives it. */
+function contentOf(entry: CatalogEntry, inventory: Inventory) {
+  const choice = chooseContent(entry.needs, inventory);
+  return { choice, content: describeChoice(choice) };
 }
 
 /** `doodlebot qa list|check`. Returns the text to print and the exit code. */
@@ -376,16 +413,24 @@ export function qaCommand(
       flags.touching === undefined && given.length === 0
         ? undefined
         : given.map((file) => vortexRelative(file, deps.vortexDir));
-    const selection = selectEntries(catalog, touched);
-    if (flags.json === true)
+    const selection = selectEntries(catalog, touched, {
+      allowLogout: flags["allow-logout"] === true,
+    });
+    if (flags.json === true) {
+      const inventory = (deps.inventory ?? readInventory)();
       return {
         text: JSON.stringify(
           {
-            selected: selection.selected.map(({ entry, matched }) => ({
-              ...entry,
-              matched,
-              latest: latestResult(entry.id) ?? null,
-            })),
+            selected: selection.selected.map(({ entry, matched }) => {
+              const { choice, content } = contentOf(entry, inventory);
+              return {
+                ...entry,
+                matched,
+                content,
+                verdict: verdictRule(entry, choice),
+                latest: latestResult(entry.id) ?? null,
+              };
+            }),
             unselected: selection.unselected.map(({ entry, reason }) => ({ id: entry.id, reason })),
             unguarded: touched === undefined ? null : selection.unguarded,
           },
@@ -394,6 +439,7 @@ export function qaCommand(
         ),
         code: 0,
       };
+    }
     return { text: formatSelection(selection, touched), code: 0 };
   }
   if (sub === "check") {
@@ -402,5 +448,5 @@ export function qaCommand(
     const check = checkCatalog(catalog, vortex === undefined ? {} : { vortex });
     return { text: formatCheck(catalog, check, vortex), code: check.problems.length > 0 ? 1 : 0 };
   }
-  throw new ConfigError("Use qa list [--touching <paths…>] [--json] or qa check.");
+  throw new ConfigError("Use qa list [--touching <paths…>] [--allow-logout] [--json] or qa check.");
 }

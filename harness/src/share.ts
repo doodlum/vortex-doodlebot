@@ -2,8 +2,8 @@
  * `doodlebot knowledge share <id>` and `doodlebot gap share <id>`: a local lesson or kit gap
  * becomes a GitHub issue on doodlebot's repository, which the maintainer turns into a change.
  *
- * - The text is redacted first: local paths become `<workspace>`, `<cache>`, `<game copy>` and
- *   `<home>`; the Windows user, machine and Nexus user names become `<user>`, `<machine>` and
+ * - The text is redacted first: local paths become `<workspace>`, `<cache>`, `<game copy>`,
+ *   `<temp>` and `<home>` (a `Users\<8.3 short name>` home too); the Windows user, machine and Nexus user names become `<user>`, `<machine>` and
  *   `<nexus user>` wherever they appear. Third-party data is left out unless the person confirms it
  *   separately (`--include-third-party`). The credential guard runs on the result.
  * - Without `--yes` the text is printed and nothing is published: the agent shows it to the person
@@ -46,6 +46,20 @@ export interface RedactionContext {
   user: string;
   machine: string;
   nexusUser?: string;
+  /** The temporary folder in every spelling: `os.tmpdir()` is often an 8.3 short path. */
+  temp?: string[];
+}
+
+/** `os.tmpdir()` as given (often `C:\Users\NEXUST~1\...`) and its long form. */
+function tempFolders(): string[] {
+  const temp = os.tmpdir();
+  let long: string | undefined;
+  try {
+    long = fs.realpathSync.native(temp);
+  } catch {
+    long = undefined;
+  }
+  return [...new Set([temp, ...(long === undefined ? [] : [long])])];
 }
 
 /** This machine's paths and names. `VORTEX_AI_NEXUS_USER` (or `--nexus-user`) names the Nexus user. */
@@ -69,6 +83,7 @@ export function machineRedaction(nexusUser = process.env.VORTEX_AI_NEXUS_USER): 
     user: os.userInfo().username,
     machine: os.hostname(),
     ...(nexusUser ? { nexusUser } : {}),
+    temp: tempFolders(),
   };
 }
 
@@ -98,12 +113,18 @@ export function redact(text: string, ctx: RedactionContext): string {
   const paths: [string, string][] = [
     ...ctx.copies.map((dir): [string, string] => [dir, "<game copy>"]),
     ...ctx.caches.map((dir): [string, string] => [dir, "<cache>"]),
+    ...(ctx.temp ?? []).map((dir): [string, string] => [dir, "<temp>"]),
     [ctx.workspace, "<workspace>"],
     [ctx.home, "<home>"],
   ];
   let out = text;
   for (const [dir, placeholder] of paths.toSorted((a, b) => b[0].length - a[0].length))
     out = replacePath(out, dir, placeholder);
+  // A home folder in its 8.3 short form (`C:\Users\NEXUST~1`), which no path above spells.
+  out = out.replace(
+    /(?:\b[A-Za-z]:)?[\\/]+Users[\\/]+[^\\/\s"'`<>]*~\d+(?![^\\/\s"'`<>])/gi,
+    "<home>",
+  );
   out = replaceName(out, ctx.nexusUser, "<nexus user>");
   out = replaceName(out, ctx.user, "<user>");
   out = replaceName(out, ctx.machine, "<machine>");

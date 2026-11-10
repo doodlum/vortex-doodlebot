@@ -105,6 +105,22 @@ export function parseProcessList(json: string): ProcessInfo[] {
   );
 }
 
+/**
+ * Off Windows the kit cannot see the owner's Vortex, a running game or the nxm link handler
+ * (`listVortexProcesses`, `gameRunning` and nxmHandler.ts read Windows-only sources and find
+ * nothing). A launch does not refuse; it prints this, so the person knows nothing checked.
+ */
+export function windowsOnlyWarning(
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (platform === "win32") return undefined;
+  return (
+    `warning: on ${platform} doodlebot cannot see your own Vortex, a running game or the nxm:// ` +
+    "link handler; these protections are Windows-only. Close your own Vortex and the game " +
+    "yourself before a run."
+  );
+}
+
 /** Refuse while the owner's Vortex runs. `recordedPid` is the harness Vortex, when one runs. */
 export function assertNoOwnVortex(
   recordedPid?: number,

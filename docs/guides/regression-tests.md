@@ -59,6 +59,10 @@ request. A spec added there leaves the workspace with a local change, so
 `/doodlebot:setup --update` refuses until you commit it to a doodlebot branch or remove it. The
 suite starts its own Vortex and refuses while another runs.
 
+To run a suite or check on an official release, add `--release <version>`, for example
+`doodlebot test core --release 2.8.0`. The release must be registered first with
+`doodlebot release get <version>`; `/doodlebot:qa --release <version>` does both.
+
 ## What's next
 
 - [Open a pull request](pull-requests.md) for the Vortex change, with its own Vortex test.

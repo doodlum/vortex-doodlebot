@@ -113,6 +113,10 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
   inventory [--json]     What doodlebot can test against (builds, games, snapshots,
                          sandboxes, collections, login); each item not ready names the
                          exact command that makes it ready. Reads only; never launches
+    --need <need>        Repeatable: instead, the content chosen for these needs (sandbox,
+                         sandbox:fallout4, game, game:<id>, collection, collection:offline,
+                         collection:nexus, login): each item with its flag and why, or each
+                         unmet need with the command that meets it
   clean [--older-than <days>] [--dry-run] [--yes]
                          List what disk use to free (default 30 days): binaries in old
                          run, QA and benchmark folders (each report.md and files under
@@ -128,7 +132,10 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --where              Print managed source path
   pr-branch <topic>      Build pr/<topic> from the merge-base with upstream: every commit
                          except docs(design) ones (a non-design commit touching
-                         docs/designs/ is refused); tag the last design commit design/<topic>
+                         docs/designs/ is refused)
+    --design-commit <sha>  The approved design commit: tag it design/<topic>; a tag already
+                         on an earlier approval is kept as design/<topic>-v<n>. Without it
+                         no tag is set or moved (never tag an unapproved revision)
     --checkout <dir>     Vortex checkout (default: .vortex-src)
     --base <ref>         Base (default: upstream/<default branch>)
     --push               Push both to origin, only after gh shows origin is your own fork
@@ -236,11 +243,15 @@ Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
                          the suite is the suite's (core: Playwright's)
   test --list            List the suites (also test --help or test -h)
-  qa list [--touching <paths...>] [--json]
+  qa list [--touching <paths...>] [--allow-logout] [--json]
                          The QA catalogue (harness/qa/catalog.json): checks Vortex's own
                          e2e suite lacks. With --touching (paths relative to the Vortex
                          root), the entries whose guards match, the others with the
-                         reason, and the files no entry guards
+                         reason, and the files no entry guards. --json gives each selected
+                         entry its content (the inventory items chosen for its needs, or
+                         each unmet need with the command that meets it) and its verdict
+                         rule. --allow-logout also selects entries that log out of the
+                         account (only with the person's go-ahead)
   qa check               Validate the catalogue; with .vortex-src, also list specs added
                          since its recorded commit and guards that match no file
   perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]

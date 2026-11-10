@@ -8,8 +8,10 @@ before implementing it. The person submitting must understand every line.
 
 A feature or refactor PR implements an approved EGM design. The design lives on the Vortex
 branch as `docs/designs/<topic>.md`, committed as `docs(design): <topic>`; `doodlebot pr-branch`
-leaves those commits out of `pr/<topic>` and tags the approved design commit `design/<topic>`,
-so the description links the design without the PR carrying it.
+leaves those commits out of `pr/<topic>` and, given `--design-commit <sha>`, tags the approved
+design commit `design/<topic>` (an earlier approval stays as `design/<topic>-v<n>`; an
+unapproved revision is never tagged), so the description links the design without the PR
+carrying it.
 
 ## Never publish an untested change
 

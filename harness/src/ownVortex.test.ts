@@ -4,8 +4,21 @@ import {
   assertNoOwnVortex,
   ownVortexProcesses,
   parseProcessList,
+  windowsOnlyWarning,
   type ProcessInfo,
 } from "./ownVortex";
+
+describe("off Windows", () => {
+  it("warns that the own-Vortex, game and nxm handler protections are Windows-only", () => {
+    expect(windowsOnlyWarning("win32")).toBeUndefined();
+    for (const platform of ["linux", "darwin"] as const)
+      expect(windowsOnlyWarning(platform)).toBe(
+        `warning: on ${platform} doodlebot cannot see your own Vortex, a running game or the ` +
+          "nxm:// link handler; these protections are Windows-only. Close your own Vortex and " +
+          "the game yourself before a run.",
+      );
+  });
+});
 
 const installed: ProcessInfo = {
   pid: 100,

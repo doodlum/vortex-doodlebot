@@ -259,7 +259,10 @@ by the number of lessons or greener results from narrower coverage.
 ## Initial setup
 
 Windows, a Node version compatible with package.json, the pinned pnpm (`pnpm@9.15.0`), Git and an
-installed Vortex. No game or Nexus account is needed for sandbox tests. `/doodlebot:setup` does
+installed Vortex. On an older Node the `doodlebot` command exits first with
+`doodlebot needs Node <min> or newer; this is <version>` (`bin/nodeVersion.cjs`; the minimum is
+package.json's `engines.node`, else 20.19). No game or Nexus account is needed for sandbox
+tests. `/doodlebot:setup` does
 all of this; by hand, from the workspace root:
 
 ```powershell
@@ -450,6 +453,11 @@ suite or independent QA. A few refusals stop the cases where two would damage da
   Electron helpers (`--type=...`) never count. `up` and `bootstrap` check after stopping their
   own leftover; the core suite checks in its global setup and fixture. The list comes from
   `Get-CimInstance Win32_Process`.
+- **Off Windows these protections see nothing.** The owner's-Vortex check, the game-running
+  check (`tasklist`) and the nxm handler (the registry) read Windows-only sources. A launch does
+  not refuse; `up`, `setup`, `bootstrap` and the core fixture print
+  `warning: on <platform> doodlebot cannot see your own Vortex, a running game or the nxm:// link handler; these protections are Windows-only. ...`
+  (`windowsOnlyWarning`, `ownVortex.ts`). Close your own Vortex and the game yourself.
 - **The nxm link handler** (`nxmHandler.ts`). Every Vortex re-registers itself in
   `HKCU\Software\Classes\nxm`. Each launch records `shell\open\command`'s default value (or
   `absent`) in the record, and `clearInstanceRecord` writes it back (`reg add ... /ve /d`, or
@@ -500,11 +508,14 @@ doodlebot game restore <gameId> [--all | --keep | --file <path>...]
 doodlebot game folder [<dir>]                  # store the copy folder (asked once by setup --check)
 ```
 
-- **A launch manages only a registered copy** (`assertGamePathAllowed`, `gameCommand.ts`). A path
-  under the cache is the kit's own (the fake game, the fake Fallout 4, `test nexus`'s folder) and
-  exempt. Any other `--game-path` must be a registered copy of that game, and `--game` without
-  `--game-path` refuses: the Steam install is never managed. A store path (what `findGamePath`
-  returns, or anything under `steamapps\common`) is never a copy. `game copy` needs `--to`
+- **A launch manages only a registered copy** (`assertGamePathAllowed`, `gameCommand.ts`), in
+  this order: `--game` without `--game-path` refuses (the Steam install is never managed); a
+  store path (what `findGamePath` returns, or anything under `steamapps\common`) refuses
+  wherever it is, inside the cache too; a game missing from `USER_FOLDERS` refuses. Only then is
+  a path under the cache exempt from registration: the kit's own folders (the fake game, the
+  fake Fallout 4, `test nexus`'s placeholder game folder). That placeholder's game still writes
+  its real user folders, so they are backed up like a copy's. Any other `--game-path` must be a
+  registered copy of that game. `game copy` needs `--to`
   until a copy folder is stored with `game folder <dir>` (`setCopyFolder`), which refuses a
   store library and a folder inside the workspace, and creates the folder.
 - **One copy per game version.** `game copy` reuses a registered copy of the same game id and
@@ -523,14 +534,24 @@ doodlebot game folder [<dir>]                  # store the copy folder (asked on
   there (a registered copy and the fake Fallout 4) copies them into
   `<cache>/user-folder-backups/<game>-<time>`, records each file's path, size, modification time
   and SHA-256 in its `manifest.json`, and writes a pending restore with the run's start time,
-  before Vortex starts. It refuses while the game runs (`tasklist`) or when the backup fails.
-- **A pending restore blocks every later launch** and the core suite.
-- **`down`** restores after the confirmed exit. A changed file whose modification time lies
-  inside the run (start to confirmed exit) is restored; a deletion counts as the run's. One
-  modified outside it blocks the whole restore and is listed. The restore is byte for byte with
-  the original times, verified by hash; then the pending restore and the backup are deleted. A
-  folder that did not exist before is removed when it holds no files. `save-login` restores the
-  same way after its clean stop.
+  before Vortex starts. It refuses while the game runs (`tasklist`) or when the backup fails,
+  and for a game missing from `USER_FOLDERS`.
+- **A pending restore blocks every later launch** and the core suite. One whose backup folder
+  or `manifest.json` is gone says `The backup of the user folders of <game> ... is missing` and
+  names `doodlebot game restore <gameId> --keep`, which clears it and keeps the folders as they
+  are (`--all` and `--file` refuse: there is nothing to restore from).
+- **`down`** restores after the confirmed exit (design 4.3.3). `VORTEX_WRITES` next to
+  `USER_FOLDERS` names the files Vortex writes per game: `plugins.txt`, `loadorder.txt`,
+  `DLCList.txt` and `*.ini` for the Bethesda games, none for Stardew Valley. A change is
+  restored automatically only when it is to such a file **and** inside the run (start to
+  confirmed exit) by its modification time; a deleted file is dated by its nearest existing
+  folder's modification time, and one with no folder left is not restored (`planRestore`).
+  Every other change (a save above all, even one made inside the run: the owner may have played
+  their own copy meanwhile) is listed with `Not restored: ...` and keeps the pending restore and
+  the backup for `game restore`; the Vortex files are restored either way. The restore is byte
+  for byte with the original times, verified by hash; when nothing is left for the owner, the
+  pending restore and the backup are deleted. A folder that did not exist before is removed when
+  it holds no files. `save-login` restores the same way after its clean stop.
 - **The restart path** in `up` and `bootstrap` restores only after stopping its own live leftover
   cleanly. If the leftover was already dead (an unclean end) it restores nothing, refuses and
   prints the listing. A launch that fails after the backup restores once nothing of it runs.
@@ -589,7 +610,7 @@ its label and the copy in `details.copy`.
 | `snapshot`   | `snapshot:<dir>` for each `snapshot-*` in the cache, read through its marker. Stale (older format, game folder or build gone): `next: doodlebot up <flags> --rebuild-snapshot`; no marker: delete it                                                                                                                                   |
 | `sandbox`    | `sandbox` (the fake game) and `sandbox:fallout4` (the fake Fallout 4), always ready                                                                                                                                                                                                                                                    |
 | `collection` | `collection:offline` (always ready) and `collection:nexus:<game>/<slug>` from `content.json`, ready with a login                                                                                                                                                                                                                       |
-| `login`      | `login`: an `oauth-*.json` in the cache holding a login, not the null tombstone; else `next: doodlebot setup --oauth --installed`                                                                                                                                                                                                      |
+| `login`      | `login`: an `oauth-*.json` in the cache holding a login, not the null tombstone; else `next: /doodlebot:setup --login` (a captured `doodlebot setup --oauth` can hang on Windows; the plugin command runs it in the background)                                                                                                        |
 
 The snapshot marker records `build` (`buildOf`: the checkout or the exe) since this change;
 older markers without it are read as "build not recorded", and their `next` names no target flag.
@@ -599,7 +620,12 @@ fake game, then the fake Fallout 4), `sandbox:fallout4`, `game` (a sandbox, then
 copy), `game:<id>` (a registered copy, smallest first), `collection` (offline before Nexus),
 `collection:offline`, `collection:nexus` or `login`; anything else throws. It returns
 `{met, chosen: [{need, item, why}], unmet: [{need, next, reason}]}`. An unmet need makes the run
-"not tested", with its `next`.
+"not tested", with its `next`. The skills never re-derive it: `doodlebot inventory --need <need>
+[--need <need>...] [--json]` prints it for a scenario's needs, and `qa list --json` for each
+catalogue entry, both as `describeChoice` gives it:
+`{met, chosen: [{need, id, label, flag?, why}], unmet: [{need, next, reason}]}`. A markerless
+snapshot's `next` stays `Remove-Item -Recurse <dir>`: `doodlebot clean` removes a baseline only
+once it is older than `--older-than`, so it does not cover a fresh interrupted one.
 
 ### The QA catalogue
 
@@ -612,33 +638,40 @@ root: `**` spans folders, `*` stays in one), `why`, `run` (`{check, args}` namin
 `true` or `"logout"`) and `network`. `docs/reference/qa-catalog.md` is generated from it.
 
 ```powershell
-doodlebot qa list [--touching <paths...>] [--json]
+doodlebot qa list [--touching <paths...>] [--allow-logout] [--json]
 doodlebot qa check
 ```
 
 - `qa list --touching` selects the entries whose guards match a touched path (relative to the
   Vortex root; absolute paths under `.vortex-src` are made relative), prints the others with
   their reason, and ends with `Files no entry guards: ...`. An `account: "logout"` entry is
-  never selected without the person's go-ahead. Without `--touching` it lists every entry. Each
-  selected entry shows its newest local report,
+  selected only with `--allow-logout`, which the skills pass only after the person's go-ahead.
+  Without `--touching` it lists every entry. Each selected entry shows its newest local report,
   `harness/.artifacts/qa/<vortexVersion>/<entry id>/<time>/report.md`.
+- `qa list --json` gives each selected entry, besides its catalogue fields, `matched` and
+  `latest`:
+  - `content`: `chooseContent(needs, inventory)` on the live inventory, as
+    `{met, chosen: [{need, id, label, flag?, why}], unmet: [{need, next, reason}]}`. The skills
+    use `chosen[].flag` for the run and `why` for the "Tested against" line, and report an
+    entry with `met: false` as not tested with each `unmet[].next`;
+  - `verdict`: `{possible, rule}` from `judgeResult` (`verdictRule`): the verdicts the entry can
+    still report with that content, and the rule in words.
 - `qa check` (`pnpm run qa:check`, in `ci`) fails on an entry without guards, pass or needs, an
-  unknown need, a check that is not a suite, or a repeated id. With `.vortex-src` it also lists
-  specs added since the recorded commit and guards that match no tracked file at HEAD; those are
-  for the owner to act on and do not fail it.
+  unknown need, a check that is not a suite, a repeated id, or an entry with `account: true` or
+  `"logout"` whose needs do not list `login`. With `.vortex-src` it also lists specs added since
+  the recorded commit and guards that match no tracked file at HEAD; those are for the owner to
+  act on and do not fail it.
 - `judgeResult(entry, {ran, ok, choice})` reports `pass`, `fail`, `measured` or `not tested`:
-  unmet needs or no run is "not tested", and a `"measured"` entry reports a measurement or a
-  failure, never a pass.
+  unmet needs or no run is "not tested". A `"measured"` entry reports `measured` when the run
+  produced its measurement and `not tested` when it produced none: never `pass` or `fail`.
 - When Vortex adds a spec that covers an entry, the entry is deleted in the change that records
   the new spec commit.
 
 ### Disk use and clean
 
-Evidence folders hold reports, logs, JSON and screenshots. `placeEvidenceFile(file, dir)`
-(`diskUse.ts`) copies a file into an evidence folder, or, over 100 MB, writes
-`<name>.link.txt` with its path and leaves it where it is; use it for any file a run report did
-not write itself. Game copies, VM disks, packages and downloads belong in the cache or the copy
-folder.
+Evidence folders hold reports, logs, JSON and screenshots. A file over 100 MB never goes into
+one: the report names its path instead (the skills follow this; no kit command copies such
+files). Game copies, VM disks, packages and downloads belong in the cache or the copy folder.
 
 `doodlebot clean [--older-than <days>] [--dry-run] [--yes]` lists, and deletes only with
 `--yes` (ask the person first; `--dry-run` lists even with `--yes`):
@@ -801,7 +834,11 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   Playwright with `harness/playwright.config.ts` / `harness/oauth.playwright.config.ts`, so
   Playwright's own flags follow (`doodlebot test core --reporter=json`); the other suites run
   `harness/src/tests/<suite>.e2e.ts` (`nexus` runs `nexus-collection.e2e.ts`). Every argument
-  after the suite is the suite's, verbatim. An unknown suite exits 2 and lists them.
+  after the suite is the suite's, verbatim, except `--release <version>` (or
+  `--release=<version>`): the kit takes it out and runs the suite on that registered release,
+  with `VORTEX_AI_EXE` set to its `Vortex.exe` and `VORTEX_AI_INSTALLED=1`
+  (`releaseEnvironment`, `testCommand.ts`); an unregistered release refuses with
+  `doodlebot release get <version>`. An unknown suite exits 2 and lists them.
 - Say which suite ran and disclose skips. Quote comma lists in PowerShell.
 - The core suite launches its own Vortex and refuses while a harness Vortex runs
   (`... before the core suite.`): run `doodlebot down` first.
@@ -889,8 +926,9 @@ then the person's approval). Bug fixes, docs and test-only changes need no desig
 person supplies or asks for one. Doodlebot has no design command of its own.
 
 - A Vortex design lives on the Vortex branch, in the checkout's docs/designs folder, committed
-  as `docs(design): <topic>`. `pr-branch` keeps it out of the PR and tags it
-  `design/<topic>`; `pr-preflight` FAILs when it is still in the PR's diff or commits.
+  as `docs(design): <topic>`. `pr-branch` keeps it out of the PR, and with
+  `--design-commit <sha>` tags the approved design commit `design/<topic>` (never an
+  unapproved revision); `pr-preflight` FAILs when it is still in the PR's diff or commits.
 - The tests that prove the change go in the same Vortex branch
   (`plugins/doodlebot/resources/testing.md`), and `/doodlebot:qa --design <file>` checks each
   acceptance criterion with its negative control from a fresh profile.
@@ -954,14 +992,22 @@ receipt cannot certify a later commit. Verify the actual final commit for public
 - `doodlebot pr-checks <number-or-url> [--repo <owner/name>] [--json]`: the PR head's checks
   via `gh`, failed jobs expanded to failed steps (a test failure vs. a failed upload). Nonzero while
   any check is pending or failed.
-- `doodlebot pr-branch <topic> [--checkout <dir>] [--base <ref>] [--push]` (`prPush.ts`) builds
-  `pr/<topic>` in a temporary worktree from the merge-base of `HEAD` and `--base` (default
-  `upstream/<default branch>`), cherry-picking every commit except `docs(design): ...` ones,
-  and tags the last design commit `design/<topic>`, so the PR links the design at its commit.
-  It refuses merge commits, a branch of only design commits, `pr/<topic>` being checked out,
-  and a non-design commit that touches `docs/designs/`. The checkout's own files never change.
-  `--push` pushes both to `origin` (`--force-with-lease` for the branch) only after the fork
-  check above.
+- `doodlebot pr-branch <topic> [--checkout <dir>] [--base <ref>] [--design-commit <sha>] [--push]`
+  (`prPush.ts`) builds `pr/<topic>` in a temporary worktree from the merge-base of `HEAD` and
+  `--base` (default `upstream/<default branch>`), cherry-picking every commit except
+  `docs(design): ...` ones. It refuses merge commits, a branch of only design commits,
+  `pr/<topic>` being checked out, and a non-design commit that touches `docs/designs/`. The
+  checkout's own files never change.
+- **The design tag** (`tagApprovedDesign`): `--design-commit <sha>` names the approved design
+  commit, which must be one of the branch's `docs(design)` commits; it is tagged
+  `design/<topic>`, so the PR links the design at its commit. When the tag already marks an
+  earlier approval, that commit is kept as `design/<topic>-v<n>` (git cannot hold
+  `design/<topic>` beside `design/<topic>/v<n>`) and the tag moves. Without `--design-commit`
+  no tag is set or moved: an unapproved revision is never tagged.
+- `--push` pushes the branch (`--force-with-lease`), the tag and a `-v<n>` tag it just made to
+  `origin` only after the fork check above. The check reads every push URL
+  (`git remote get-url --push --all origin`, which `pushurl` and `pushInsteadOf` change) and
+  refuses unless each is the fork it verified: `origin fetches from <fork> but pushes to <url>`.
 - `doodlebot pr-preflight` (`/doodlebot:pr` runs it) before pushing; put its report in the PR. It diffs
   the committed `HEAD` of `--checkout` (default `.vortex-src`) against its merge-base with `--base`
   (default `upstream/master`), prints PASS/WARN/FAIL/SKIP per check with file:line, exits 1 on any
@@ -1257,7 +1303,9 @@ GitHub issue on `doodlum/vortex-doodlebot`, which the maintainer turns into a ch
   and reruns with `--yes` after they confirm. The published body is byte-identical to the
   printed body (`gh issue create --body-file`).
 - Redaction: copy folders and registered copies become `<game copy>`, the caches `<cache>`,
-  the workspace `<workspace>`, `%USERPROFILE%` `<home>` (any slash, any case), then the Windows
+  the workspace `<workspace>`, the temporary folder `<temp>` (`os.tmpdir()`, often an 8.3 short
+  path such as `C:\Users\NEXUST~1\...`, and its long form), `%USERPROFILE%` `<home>` (any slash,
+  any case), and any other `Users\<8.3 short name>` home `<home>`; then the Windows
   user, the machine and the Nexus user name (`--nexus-user` or `VORTEX_AI_NEXUS_USER`) become
   `<user>`, `<machine>` and `<nexus user>` wherever they stand as words. The credential guard
   runs on the result.

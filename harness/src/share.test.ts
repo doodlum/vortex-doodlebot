@@ -82,6 +82,28 @@ describe("redaction", () => {
         "<user> on <machine> as <nexus user>",
     );
   });
+
+  it("redacts the temporary folder in both spellings and any 8.3 short home folder", () => {
+    const withTemp: RedactionContext = {
+      ...ctx,
+      temp: [
+        "C:\\Users\\ADALOV~1\\AppData\\Local\\Temp",
+        "C:\\Users\\Ada Lovelace\\AppData\\Local\\Temp",
+      ],
+    };
+    expect(
+      redact(
+        "C:\\Users\\ADALOV~1\\AppData\\Local\\Temp\\doodlebot-pr-x\\a.log, " +
+          "C:\\Users\\Ada Lovelace\\AppData\\Local\\Temp\\b.log, " +
+          "c:/users/adalov~1/Downloads/vortex.log, C:\\Users\\OTHERU~2\\x",
+        withTemp,
+      ),
+    ).toBe("<temp>\\doodlebot-pr-x\\a.log, <temp>\\b.log, <home>/Downloads/vortex.log, <home>\\x");
+    // Without a temp entry (an older context), the short home is still caught.
+    expect(redact("C:\\Users\\ADALOV~1\\AppData\\Local\\Temp\\c.log", ctx)).toBe(
+      "<home>\\AppData\\Local\\Temp\\c.log",
+    );
+  });
 });
 
 describe("share", () => {

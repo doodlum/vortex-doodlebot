@@ -4,8 +4,10 @@
  * arguments after the suite resolve there, and with this process's environment, so
  * PLAYWRIGHT_JSON_OUTPUT_FILE and the VORTEX_AI_* settings pass through.
  */
+import fs from "node:fs";
 import { createRequire } from "node:module";
 
+import { findRelease, type RegisteredRelease } from "./content";
 import { ConfigError } from "./errors";
 import { REPO_ROOT } from "./paths";
 import { runInteractive, tsxCli } from "./processRunner";
@@ -115,6 +117,37 @@ export function formatSuites(): string {
 }
 
 /**
+ * `--release <version>` among a suite's arguments: the kit's, not the suite's. It is taken out
+ * and becomes `VORTEX_AI_EXE` (the registered release's Vortex.exe) and `VORTEX_AI_INSTALLED=1`
+ * in the suite's environment, which every suite's config reads.
+ */
+export function releaseEnvironment(
+  args: string[],
+  find: (version: string) => RegisteredRelease | undefined = findRelease,
+  exists: (file: string) => boolean = fs.existsSync,
+): { args: string[]; env: Record<string, string> } {
+  const rest: string[] = [];
+  let version: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--release") {
+      version = args[i + 1];
+      if (version === undefined || version.startsWith("--"))
+        throw new ConfigError("--release needs a version: --release <version>.");
+      i++;
+    } else if (arg.startsWith("--release=")) version = arg.slice("--release=".length);
+    else rest.push(arg);
+  }
+  if (version === undefined) return { args: rest, env: {} };
+  const release = find(version);
+  if (release === undefined || !exists(release.exe))
+    throw new ConfigError(
+      `Release ${version} is not registered${release === undefined ? "" : ` (its ${release.exe} is gone)`}; run \`doodlebot release get ${version}\` first.`,
+    );
+  return { args: rest, env: { VORTEX_AI_EXE: release.exe, VORTEX_AI_INSTALLED: "1" } };
+}
+
+/**
  * Run `doodlebot test`. Returns the exit code: the suite's own, 0 for `--list`, `--help` or
  * `-h` (which list the suites), and 2 for a missing or unknown suite (after listing them).
  */
@@ -125,6 +158,8 @@ export async function testCommand(
   options: {
     write?: (text: string) => void;
     run?: typeof runInteractive;
+    findRelease?: (version: string) => RegisteredRelease | undefined;
+    exists?: (file: string) => boolean;
   } = {},
 ): Promise<number> {
   const write = options.write ?? ((text: string) => process.stdout.write(`${text}\n`));
@@ -138,9 +173,10 @@ export async function testCommand(
     write(formatSuites());
     return 2;
   }
-  const command = suiteCommand(suite, passthrough);
+  const release = releaseEnvironment(passthrough, options.findRelease, options.exists);
+  const command = suiteCommand(suite, release.args);
   return (options.run ?? runInteractive)(command.executable, command.args, {
     cwd: command.cwd,
-    env: process.env,
+    env: { ...process.env, ...release.env },
   });
 }

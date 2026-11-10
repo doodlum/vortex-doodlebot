@@ -12,6 +12,7 @@ import path from "node:path";
 
 import { readContent } from "./content";
 import type { Check } from "./doctor";
+import { folderBytes } from "./fsWalk";
 import { GAPS_FILE, openGaps } from "./gapCommand";
 import { readInventory, type Inventory } from "./inventory";
 import { duplicateLessons } from "./knowledgeCommand";
@@ -96,33 +97,6 @@ function managedSourceState(): SourceState | undefined {
     ...(branch === undefined ? {} : { branch }),
     built: missingBuildOutputs(dir).length === 0,
   };
-}
-
-/** Bytes in a folder, every file counted once; undefined when it does not exist. */
-export function folderBytes(dir: string): number | undefined {
-  if (!fs.existsSync(dir)) return undefined;
-  let total = 0;
-  const visit = (current: string): void => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) visit(full);
-      else if (entry.isFile()) {
-        try {
-          total += fs.statSync(full).size;
-        } catch {
-          // Gone while counting.
-        }
-      }
-    }
-  };
-  visit(dir);
-  return total;
 }
 
 function driveFreeBytes(dir: string): number | undefined {

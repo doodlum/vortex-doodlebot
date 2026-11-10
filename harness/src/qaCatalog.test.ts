@@ -16,6 +16,7 @@ import {
   qaCommand,
   readCatalog,
   selectEntries,
+  verdictRule,
   vortexRelative,
   type Catalog,
 } from "./qaCatalog";
@@ -94,6 +95,20 @@ describe("qa check", () => {
       "no.guards: the id is used twice",
     ]);
     expect(check.newSpecs).toEqual([]);
+  });
+
+  it("fails on an entry that needs the account but does not list the login need", () => {
+    const check = checkCatalog(
+      catalogOf(
+        entry({ id: "uses.account", account: true, needs: ["sandbox"] }),
+        entry({ id: "logs.out", account: "logout", needs: ["sandbox"] }),
+        entry({ id: "listed", account: true, needs: ["sandbox", "login"] }),
+      ),
+    );
+    expect(check.problems).toEqual([
+      'uses.account: account is true, so its needs must list "login"',
+      'logs.out: account is "logout", so its needs must list "login"',
+    ]);
   });
 
   it("with a Vortex checkout lists specs added since the recorded commit and guards matching nothing", () => {
@@ -183,6 +198,7 @@ describe("guards and selection", () => {
       ["list", "src/renderer/src/extensions/gamebryo_plugin_management/index.ts", "README.md"],
       { touching: "src/renderer/src/controls/Table.tsx", json: true },
       { touching: ["src/renderer/src/controls/Table.tsx"] },
+      { inventory: () => ({ items: [] }) },
     );
     const json = JSON.parse(result.text) as {
       selected: { id: string }[];
@@ -195,16 +211,88 @@ describe("guards and selection", () => {
     expect(json.unselected.length).toBeGreaterThan(0);
     expect(json.unguarded).toEqual(["README.md"]);
   });
+
+  it("qa list --json gives each entry its content choice and verdict rule; --allow-logout selects logout entries", () => {
+    const file = path.join(root, "catalog.json");
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        vortexE2e: { commit: "x", specs: [] },
+        entries: [
+          entry({ id: "fake.fallout", needs: ["sandbox:fallout4"] }),
+          entry({ id: "churn", pass: "measured", needs: ["sandbox"] }),
+          entry({ id: "account.logout", account: "logout", needs: ["login"] }),
+        ],
+      }),
+    );
+    const inventory = () => ({
+      items: [
+        {
+          id: "sandbox:fallout4",
+          kind: "sandbox" as const,
+          ready: true,
+          label: "the fake Fallout 4",
+          gameId: "fallout4",
+          details: { flag: "--bethesda-sandbox" },
+        },
+        {
+          id: "login",
+          kind: "login" as const,
+          ready: false,
+          next: "/doodlebot:setup --login",
+          label: "no Nexus login cached",
+        },
+      ],
+    });
+    type Listed = {
+      id: string;
+      content: {
+        met: boolean;
+        chosen: { need: string; id: string; flag?: string }[];
+        unmet: { need: string; next: string }[];
+      };
+      verdict: { possible: string[]; rule: string };
+    };
+    const list = (flags: Record<string, boolean>) =>
+      JSON.parse(
+        qaCommand(["list"], { json: true, ...flags }, {}, { catalogFile: file, inventory }).text,
+      ) as { selected: Listed[]; unselected: { id: string }[] };
+    const plain = list({});
+    expect(plain.selected.map((s) => s.id)).toEqual(["fake.fallout", "churn"]);
+    expect(plain.unselected.map((u) => u.id)).toEqual(["account.logout"]);
+    const [fallout, churn] = plain.selected;
+    expect(fallout!.content).toMatchObject({
+      met: true,
+      chosen: [{ need: "sandbox:fallout4", id: "sandbox:fallout4", flag: "--bethesda-sandbox" }],
+      unmet: [],
+    });
+    expect(fallout!.verdict.possible).toEqual(["not tested", "fail", "pass"]);
+    // Only the fake Fallout 4 is in this inventory, so "sandbox" takes it; a measured entry never
+    // passes or fails.
+    expect(churn!.verdict.possible).toEqual(["not tested", "measured"]);
+    const withLogout = list({ "allow-logout": true });
+    const logout = withLogout.selected.find((s) => s.id === "account.logout")!;
+    expect(logout.content).toMatchObject({
+      met: false,
+      unmet: [{ need: "login", next: "/doodlebot:setup --login" }],
+    });
+    expect(logout.verdict.possible).toEqual(["not tested"]);
+  });
 });
 
 describe("results", () => {
   it("measured-not-passed: a measured entry never reports pass", () => {
     const measured = { pass: "measured" };
     expect(judgeResult(measured, { ran: true, ok: true })).toBe("measured");
-    expect(judgeResult(measured, { ran: true, ok: false })).toBe("fail");
+    // No measurement is no evidence: not tested, never a fail.
+    expect(judgeResult(measured, { ran: true, ok: false })).toBe("not tested");
     expect(judgeResult(measured, { ran: false })).toBe("not tested");
     for (const run of [{ ran: true, ok: true }, { ran: true }, { ran: false, ok: true }])
-      expect(judgeResult(measured, run)).not.toBe("pass");
+      expect(["pass", "fail"]).not.toContain(judgeResult(measured, run));
+    expect(verdictRule(measured, { met: true })).toEqual({
+      possible: ["not tested", "measured"],
+      rule: expect.stringMatching(/^measured: .*never pass or fail/),
+    });
     const passing = { pass: "Every member installs." };
     expect(judgeResult(passing, { ran: true, ok: true })).toBe("pass");
     expect(judgeResult(passing, { ran: true, ok: false })).toBe("fail");

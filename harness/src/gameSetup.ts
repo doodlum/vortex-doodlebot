@@ -118,6 +118,35 @@ export const USER_FOLDERS: Record<string, UserFolderNames> = {
   stardewvalley: { roamingAppData: "StardewValley" },
 };
 
+/**
+ * The files Vortex itself writes in a game's user folders, as case-insensitive file-name
+ * patterns (`*` matches any run of characters). After a clean `down` only a changed file named
+ * here, changed inside the run, is restored automatically; every other change (a save above all)
+ * is listed for the owner, since the owner may have played their own copy during the run.
+ */
+const BETHESDA_WRITES = ["plugins.txt", "loadorder.txt", "DLCList.txt", "*.ini"];
+export const VORTEX_WRITES: Record<string, string[]> = {
+  vortexaisandbox: [],
+  fallout4: BETHESDA_WRITES,
+  falloutnv: BETHESDA_WRITES,
+  skyrimse: BETHESDA_WRITES,
+  starfield: BETHESDA_WRITES,
+  stardewvalley: [],
+};
+
+/** Whether `fileName` is one of the files Vortex writes for `gameId` (VORTEX_WRITES). */
+export function vortexWrites(gameId: string, fileName: string): boolean {
+  return (VORTEX_WRITES[gameId] ?? []).some((pattern) =>
+    new RegExp(
+      `^${pattern
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
+      "i",
+    ).test(fileName),
+  );
+}
+
 /** The executables that mean a game is running (its launcher-script loaders included). */
 export const GAME_EXECUTABLES: Record<string, string[]> = {
   fallout4: ["Fallout4.exe", "f4se_loader.exe"],

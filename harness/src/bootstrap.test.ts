@@ -14,7 +14,7 @@ import {
   readMarker,
   snapshotDir,
 } from "./bootstrap";
-import { assertNoOwnVortex } from "./ownVortex";
+import { assertNoOwnVortex, windowsOnlyWarning } from "./ownVortex";
 import { assertGamePathAllowed } from "./gameCommand";
 import { protectUserFolders, settlePendingRestores, userFoldersOf } from "./userFolders";
 import { bethesdaSandboxPaths } from "./bethesdaSandbox";
@@ -56,7 +56,10 @@ vi.mock("./gameSetup", () => ({
 
 // The protections reach the machine (its processes, the owner's folders, content.json); their
 // own tests cover them. Here only their place in the launch is checked.
-vi.mock("./ownVortex", () => ({ assertNoOwnVortex: vi.fn() }));
+vi.mock("./ownVortex", () => ({
+  assertNoOwnVortex: vi.fn(),
+  windowsOnlyWarning: vi.fn((): string | undefined => undefined),
+}));
 vi.mock("./gameCommand", () => ({ assertGamePathAllowed: vi.fn() }));
 vi.mock("./userFolders", () => ({
   protectUserFolders: vi.fn(async () => undefined),
@@ -163,7 +166,13 @@ describe("one harness Vortex per machine", () => {
   it("checks the game, restores the leftover's folders, then checks for the owner's Vortex, then backs up", async () => {
     const config = fakeConfig();
     writeInstanceRecord(liveRecord(config.cacheDir));
-    const result = await bootstrap(config, { fresh: true });
+    const progress: string[] = [];
+    // Off Windows the launch says the protections are Windows-only (the mock plays Linux).
+    vi.mocked(windowsOnlyWarning).mockReturnValueOnce(
+      "warning: on linux doodlebot cannot see your own Vortex",
+    );
+    const result = await bootstrap(config, { fresh: true, onProgress: (m) => progress.push(m) });
+    expect(progress).toContain("warning: on linux doodlebot cannot see your own Vortex");
     const order = (mock: unknown) => vi.mocked(mock as () => void).mock.invocationCallOrder[0]!;
     expect(order(assertGamePathAllowed)).toBeLessThan(order(stopStaleInstance));
     expect(order(stopStaleInstance)).toBeLessThan(order(settlePendingRestores));

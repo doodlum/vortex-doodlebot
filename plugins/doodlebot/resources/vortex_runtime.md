@@ -33,6 +33,8 @@ verification claim must name.
 
 # Instructions
 
+Your brief names a mode, BRAINSTORM or REVIEW. When it names none, the mode is **REVIEW**.
+
 ## IF Mode: BRAINSTORM
 
 For the concept, report the runtime prerequisites it will need and any that

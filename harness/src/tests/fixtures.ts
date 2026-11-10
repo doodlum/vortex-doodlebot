@@ -38,7 +38,7 @@ import {
 import { VortexMcpClient } from "../mcpClient";
 import { resolveDevElectron } from "../electronRuntime";
 import { assertNoHarnessVortex, writeInstanceRecord } from "../runningVortex";
-import { assertNoOwnVortex } from "../ownVortex";
+import { assertNoOwnVortex, windowsOnlyWarning } from "../ownVortex";
 import { readNxmHandler } from "../nxmHandler";
 import { FixtureCleanup, closeFixtureApp } from "./fixtureCleanup";
 import { assertNoUnrecoverableErrors } from "./appHealth";
@@ -143,6 +143,8 @@ export const test = base.extend<NoTestFixtures, AiFixtures>({
       // refuses while another harness Vortex runs (the global setup checks once up front too).
       assertNoHarnessVortex("the core suite");
       assertNoOwnVortex();
+      const platformWarning = windowsOnlyWarning();
+      if (platformWarning !== undefined) process.stderr.write(`${platformWarning}\n`);
       // Vortex re-registers itself as the nxm link handler; closing the fixture writes this back.
       const nxmHandler = readNxmHandler();
       const app = await fixtureCleanup.preserveOnFailure(async () => {

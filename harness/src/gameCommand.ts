@@ -15,7 +15,8 @@ import {
   updateContent,
   type GameCopy,
 } from "./content";
-import { KNOWN_GAMES, USER_FOLDERS, findGamePath } from "./gameSetup";
+import { folderBytes, inside, storePathOf } from "./fsWalk";
+import { KNOWN_GAMES, USER_FOLDERS } from "./gameSetup";
 import { CONTENT_FILE, REPO_ROOT, normalizedPath } from "./paths";
 import { normalizeVersionResource } from "./releaseFetch";
 import { gameRestore, type UserFolderDeps } from "./userFolders";
@@ -27,16 +28,6 @@ export interface GameCommandDeps extends UserFolderDeps {
   fileVersion?: (file: string) => string | undefined;
   now?: () => Date;
 }
-
-const storePathOf = (gameId: string): string | undefined => {
-  const game = KNOWN_GAMES[gameId];
-  return game === undefined ? undefined : findGamePath(game);
-};
-
-const inside = (child: string, parent: string): boolean => {
-  const relative = path.relative(path.resolve(parent), path.resolve(child));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-};
 
 /** Whether `dir` is a store install: the one findGamePath finds, or anything in steamapps\common. */
 export function isStorePath(dir: string, store: string | undefined): boolean {
@@ -56,15 +47,7 @@ function requireKnownGame(gameId: string) {
   return game;
 }
 
-function folderSize(dir: string): number {
-  let total = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) total += folderSize(full);
-    else if (entry.isFile()) total += fs.statSync(full).size;
-  }
-  return total;
-}
+const folderSize = (dir: string): number => folderBytes(dir) ?? 0;
 
 function versionOf(
   dir: string,
@@ -79,14 +62,18 @@ function versionOf(
 }
 
 /**
- * The rule every launch applies before it manages a game. A path under the cache is the kit's own
- * (the fake game, the fake Fallout 4, a test's disposable folder). Any other path must be a
- * registered copy of that game; without a path, the Steam install would be found, which is never
- * allowed.
+ * The rule every launch applies before it manages a game:
+ * 1. a path is required: without one the store install would be found, which is never allowed;
+ * 2. a store install is refused wherever it is;
+ * 3. the game must be in USER_FOLDERS, so its user folders are backed up (a game folder inside
+ *    the cache still writes the real user folders: the Nexus collection check's placeholder);
+ * 4. the path must be a registered copy, except for a folder the kit made under its cache (the
+ *    fake game, the fake Fallout 4, a check's disposable game folder).
  */
 export function assertGamePathAllowed(
   config: { gameId: string; gamePath: string | undefined; cacheDir: string },
   file = CONTENT_FILE,
+  storePath: (gameId: string) => string | undefined = storePathOf,
 ): void {
   const { gameId, gamePath, cacheDir } = config;
   const copies = readContent(file).games.filter((g) => g.gameId === gameId);
@@ -98,14 +85,16 @@ export function assertGamePathAllowed(
     throw new ConfigError(
       `--game ${gameId} needs --game-path <a registered copy>; the store install is never managed. ${hint}`,
     );
+  if (isStorePath(gamePath, storePath(gameId)))
+    throw new ConfigError(`${gamePath} is a store install; the kit never manages one. ${hint}`);
+  if (USER_FOLDERS[gameId] === undefined)
+    throw new ConfigError(
+      `${gameId} has no entry in USER_FOLDERS (gameSetup.ts), so its user folders cannot be protected.`,
+    );
   if (inside(gamePath, cacheDir)) return;
   if (findGameCopy(gameId, gamePath, file) === undefined)
     throw new ConfigError(
       `${gamePath} is not a registered copy of ${gameId}, so the kit will not manage it. ${hint}`,
-    );
-  if (USER_FOLDERS[gameId] === undefined)
-    throw new ConfigError(
-      `${gameId} has no entry in USER_FOLDERS (gameSetup.ts), so its user folders cannot be protected.`,
     );
 }
 

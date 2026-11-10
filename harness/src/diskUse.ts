@@ -1,6 +1,6 @@
 /**
- * Disk use (design 4.13): `doodlebot clean`, and the rule that evidence folders hold reports, not
- * binaries.
+ * Disk use (design 4.13): `doodlebot clean`. Evidence folders hold reports, not binaries; the
+ * skills that write evidence follow that rule (a file over 100 MB is linked, not copied).
  *
  * `clean` lists, and deletes only with `--yes`:
  * - in run, QA and benchmark folders under `harness/.artifacts` older than `--older-than` days
@@ -17,6 +17,7 @@ import path from "node:path";
 import { readMarker } from "./bootstrap";
 import { readContent } from "./content";
 import { ConfigError } from "./errors";
+import { folderBytes, walkFiles } from "./fsWalk";
 import {
   CONTENT_FILE,
   DEFAULT_ARTIFACT_DIR,
@@ -29,42 +30,7 @@ import { runningVortex, type InstanceRecord } from "./runningVortex";
 export const MB = 1024 * 1024;
 /** Files from this size up are binaries for `clean`; smaller ones are kept with the report. */
 export const KEEP_BELOW_BYTES = MB;
-/** A file this large never goes into an evidence folder; a `.link.txt` names it instead. */
-export const EVIDENCE_LIMIT_BYTES = 100 * MB;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-// ---------------------------------------------------------------------------
-// The evidence rule
-// ---------------------------------------------------------------------------
-
-/**
- * Put `file` into the evidence folder `evidenceDir`: copied when it is under 100 MB, otherwise
- * left where it is and named by `<name>.link.txt` (its absolute path and size). Run-report
- * writers use this for anything that is not text they wrote themselves (game copies, VM disks,
- * packages and downloads belong in the cache or the copy folder).
- */
-export function placeEvidenceFile(
-  file: string,
-  evidenceDir: string,
-  options: { limitBytes?: number } = {},
-): { path: string; linked: boolean } {
-  const limit = options.limitBytes ?? EVIDENCE_LIMIT_BYTES;
-  const size = fs.statSync(file).size;
-  fs.mkdirSync(evidenceDir, { recursive: true });
-  const name = path.basename(file);
-  if (size > limit) {
-    const link = path.join(evidenceDir, `${name}.link.txt`);
-    fs.writeFileSync(
-      link,
-      `${path.resolve(file)}\n${String(size)} bytes, over the ${String(Math.round(limit / MB))} MB ` +
-        `an evidence folder holds; the file stays where it is.\n`,
-    );
-    return { path: link, linked: true };
-  }
-  const target = path.join(evidenceDir, name);
-  if (normalizedPath(target) !== normalizedPath(file)) fs.copyFileSync(file, target);
-  return { path: target, linked: false };
-}
 
 // ---------------------------------------------------------------------------
 // clean
@@ -89,34 +55,6 @@ export interface CleanDeps {
   running?: () => InstanceRecord | undefined;
 }
 
-interface FileInfo {
-  path: string;
-  size: number;
-  mtimeMs: number;
-}
-
-function walk(dir: string): FileInfo[] {
-  const files: FileInfo[] = [];
-  const visit = (current: string): void => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) visit(full);
-      else if (entry.isFile()) {
-        const stat = fs.statSync(full);
-        files.push({ path: full, size: stat.size, mtimeMs: stat.mtimeMs });
-      }
-    }
-  };
-  visit(dir);
-  return files;
-}
-
 const subdirectories = (dir: string): string[] => {
   try {
     return fs
@@ -130,7 +68,7 @@ const subdirectories = (dir: string): string[] => {
 
 /** The newest modification time of the folder or anything in it. */
 function lastUsed(dir: string): number {
-  return Math.max(fs.statSync(dir).mtimeMs, ...walk(dir).map((file) => file.mtimeMs));
+  return Math.max(fs.statSync(dir).mtimeMs, ...walkFiles(dir).map((file) => file.mtimeMs));
 }
 
 /** Run, QA and benchmark folders: `runs/<run>`, `benchmarks/<run>`, `qa/<version>/<id>/<time>`. */
@@ -194,7 +132,7 @@ function evidenceItems(
   const items: CleanItem[] = [];
   for (const dir of evidenceFolders(deps.artifactDir ?? DEFAULT_ARTIFACT_DIR)) {
     if (protection(dir, guards, "inside") !== undefined || lastUsed(dir) >= cutoff) continue;
-    const doomed = walk(dir).filter(
+    const doomed = walkFiles(dir).filter(
       (file) =>
         path.basename(file.path).toLowerCase() !== "report.md" &&
         file.size >= KEEP_BELOW_BYTES &&
@@ -227,7 +165,7 @@ function cacheItems(
   const cacheDir = deps.cacheDir ?? DEFAULT_CACHE_DIR;
   if (!fs.existsSync(cacheDir) || protection(cacheDir, guards, "inside") !== undefined) return [];
   const items: CleanItem[] = [];
-  const size = (dir: string) => walk(dir).reduce((sum, file) => sum + file.size, 0);
+  const size = (dir: string) => folderBytes(dir) ?? 0;
   // The working profile's baseline is in use whenever the profile is: as of the last launch.
   const liveKey = readMarker(path.join(cacheDir, "live"))?.snapshotKey;
   const lastLaunch = (() => {
@@ -286,7 +224,7 @@ function releaseItems(deps: CleanDeps, guards: { paths: string[]; why: string }[
     .map((dir) => ({
       path: dir,
       kind: "release" as const,
-      bytes: walk(dir).reduce((sum, file) => sum + file.size, 0),
+      bytes: folderBytes(dir) ?? 0,
       reason: "not named in content.json",
     }));
 }

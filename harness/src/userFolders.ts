@@ -8,12 +8,15 @@
  * cache first, records each file's size, modification time and SHA-256, and
  * writes a pending restore to content.json. `down` puts them back once Vortex has exited.
  *
- * The restore decides by modification time whose a change is. After a clean stop the run lasted
- * from its recorded start until the kit confirmed the exit: a change inside that window is the
- * run's and is restored; one outside it is the owner's, and blocks the whole restore. After an
- * unclean end (a crash, a kill, a missed `down`) the end is unknown, so nothing is restored until
- * the owner chooses with `doodlebot game restore`. A pending restore blocks every later launch, so
- * a second backup can never replace the good one.
+ * The restore decides whose a change is (design 4.3.3). After a clean stop the run lasted from its
+ * recorded start until the kit confirmed the exit. A change is restored automatically only when it
+ * is to a file Vortex writes for the game (`VORTEX_WRITES`: plugins.txt, loadorder.txt,
+ * DLCList.txt, *.ini) and falls inside that window. Every other change, a save above all, is
+ * listed for the owner, who may have played their own copy while the run lasted; it keeps the
+ * pending restore. After an unclean end (a crash, a kill, a missed `down`) the end is unknown, so
+ * nothing is restored until the owner chooses with `doodlebot game restore`. A pending restore
+ * blocks every later launch, so a second backup can never replace the good one; one whose backup
+ * is missing says so, and `game restore <id> --keep` clears it.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -22,7 +25,13 @@ import os from "node:os";
 import path from "node:path";
 
 import { ConfigError } from "./errors";
-import { gameRunning as realGameRunning, KNOWN_GAMES, USER_FOLDERS } from "./gameSetup";
+import { walkFiles } from "./fsWalk";
+import {
+  gameRunning as realGameRunning,
+  KNOWN_GAMES,
+  USER_FOLDERS,
+  vortexWrites,
+} from "./gameSetup";
 import {
   addPendingRestore,
   readContent,
@@ -118,20 +127,9 @@ const backupFolder = (backupDir: string, index: number): string =>
 const key = (folder: number, relative: string): string =>
   `${String(folder)}:${relative.toLowerCase()}`;
 
-/** Every file under `root`, as `/`-separated paths relative to it. */
-function walkFiles(root: string): string[] {
-  if (!fs.existsSync(root)) return [];
-  const files: string[] = [];
-  const visit = (dir: string, prefix: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (entry.isDirectory()) visit(path.join(dir, entry.name), relative);
-      else if (entry.isFile()) files.push(relative);
-    }
-  };
-  visit(root, "");
-  return files;
-}
+/** Every file under `root`, as `/`-separated paths relative to it; throws when one is unreadable. */
+const relativeFiles = (root: string): string[] =>
+  walkFiles(root, { strict: true }).map((file) => file.relative);
 
 /** Copy the folders into `backupDir` and write its manifest. Throws when it cannot. */
 export function backupUserFolders(
@@ -148,7 +146,7 @@ export function backupUserFolders(
     files: [],
   };
   folders.forEach((folder, index) => {
-    for (const relative of walkFiles(folder)) {
+    for (const relative of relativeFiles(folder)) {
       const source = path.join(folder, ...relative.split("/"));
       const stat = fs.statSync(source);
       const bytes = fs.readFileSync(source);
@@ -170,8 +168,20 @@ export function backupUserFolders(
   return manifest;
 }
 
+/** A pending restore whose backup folder or manifest is gone: nothing can be restored from it. */
+export class MissingBackupError extends ConfigError {}
+
 export function readManifest(backupDir: string): BackupManifest {
-  return JSON.parse(fs.readFileSync(path.join(backupDir, MANIFEST), "utf8")) as BackupManifest;
+  const file = path.join(backupDir, MANIFEST);
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      throw new MissingBackupError(`the backup ${file} is missing`);
+    throw error;
+  }
+  return JSON.parse(text) as BackupManifest;
 }
 
 export interface FileChange {
@@ -183,6 +193,25 @@ export interface FileChange {
   kind: "modified" | "added" | "deleted";
   /** The file's modification time now; absent for a deleted file. */
   mtimeMs?: number;
+  /**
+   * For a deleted file: the modification time of the nearest folder above it that still exists,
+   * which a deletion updates; the latest the deletion can have happened. Absent when none does.
+   */
+  folderMtimeMs?: number;
+}
+
+/** The modification time of `dir` or the nearest existing folder above it, up to `root`. */
+function nearestFolderTime(dir: string, root: string): number | undefined {
+  for (let current = dir; ; current = path.dirname(current)) {
+    try {
+      const stat = fs.statSync(current);
+      if (stat.isDirectory()) return stat.mtimeMs;
+    } catch {
+      /* Gone: look one level up. */
+    }
+    if (normalizedPath(current) === normalizedPath(root) || path.dirname(current) === current)
+      return undefined;
+  }
 }
 
 /** What differs in the real folders from the backup. Size and time first, then the hash. */
@@ -191,7 +220,7 @@ export function findChanges(manifest: BackupManifest): FileChange[] {
   const known = new Map(manifest.files.map((f) => [key(f.folder, f.relative), f]));
   manifest.folders.forEach((folder, index) => {
     const seen = new Set<string>();
-    for (const relative of walkFiles(folder.path)) {
+    for (const relative of relativeFiles(folder.path)) {
       const file = path.join(folder.path, ...relative.split("/"));
       const entry = known.get(key(index, relative));
       seen.add(key(index, relative));
@@ -211,35 +240,49 @@ export function findChanges(manifest: BackupManifest): FileChange[] {
       });
     }
     for (const entry of manifest.files)
-      if (entry.folder === index && !seen.has(key(index, entry.relative)))
+      if (entry.folder === index && !seen.has(key(index, entry.relative))) {
+        const file = path.join(folder.path, ...entry.relative.split("/"));
+        const folderMtimeMs = nearestFolderTime(path.dirname(file), folder.path);
         changes.push({
           folder: index,
           relative: entry.relative,
-          path: path.join(folder.path, ...entry.relative.split("/")),
+          path: file,
           kind: "deleted",
+          ...(folderMtimeMs === undefined ? {} : { folderMtimeMs }),
         });
+      }
   });
   return changes;
 }
 
 /**
- * Which changes a restore may undo. With an `end` (a clean stop) a change inside
- * [start, end] is the run's; a deletion carries no time and counts as the run's. Without an end
- * (an unclean one) every change is left for the owner to decide.
+ * Which changes a restore may undo by itself (design 4.3.3). Only after a clean stop (`end`), and
+ * only a change that is both:
+ * - to a file Vortex writes for this game (`writes`: VORTEX_WRITES, gameSetup.ts), and
+ * - inside the run, [start, end]: by its modification time, or for a deleted file by its
+ *   folder's (a deletion with no folder left to date it is not).
+ *
+ * Every other change is `blocked`, for the owner to decide with `game restore`: a save or any
+ * other file, even one changed inside the run, since the owner may have played their own copy of
+ * the game while it lasted. Without an end (an unclean stop) every change is blocked.
  */
 export function planRestore(
   changes: FileChange[],
   window: { start: number; end?: number },
+  writes: (fileName: string) => boolean,
 ): { restore: FileChange[]; blocked: FileChange[] } {
   if (window.end === undefined) return { restore: [], blocked: changes };
   const end = window.end;
-  const inside = (c: FileChange): boolean =>
-    c.mtimeMs === undefined || (c.mtimeMs >= window.start && c.mtimeMs <= end);
-  return { restore: changes.filter(inside), blocked: changes.filter((c) => !inside(c)) };
+  const theRuns = (c: FileChange): boolean => {
+    if (!writes(path.basename(c.path))) return false;
+    const time = c.kind === "deleted" ? c.folderMtimeMs : c.mtimeMs;
+    return time !== undefined && time >= window.start && time <= end;
+  };
+  return { restore: changes.filter(theRuns), blocked: changes.filter((c) => !theRuns(c)) };
 }
 
 function removeIfNoFiles(dir: string): void {
-  if (fs.existsSync(dir) && walkFiles(dir).length === 0)
+  if (fs.existsSync(dir) && relativeFiles(dir).length === 0)
     fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -291,6 +334,8 @@ export function formatChanges(changes: FileChange[]): string {
     .join("\n");
 }
 
+const isVortexWrite = (gameId: string) => (fileName: string) => vortexWrites(gameId, fileName);
+
 // ---------------------------------------------------------------------------
 // Around a launch
 // ---------------------------------------------------------------------------
@@ -312,11 +357,12 @@ async function refuseWhileGameRuns(gameId: string, deps: UserFolderDeps, action:
 /** Refuse while any restore is pending: its backup must not be replaced by a new one. */
 export function assertNoPendingRestore(deps: UserFolderDeps = {}): void {
   const pending = readContent(deps.contentFile ?? CONTENT_FILE).pendingRestores[0];
-  if (pending !== undefined)
-    throw new ConfigError(
-      `The user folders of ${gameName(pending.gameId)} from the run started ${pending.startedAt} ` +
-        `were never restored. Run \`doodlebot game restore ${pending.gameId}\` first.`,
-    );
+  if (pending === undefined) return;
+  if (!fs.existsSync(path.join(pending.backupDir, MANIFEST))) throw missingBackup(pending);
+  throw new ConfigError(
+    `The user folders of ${gameName(pending.gameId)} from the run started ${pending.startedAt} ` +
+      `were never restored. Run \`doodlebot game restore ${pending.gameId}\` first.`,
+  );
 }
 
 /**
@@ -330,7 +376,11 @@ export async function protectUserFolders(
   deps: UserFolderDeps = {},
 ): Promise<PendingRestore | undefined> {
   const folders = userFoldersOf(gameId, (deps.roots ?? userFolderRoots)());
-  if (folders === undefined || folders.length === 0) return undefined;
+  if (folders === undefined)
+    throw new ConfigError(
+      `${gameId} has no entry in USER_FOLDERS (gameSetup.ts), so its user folders cannot be backed up. Vortex was not started.`,
+    );
+  if (folders.length === 0) return undefined;
   assertNoPendingRestore(deps);
   await refuseWhileGameRuns(gameId, deps, "starting Vortex");
   const startedAt = (deps.now ?? (() => new Date()))();
@@ -373,10 +423,30 @@ const choiceHint = (gameId: string): string =>
   `Run \`doodlebot game restore ${gameId} --all\` to restore them, \`--keep\` to keep them, ` +
   `or \`--file <path>\` (repeatable) to restore some.`;
 
+const missingBackup = (pending: PendingRestore): ConfigError =>
+  new MissingBackupError(
+    `The backup of the user folders of ${gameName(pending.gameId)} from the run started ` +
+      `${pending.startedAt} is missing (${pending.backupDir}), so nothing can be restored from it. ` +
+      `Check the folders yourself, then run \`doodlebot game restore ${pending.gameId} --keep\` ` +
+      `to keep them as they are and clear the pending restore.`,
+  );
+
+/** The pending restore's manifest, or the error that says its backup is missing. */
+function manifestOf(pending: PendingRestore): BackupManifest {
+  try {
+    return readManifest(pending.backupDir);
+  } catch (error) {
+    if (error instanceof MissingBackupError) throw missingBackup(pending);
+    throw error;
+  }
+}
+
 /**
  * After a stop: settle every pending restore. `clean` means the kit confirmed the exit of the
  * Vortex that ran, at `end`; otherwise nothing is restored and the changed files are listed.
- * Throws a ConfigError naming the files whenever it did not restore.
+ * After a clean stop the files Vortex writes, changed inside the run, are restored (planRestore);
+ * every other change is listed and keeps the pending restore. Throws a ConfigError naming the
+ * files whenever something was left for the owner.
  */
 export async function settlePendingRestores(
   options: { clean: boolean; end?: Date; write?: (message: string) => void },
@@ -384,7 +454,7 @@ export async function settlePendingRestores(
 ): Promise<void> {
   const write = options.write ?? ((message: string) => process.stdout.write(`${message}\n`));
   for (const pending of readContent(deps.contentFile ?? CONTENT_FILE).pendingRestores) {
-    const manifest = readManifest(pending.backupDir);
+    const manifest = manifestOf(pending);
     const changes = findChanges(manifest);
     const name = gameName(pending.gameId);
     if (!options.clean) {
@@ -400,17 +470,26 @@ export async function settlePendingRestores(
     }
     await refuseWhileGameRuns(pending.gameId, deps, "its user folders are restored");
     const end = (options.end ?? (deps.now ?? (() => new Date()))()).getTime();
-    const plan = planRestore(changes, { start: Date.parse(pending.startedAt), end });
+    const plan = planRestore(
+      changes,
+      { start: Date.parse(pending.startedAt), end },
+      isVortexWrite(pending.gameId),
+    );
+    restoreOrKeep(pending, manifest, plan.restore);
+    const restored =
+      plan.restore.length === 0
+        ? ""
+        : `Restored the user folders of ${name} (${String(plan.restore.length)} file(s)).`;
     if (plan.blocked.length > 0)
       throw new ConfigError(
-        `Not restored: these files in the user folders of ${name} changed outside the run ` +
-          `(${pending.startedAt} to ${new Date(end).toISOString()}):\n${formatChanges(plan.blocked)}\n` +
-          `Nothing was restored; the backup is kept at ${pending.backupDir}. ${choiceHint(pending.gameId)}`,
+        `${restored === "" ? "" : `${restored} `}Not restored: these files in the user folders of ` +
+          `${name} changed, and are not files Vortex writes changed inside the run ` +
+          `(${pending.startedAt} to ${new Date(end).toISOString()}). Saves and other files may be ` +
+          `yours, made while the run lasted:\n${formatChanges(plan.blocked)}\n` +
+          `The backup is kept at ${pending.backupDir}. ${choiceHint(pending.gameId)}`,
       );
-    restoreOrKeep(pending, manifest, plan.restore);
     finish(pending, deps);
-    if (plan.restore.length > 0)
-      write(`Restored the user folders of ${name} (${String(plan.restore.length)} file(s)).`);
+    if (restored !== "") write(restored);
   }
 }
 
@@ -432,7 +511,17 @@ export async function gameRestore(
   if (chosen.filter(Boolean).length > 1)
     throw new ConfigError("Choose one of --all, --keep and --file.");
   await refuseWhileGameRuns(gameId, deps, "its user folders are restored");
-  const manifest = readManifest(pending.backupDir);
+  let manifest: BackupManifest;
+  try {
+    manifest = manifestOf(pending);
+  } catch (error) {
+    if (!(error instanceof MissingBackupError) || choice.keep !== true) throw error;
+    removePendingRestore(pending.backupDir, deps.contentFile ?? CONTENT_FILE);
+    return {
+      text: `The backup at ${pending.backupDir} is missing; the user folders were kept as they are and the pending restore is cleared.`,
+      code: 0,
+    };
+  }
   const changes = findChanges(manifest);
   const listing = `Changed since the backup of ${pending.startedAt}:\n${formatChanges(changes)}`;
   if (changes.length === 0) {

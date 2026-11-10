@@ -29,7 +29,8 @@ The plugin's version differs from the workspace's. Run `/doodlebot:setup --updat
 ## Setup stops at a prerequisite
 
 - **Git or Node.js is missing or too old.** Install Git, or Node.js 20.19 or later, then run
-  `/doodlebot:setup` again. Setup never installs them.
+  `/doodlebot:setup` again. Setup never installs them. On an older Node, every `doodlebot`
+  command stops with `doodlebot needs Node 20.19 or newer; this is <version>`.
 - **pnpm is missing or not 9.15.0.** Let setup enable it with corepack, or install pnpm 9.15.0
   yourself.
 - **The clone or install fails.** Check that GitHub and the npm registry are reachable.
@@ -70,6 +71,22 @@ Electron app. Check in Task Manager that the named process is not a doodlebot Vo
 A refusal that starts `A harness Vortex from an older doodlebot is running` comes from a
 workspace record left by an older version. Close that Vortex window; see
 [One test Vortex at a time](concepts/one-test-vortex.md#records-from-older-doodlebot-versions).
+
+## A start is refused because of a pending restore
+
+The user folders of a game from an earlier run were never put back, so every start is refused
+until you decide. Run `doodlebot game restore <gameId>`: it lists the changed files, and you
+choose `--all`, `--keep` or `--file <path>`. Saves and other files that are not Vortex's own
+are always listed rather than restored, since they may be yours.
+
+If the message says the backup is missing, nothing can be restored from it. Check the folders
+yourself, then run `doodlebot game restore <gameId> --keep` to keep them as they are; that
+clears the refusal.
+
+## A warning says the protections are Windows-only
+
+On Linux or macOS, doodlebot cannot see your own Vortex, a running game or the `nxm://` link
+handler, so it does not check them. Close your own Vortex and the game yourself before a run.
 
 ## A command never returns
 

@@ -80,6 +80,40 @@ describe("doodlebot test", () => {
       const text = fs.readFileSync(path.join(REPO_ROOT, script), "utf8");
       expect(text, script).not.toMatch(/needs a source build|--dev-dir <checkout>/i);
     }
+    // No suite script or spec branches on a source build or needs its checkout. (fixtures.ts
+    // launches either kind of build, so it is not a suite.)
+    const testsDir = path.join(REPO_ROOT, "harness", "src", "tests");
+    const suiteFiles = fs.readdirSync(testsDir).filter((name) => /\.(?:e2e|spec)\.ts$/.test(name));
+    expect(suiteFiles.length).toBeGreaterThan(5);
+    for (const name of suiteFiles) {
+      const text = fs.readFileSync(path.join(testsDir, name), "utf8");
+      expect(text, name).not.toMatch(/kind\s*[!=]==\s*["']dev["']|\bsourceDir\b/);
+    }
+  });
+
+  it("--release <version> runs the suite on that registered release, and is not passed on", async () => {
+    const run = vi.fn(async () => 0);
+    const exe = path.join(REPO_ROOT, "nowhere", "Vortex.exe");
+    const release = {
+      version: "2.8.0",
+      path: path.dirname(exe),
+      exe,
+      sha256: "x",
+      registeredAt: "t",
+    };
+    await testCommand(["core"], {}, ["--grep", "x", "--release", "2.8.0"], {
+      run,
+      findRelease: (version) => (version === "2.8.0" ? release : undefined),
+      exists: () => true,
+    });
+    expect(run).toHaveBeenCalledWith(
+      process.execPath,
+      [playwrightCli, "test", "--config", "harness/playwright.config.ts", "--grep", "x"],
+      { cwd: REPO_ROOT, env: { ...process.env, VORTEX_AI_EXE: exe, VORTEX_AI_INSTALLED: "1" } },
+    );
+    await expect(
+      testCommand(["core"], {}, ["--release=2.9.0"], { run, findRelease: () => undefined }),
+    ).rejects.toThrow(/Release 2\.9\.0 is not registered; run `doodlebot release get 2\.9\.0`/);
   });
 
   it("runs the suite from the workspace root with this process's environment", async () => {
