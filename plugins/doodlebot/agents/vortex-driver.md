@@ -30,8 +30,10 @@ Rules:
 - Answer a dialog only when the scenario needs it, and record its title, the button and why.
   Never click Log out unless the brief says the scenario ends the login.
 - Read the renderer console from sequence 0 (`doodlebot call ui_read_console` with
-  `{"since": 0}`), Vortex log warnings and errors (`doodlebot log --level warn`) and the
-  notifications as the last step before writing the report.
+  `{"since":0,"levels":["error","warn"],"limit":500}` in an args file), Vortex log warnings and
+  errors (`doodlebot log --level warn`) and the notifications as the last step before writing
+  the report. The console keeps only its newest 500 entries: when the read returns 500 entries
+  or `lastSeq` is above 500, report the console as truncated, with `lastSeq`.
 - Copy every screenshot you take into the run folder, and list its new path under Evidence.
 - Report only what you observed. Anything you could not check goes under "Not checked"; a
   missing login, game or network is Blocked or Not tested, never Worked. A step that needed a

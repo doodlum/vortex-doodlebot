@@ -390,6 +390,20 @@ describe("skills", () => {
     );
   });
 
+  it("reads the whole renderer console's errors and warnings and reports truncation", () => {
+    const args = '`{"since":0,"levels":["error","warn"],"limit":500}`';
+    for (const file of [
+      skillFile("doodlebot", "try"),
+      "plugins/doodlebot/agents/vortex-driver.md",
+    ]) {
+      const text = read(file).replace(/\s+/g, " ");
+      expect(text, file).toContain(args);
+      expect(text, file).toContain("truncated");
+      expect(text, file).toContain("`lastSeq` is above 500");
+      expect(text, file).not.toContain('{"since": 0}`');
+    }
+  });
+
   it("logout-needs-go-ahead: try and qa run a logout only with the person's go-ahead", () => {
     const tryText = read(skillFile("doodlebot", "try")).replace(/\s+/g, " ");
     expect(tryText).toContain('"ends the login"');
@@ -466,7 +480,9 @@ describe("skills", () => {
 describe("eight-commands: no text names a removed command", () => {
   // Historic designs record what was removed; this test names them itself.
   const exempt = (file: string): boolean =>
-    file.startsWith("designs/") || file === "harness/src/plugins.test.ts";
+    file.startsWith("designs/") ||
+    file === "harness/src/plugins.test.ts" ||
+    file === "harness/src/companion.test.ts";
 
   it("finds /doodlebot:<removed> nowhere in the repository", () => {
     const files = execFileSync(

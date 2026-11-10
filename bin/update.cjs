@@ -69,7 +69,10 @@ function recordRunning(file, imageName) {
   return image !== undefined && VORTEX_IMAGES.has(image);
 }
 
-/** Spawn a command; `git` directly, `pnpm` through the shell with fixed arguments. */
+/**
+ * Spawn a command; `git` directly (its stderr captured, so a failure can be reported), `pnpm`
+ * through the shell with fixed arguments.
+ */
 function defaultRun(cmd, args, opts) {
   const result = opts.shell
     ? spawnSync([cmd, ...args].join(" "), { cwd: opts.cwd, shell: true, stdio: "inherit" })
@@ -77,13 +80,23 @@ function defaultRun(cmd, args, opts) {
         cwd: opts.cwd,
         encoding: "utf8",
         windowsHide: true,
-        stdio: ["ignore", "pipe", "inherit"],
+        stdio: ["ignore", "pipe", "pipe"],
       });
   if (result.error) throw result.error;
   return {
     status: result.status ?? 1,
     stdout: typeof result.stdout === "string" ? result.stdout : "",
+    stderr: typeof result.stderr === "string" ? result.stderr : "",
   };
+}
+
+/** A failed command as one message, with git's own error text when it gave one. */
+function failure(cmd, args, result) {
+  const detail = (result.stderr ?? "").trim();
+  return new Error(
+    `${cmd} ${args.join(" ")} failed with exit code ${String(result.status)}.` +
+      (detail === "" ? "" : `\n${detail}`),
+  );
 }
 
 /**
@@ -112,25 +125,25 @@ function update(root, ref, run = defaultRun, deps = {}) {
 
   const step = (cmd, args, shell = false) => {
     const result = run(cmd, args, shell ? { cwd: root, shell: true } : { cwd: root });
-    if (result.status !== 0)
-      throw new Error(`${cmd} ${args.join(" ")} failed with exit code ${String(result.status)}.`);
+    if (result.status !== 0) throw failure(cmd, args, result);
     return result;
   };
   if (step("git", ["status", "--porcelain"]).stdout.trim() !== "")
     throw new Error("The workspace has local changes; commit or remove them before updating.");
 
-  if (
-    run("git", ["ls-remote", "--exit-code", "--tags", "origin", `refs/tags/${ref}`], { cwd: root })
-      .status === 0
-  ) {
+  // `ls-remote --exit-code` exits 2 only when origin answered and has no such ref. Any other
+  // failure (no network, authentication, a missing remote) is git's error, never "no such ref".
+  const onOrigin = (args) => {
+    const result = run("git", args, { cwd: root });
+    if (result.status === 0) return true;
+    if (result.status === 2) return false;
+    throw failure("git", args, result);
+  };
+  if (onOrigin(["ls-remote", "--exit-code", "--tags", "origin", `refs/tags/${ref}`])) {
     log(`update: ${ref} is a tag on origin`);
     step("git", ["fetch", "origin", "tag", ref]);
     step("git", ["checkout", "--detach", `refs/tags/${ref}`]);
-  } else if (
-    run("git", ["ls-remote", "--exit-code", "--heads", "origin", `refs/heads/${ref}`], {
-      cwd: root,
-    }).status === 0
-  ) {
+  } else if (onOrigin(["ls-remote", "--exit-code", "--heads", "origin", `refs/heads/${ref}`])) {
     log(`update: ${ref} is a branch on origin`);
     step("git", ["fetch", "origin", ref]);
     step("git", ["checkout", "--detach", "FETCH_HEAD"]);

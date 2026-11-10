@@ -448,9 +448,12 @@ describe("the record of an older doodlebot in the default cache", () => {
   it("refuses down while it names a running Vortex (stopRunningInstance)", async () => {
     fs.writeFileSync(LEGACY_RECORD, JSON.stringify(record(process.pid, DEFAULT_CACHE_DIR)));
     const config = installedConfig({ mcpPort: await freePort() });
-    await expect(stopRunningInstance(config, () => undefined)).rejects.toThrow(
-      `A harness Vortex from an older doodlebot is running (pid ${String(process.pid)}); stop it before stopping Vortex.`,
+    const refusal = stopRunningInstance(config, () => undefined);
+    await expect(refusal).rejects.toThrow(
+      `A harness Vortex from an older doodlebot is running (pid ${String(process.pid)}); this doodlebot cannot stop it. Close that Vortex window (pid ${String(process.pid)}), then retry.`,
     );
+    // Never the circular advice to stop it before stopping it.
+    await expect(refusal).rejects.not.toThrow(/before stopping Vortex/);
     expect(fs.existsSync(LEGACY_RECORD)).toBe(true);
   });
 });

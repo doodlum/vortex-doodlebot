@@ -103,7 +103,10 @@ function removeLegacyInstanceFiles(config: HarnessConfig, action: string): void 
     const legacy = readInstanceRecordFile(legacyDefault);
     if (legacy !== undefined && isVortexProcess(legacy.pid))
       throw new ConfigError(
-        `A harness Vortex from an older doodlebot is running (pid ${String(legacy.pid)}); stop it before ${action}.`,
+        action === "stopping Vortex"
+          ? // `down` is the command being refused, so it cannot be the remedy.
+            `A harness Vortex from an older doodlebot is running (pid ${String(legacy.pid)}); this doodlebot cannot stop it. Close that Vortex window (pid ${String(legacy.pid)}), then retry.`
+          : `A harness Vortex from an older doodlebot is running (pid ${String(legacy.pid)}); stop it before ${action}.`,
       );
     fs.rmSync(legacyDefault, { force: true });
   }
@@ -385,7 +388,7 @@ export interface LaunchOptions {
   onProgress?: (message: string) => void;
   /** Monotonic timestamp immediately before process creation, for startup measurements. */
   onSpawn?: (at: number) => void;
-  /** Exact child immediately after spawn and the instance record, before any readiness await. */
+  /** Exact child immediately after spawn and the instance record, before awaiting MCP. */
   onProcessSpawn?: (child: ChildProcess) => void;
 }
 
@@ -427,7 +430,7 @@ export function launchStdio(logFd: number | undefined): {
  * and the Playwright specs attach to, replacing what would otherwise have to be
  * a patch to Vortex core.
  *
- * "Answers MCP" rather than "process started" is the readiness signal on
+ * "Answers MCP" rather than "process started" is the signal that Vortex is up on
  * purpose: the extension registers in `context.once`, which runs only after the
  * renderer has loaded its extensions and the store is live. A port check or a
  * fixed sleep would both report ready while the app is still on the splash

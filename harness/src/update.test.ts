@@ -12,7 +12,11 @@ interface RunOptions {
   cwd: string;
   shell?: boolean;
 }
-type Run = (cmd: string, args: string[], opts: RunOptions) => { status: number; stdout: string };
+type Run = (
+  cmd: string,
+  args: string[],
+  opts: RunOptions,
+) => { status: number; stdout: string; stderr?: string };
 /** bin/update.cjs, typed here so the harness needs no .d.cts and no allowJs. */
 interface UpdateModule {
   update(
@@ -185,6 +189,34 @@ describe("update command sequence", () => {
     );
     expect(failing.calls.some((call) => call.cmd === "pnpm")).toBe(false);
   });
+
+  it("reports git's error when ls-remote fails for any reason but a missing ref", () => {
+    const calls: string[][] = [];
+    const run: Run = (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return args[0] === "ls-remote"
+        ? {
+            status: 128,
+            stdout: "",
+            stderr: "fatal: unable to access 'origin': Could not resolve host",
+          }
+        : { status: 0, stdout: "" };
+    };
+    let message = "";
+    try {
+      update(root, "main", run, { stateDir, ...quiet });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain(
+      "git ls-remote --exit-code --tags origin refs/tags/main failed with exit code 128.",
+    );
+    expect(message).toContain("Could not resolve host");
+    expect(message).not.toContain("No tag or branch");
+    // The tag lookup's failure stops the update before the branch lookup or any change.
+    expect(calls.filter((call) => call[1] === "ls-remote")).toHaveLength(1);
+    expect(calls.some((call) => call[0] === "pnpm" || call[1] === "fetch")).toBe(false);
+  });
 });
 
 describe("update against a synthetic remote", () => {
@@ -249,6 +281,17 @@ describe("update against a synthetic remote", () => {
     // A bare `ls-remote --heads origin x` would match refs/heads/feature/x.
     expect(() => update(root, "x", run, { stateDir, ...quiet })).toThrow(
       "No tag or branch x on origin.",
+    );
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    expect(pnpm).toEqual([]);
+  });
+
+  it("reports an unreachable origin as git's error, not as a missing ref", () => {
+    const { run, pnpm } = realGit();
+    git(root, "remote", "set-url", "origin", path.join(temp, "gone.git"));
+    const before = git(root, "rev-parse", "HEAD");
+    expect(() => update(root, "main", run, { stateDir, ...quiet })).toThrow(
+      /git ls-remote --exit-code --tags origin refs\/tags\/main failed with exit code 128\.\n.*gone\.git/s,
     );
     expect(git(root, "rev-parse", "HEAD")).toBe(before);
     expect(pnpm).toEqual([]);

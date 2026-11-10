@@ -174,10 +174,15 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
 4. **Check the result independently** of the tool that acted: state through
    `doodlebot call vortex_query`, files on disk (sandbox: deployed files under its game
    folder's `Data`), the UI through a snapshot. A tool returning success is not an observation.
-5. **Read errors last:** the renderer console from sequence 0 (`doodlebot call ui_read_console`
-   with `{"since": 0}` in an args file), Vortex's log (`doodlebot log --level warn --since <start time>`)
-   and notifications (`doodlebot call vortex_query` with
-   `{"path": ["session", "notifications", "notifications"]}`).
+5. **Read errors last:**
+   - the renderer console from sequence 0: `doodlebot call ui_read_console --args-file <file>`
+     with `{"since":0,"levels":["error","warn"],"limit":500}` in the file. The console keeps only
+     its newest 500 entries of every level, so the read is **truncated** when it returns 500
+     entries or its `lastSeq` is above 500 (entries up to `lastSeq` minus 500 are lost). Say so
+     under "Errors and warnings", with the `lastSeq`, and never write "none" for a truncated read;
+   - Vortex's log (`doodlebot log --level warn --since <start time>`);
+   - notifications (`doodlebot call vortex_query` with
+     `{"path": ["session", "notifications", "notifications"]}`).
 6. **Stop** with `doodlebot down` if you started the instance.
 7. **Write the report** with the template below, then summarize it in chat with its path.
 
@@ -223,7 +228,7 @@ Worked | Worked with errors | Passed with workaround: <x> | Blocked | Not tested
 
 ## Errors and warnings
 
-- Console: <errors and warnings from ui_read_console, or "none">
+- Console: <errors and warnings from ui_read_console, or "none">; truncated: <no | yes, lastSeq N>
 - Vortex log: <doodlebot log --level warn entries, or "none">
 - Notifications: <title and message of each, or "none">
 
