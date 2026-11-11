@@ -24,8 +24,9 @@ the person's real scenario passed on the change.
    footer, review lessons) and the Vortex checkout's `CONTRIBUTING.md`.
 4. **Tested first.** A fix needs `/doodlebot:fix`'s before and after run reports (the person's
    own scenario on the base and on the fix) and its revert control. A feature needs its
-   approved design (the person set its Status to Approved, or told you to) and a
-   `/doodlebot:qa --design <file>` report. If anything is missing, say what and stop.
+   approved design (the person set its Status to Approved, or told you to; the walk is
+   `${CLAUDE_PLUGIN_ROOT}/resources/egm.md`) and a `/doodlebot:qa --design <file>` report. If
+   anything is missing, say what and stop.
 
 ## Steps
 

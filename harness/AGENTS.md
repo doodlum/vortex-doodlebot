@@ -17,7 +17,7 @@ behavior changes, update both: `pnpm run docs:generate` refreshes the generated 
 | Task procedures (one per use case)             | `plugins/doodlebot/skills/<name>/SKILL.md`; agents in `plugins/doodlebot/agents/`        |
 | Writing the tests that prove a Vortex change   | `plugins/doodlebot/resources/testing.md`                                                 |
 | Searching and recording lessons, gaps, sharing | `plugins/doodlebot/resources/knowledge.md`                                               |
-| Designs (features and refactors)               | EGM, as the root `AGENTS.md` gives it; doodlebot designs in `designs/`                   |
+| Designs (features and refactors)               | EGM: Vortex in `plugins/doodlebot/resources/egm.md`, doodlebot in the root `AGENTS.md`   |
 | Commands, tools, internals and traps           | This file; full CLI help in `reference/cli.md`, tool schemas in `reference/mcp-tools.md` |
 | Kit gates, the core suite and opt-in checks    | [TESTING.md](TESTING.md)                                                                 |
 | Vortex PR titles, description, review lessons  | [PULL-REQUESTS.md](PULL-REQUESTS.md)                                                     |
@@ -988,13 +988,21 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
 
 ### Designs
 
-Features and refactors start with a design written and reviewed with EGM, exactly as the root
-`AGENTS.md` gives it (`/egm:egm-brainstorm`, `/egm:egm-draft`, `/egm:egm-review`, then
-`/egm:egm-review-loop` with doodlebot's runtime reviewer `doodlebot:vortex-runtime-goldfish`,
-then the person's approval). Bug fixes, docs and test-only changes need no design unless the
-person supplies or asks for one. Doodlebot has no design command of its own. Doodlebot's own
-designs are listed in `designs/SITEMAP.md`; this version implements
-`designs/companion-simplified.md`.
+Features and refactors start with a design written and reviewed with EGM
+(`/egm:egm-brainstorm`, `/egm:egm-draft`, `/egm:egm-review`, then `/egm:egm-review-loop` with
+doodlebot's runtime reviewer `doodlebot:vortex-runtime-goldfish`, then the person's approval).
+Bug fixes, docs and test-only changes need no design unless the person supplies or asks for one.
+Doodlebot has no design command of its own.
+
+- **A Vortex change** is designed in its Vortex session, which reads Vortex's instructions, not
+  doodlebot's: `plugins/doodlebot/resources/egm.md` holds the walk and the paste-ready lines.
+  The person's prompt carries `EGM artifact directory: .doodlebot/egm` on its own line (EGM
+  v0.1.1 reads it from the prompt and resolves it against the working directory), or
+  `<workspace>/harness/.artifacts/egm/<checkout folder name>` when `.doodlebot/` is not
+  excluded. No file is written into Vortex for EGM.
+- **A doodlebot change** follows the root `AGENTS.md`. Doodlebot's own designs are listed in
+  `designs/SITEMAP.md`; this version implements `designs/companion-simplified.md` and
+  `designs/vortex-checkout.md`.
 
 - A Vortex design lives on the Vortex branch, in the checkout's docs/designs folder, committed
   as `docs(design): <topic>`. `pr-branch` keeps it out of the PR, and with

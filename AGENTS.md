@@ -14,7 +14,7 @@ hard-won knowledge. Nothing here requires a patched or self-built Vortex.
 | `bin/doodlebot.cjs`               | The CLI entry point; `bin/update.cjs` is `doodlebot update`; `bin/nodeVersion.cjs` checks Node first                 |
 | `plugins/`                        | The `doodlebot` plugin: skills, agents, EGM resources and its icon                                                   |
 | `.claude-plugin/marketplace.json` | The `doodlebot` marketplace for Claude Code; `.agents/plugins/marketplace.json` is Codex's                           |
-| `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard and the runtime Goldfish persona                                           |
+| `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard, the runtime Goldfish persona and the EGM walk for a Vortex session        |
 | `plugins/doodlebot/agents/`       | Claude Code subagents: `vortex-runtime-goldfish`, `vortex-driver`                                                    |
 | `harness/AGENTS.md`               | **The agent manual**: CLI, tools, traps and the working rules every skill shares                                     |
 | `harness/PULL-REQUESTS.md`        | Vortex PR titles, description template, review brief, review lessons                                                 |
@@ -79,14 +79,17 @@ reviewer that checks every acceptance criterion can be proved on a real Vortex.
 to type next (with the line below for the runtime review, filled in) and carries on when the
 person has run it.
 
-1. `/egm:egm-brainstorm`, then `/egm:egm-draft`. At the draft's save step choose `designs/` for
-   a doodlebot change (it is listed in `designs/SITEMAP.md`), or `docs/designs/` in the Vortex
-   checkout for a Vortex change. A Vortex design is committed on the feature branch as
-   `docs(design): <topic>`; `/doodlebot:pr` leaves those commits out of the PR branch.
+**A Vortex change is designed in its Vortex session**, not here: a session opened in a Vortex
+checkout reads Vortex's instructions, not this file. The walk, the artifact folder
+(`.doodlebot/egm`) and the lines to paste for it are in `plugins/doodlebot/resources/egm.md`.
+This section is for doodlebot's own designs.
+
+1. `/egm:egm-brainstorm`, then `/egm:egm-draft`. At the draft's save step choose `designs/` (it
+   is listed in `designs/SITEMAP.md`).
 2. `/egm:egm-review <design>`. Give `GoldfishContext` the files the design names.
 3. `/egm:egm-review-loop` for the runtime review, with exactly these arguments (paths are under
    this workspace, `<workspace>`):
-   - **TargetFile:** `<workspace>/<design path>` (or the Vortex checkout's design path)
+   - **TargetFile:** `<workspace>/<design path>`
    - **SemanticTarget:** `full file`
    - **Reviewers:** `<workspace>/plugins/doodlebot/resources/vortex_runtime.md`
    - **Standards:** `{"<workspace>/plugins/doodlebot/resources/vortex_runtime.md": "<workspace>/plugins/doodlebot/resources/vortex-change-standard.md"}`

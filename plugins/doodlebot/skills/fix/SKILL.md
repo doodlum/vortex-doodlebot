@@ -10,9 +10,9 @@ End to end: an issue report, a branch in the Vortex checkout, the fix, a regress
 the Vortex branch** (a Vortex unit or e2e test that goes in the PR), the revert control, the
 person's reproduction on the fix, and then the offer of `/doodlebot:pr`. A bug fix needs no
 design unless the person asks for one; features and refactors start with EGM, whose `/egm:*`
-commands only the person can type (they have `disable-model-invocation: true`): tell them to
-type `/egm:egm-brainstorm`, and give them the filled-in `/egm:egm-review-loop` line from
-`<workspace>/AGENTS.md` when the design reaches the runtime review.
+commands only the person can type (they have `disable-model-invocation: true`). Follow
+`${CLAUDE_PLUGIN_ROOT}/resources/egm.md`: it gives the walk for a Vortex session and the
+filled-in lines to hand the person, from `/egm:egm-brainstorm` to the runtime review.
 
 ## Before you begin
 
