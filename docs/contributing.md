@@ -86,7 +86,9 @@ as `install` refusing an unquoted path with a space, belongs in `harness/src/cli
 A rule about Git state runs on real temporary repositories: `harness/src/source.test.ts` checks
 that `doodlebot source --exclude` keeps `.doodlebot/` and the Claude desktop app's
 `.claude/worktrees/` out of `git add -A`, and `harness/src/prPreflight.test.ts` checks that a
-design committed on a work branch passes the preflight while a `proto/*` branch fails it.
+design committed on a work branch passes the preflight while a `proto/*` branch fails it. The plugin's
+SessionStart hook is a plain script; `harness/src/sessionNote.test.ts` runs it as Claude Code does,
+with the hook input on stdin, in temporary Vortex and non-Vortex repositories.
 
 ```powershell
 pnpm exec vitest run harness/src/perfSummary.test.ts

@@ -49,7 +49,9 @@ folder. The agent uses that command for everything else.
    2. runs `pnpm install --frozen-lockfile`;
    3. runs `pnpm run build`;
    4. runs `node bin/doodlebot.cjs link`, which writes the shim and prints
-      `shim: <path>` and `on PATH: yes` or `on PATH: no`;
+      `shim: <path>` and `on PATH: yes` or `on PATH: no`. It also records the workspace in
+      `~/.doodlebot/workspace.json`, so a session opened in a Vortex checkout is told where
+      doodlebot is ([What a Vortex session knows](install.md#what-a-vortex-session-knows));
    5. runs `doodlebot version` to confirm the shim reports the new workspace.
 
    If `link` reports `on PATH: no`, the agent tells you which folder to add to your PATH. Setup
@@ -146,8 +148,8 @@ keeps them ([What doodlebot learns](../concepts/knowledge.md)).
    want to keep first.
 4. Delete the shim: `doodlebot.cmd` and `doodlebot` in the folder that `link` wrote them to
    (`where.exe doodlebot` shows it).
-5. Delete `%USERPROFILE%\.doodlebot` (`~/.doodlebot`), which holds the instance record and the
-   lessons doodlebot learned on this machine (`knowledge.md`). Keep `knowledge.md` if you may
+5. Delete `%USERPROFILE%\.doodlebot` (`~/.doodlebot`), which holds the instance record, the
+   workspace record and the lessons doodlebot learned on this machine (`knowledge.md`). Keep `knowledge.md` if you may
    set doodlebot up again.
 
 Your own Vortex and its profile are not touched by any of these steps.

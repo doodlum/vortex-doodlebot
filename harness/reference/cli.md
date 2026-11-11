@@ -67,6 +67,8 @@ Used from Claude Code or Codex through the doodlebot plugin, whose eight command
 The companion itself
   version [--json]       This workspace's version, commit and path
   link [--bin-dir <dir>] Write the doodlebot shims into a folder on the PATH
+                         and record this workspace in ~/.doodlebot/workspace.json, which
+                         the plugin's SessionStart hook reads
   update --ref <ref>     Move this workspace to a tag or branch of origin, then install
                          and build (refuses while a harness Vortex runs or with local changes)
 

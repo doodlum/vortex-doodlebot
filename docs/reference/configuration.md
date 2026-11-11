@@ -134,6 +134,7 @@ instead of installing the first part of a split one, which can name another file
 | Path                                           | Contents                                                                          |
 | ---------------------------------------------- | --------------------------------------------------------------------------------- |
 | `~/.doodlebot/instance.json`                   | The record of the running test Vortex                                             |
+| `~/.doodlebot/workspace.json`                  | The workspace `doodlebot link` recorded, read by the plugin's SessionStart hook   |
 | `~/.doodlebot/content.json`                    | Registered game copies and releases, pending restores                             |
 | `~/.doodlebot/releases/`                       | Official releases extracted by `release get`                                      |
 | `<workspace>/harness/.cache`                   | Test profiles, baselines and saved logins                                         |

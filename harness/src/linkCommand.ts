@@ -8,12 +8,18 @@
  *
  * Both run this workspace's `bin/doodlebot.cjs` with the Node that ran `link`. No npm process,
  * no `.ps1` (so no execution policy), and pnpm's node_modules is never touched.
+ *
+ * It also records the workspace in `~/.doodlebot/workspace.json`, which the plugin's SessionStart
+ * hook reads to find it without starting a process (designs/vortex-session-context.md).
  */
 import fs from "node:fs";
 import path from "node:path";
 
 import { ConfigError } from "./errors";
-import { REPO_ROOT } from "./paths";
+import { REPO_ROOT, USER_STATE_DIR } from "./paths";
+
+/** The record of the linked workspace, read by `plugins/doodlebot/hooks/session-note.cjs`. */
+export const WORKSPACE_RECORD = "workspace.json";
 
 export interface LinkEnvironment {
   platform: NodeJS.Platform;
@@ -24,6 +30,8 @@ export interface LinkEnvironment {
   writable: (dir: string) => boolean;
   /** The real path of an existing path; throws for a missing one. */
   realpath: (file: string) => string;
+  /** Where `workspace.json` goes (`~/.doodlebot`); without it no record is written. */
+  stateDir?: string;
 }
 
 export const NO_BIN_DIR =
@@ -49,6 +57,7 @@ export function defaultLinkEnvironment(): LinkEnvironment {
     execPath: process.execPath,
     writable: canWrite,
     realpath: (file) => fs.realpathSync.native(file),
+    stateDir: USER_STATE_DIR,
   };
 }
 
@@ -129,6 +138,8 @@ export interface LinkResult {
   shim: string;
   files: string[];
   onPath: boolean;
+  /** The `workspace.json` written, when the environment has a state folder. */
+  record?: string;
 }
 
 export function link(
@@ -151,9 +162,23 @@ export function link(
   fs.writeFileSync(script, contents.sh, { mode: 0o755 });
   if (environment.platform !== "win32") fs.chmodSync(script, 0o755);
   files.push(script);
-  return { shim: files[0]!, files, onPath: onPath(binDir, environment) };
+  let record: string | undefined;
+  if (environment.stateDir !== undefined) {
+    fs.mkdirSync(environment.stateDir, { recursive: true });
+    record = p.join(environment.stateDir, WORKSPACE_RECORD);
+    fs.writeFileSync(record, `${JSON.stringify({ workspace: root }, null, 2)}\n`);
+  }
+  return {
+    shim: files[0]!,
+    files,
+    onPath: onPath(binDir, environment),
+    ...(record === undefined ? {} : { record }),
+  };
 }
 
 export function formatLink(result: LinkResult): string {
-  return `shim: ${result.shim}\non PATH: ${result.onPath ? "yes" : "no"}`;
+  return (
+    `shim: ${result.shim}\non PATH: ${result.onPath ? "yes" : "no"}` +
+    (result.record === undefined ? "" : `\nworkspace record: ${result.record}`)
+  );
 }

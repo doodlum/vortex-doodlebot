@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   NO_BIN_DIR,
+  WORKSPACE_RECORD,
   binDirCandidates,
   chooseBinDir,
   formatLink,
@@ -86,6 +87,22 @@ describe("shim contents", () => {
       shimContents("/home/me/doodlebot", "/opt/node/bin/node").sh,
     );
     expect(formatLink(result)).toBe(`shim: ${result.shim}\non PATH: no`);
+  });
+
+  it("records the workspace in workspace.json for the plugin's SessionStart hook", () => {
+    const bin = path.join(temp, "bin");
+    const root = path.join(temp, "workspace");
+    const stateDir = path.join(temp, "state");
+    const result = link({ binDir: bin, root }, windows({ stateDir }));
+    const record = path.join(stateDir, WORKSPACE_RECORD);
+    expect(result.record).toBe(record);
+    expect(JSON.parse(fs.readFileSync(record, "utf8"))).toEqual({ workspace: root });
+    expect(formatLink(result)).toContain(`workspace record: ${record}`);
+    // Linking another workspace takes over, as the shims do.
+    link({ binDir: bin, root: path.join(temp, "other") }, windows({ stateDir }));
+    expect(JSON.parse(fs.readFileSync(record, "utf8"))).toEqual({
+      workspace: path.join(temp, "other"),
+    });
   });
 });
 

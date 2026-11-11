@@ -1,7 +1,9 @@
 # A Vortex session knows doodlebot can prove the change
 
 - **Author:** Claude (Opus 5.5), for doodlum
-- **Status:** Draft, iteration 1 (2026-11-11). Not reviewed, not approved.
+- **Status:** Draft, iteration 1 (2026-11-11). Not reviewed, not approved. Implemented at the
+  owner's request ("implement the drafts"): criteria 1-5 pass as unit tests; 6-9 (live, after a
+  plugin update and restart, and Codex) are not yet run.
 - **Target:** doodlebot
 - **Builds on:** `designs/vortex-checkout.md` (sessions run in a Vortex checkout or worktree).
 - **Evidence:** the hook spike of 2026-11-11 (below), and the proposal and its three reviews in

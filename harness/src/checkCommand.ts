@@ -22,7 +22,9 @@ import {
   DEFAULT_CACHE_DIR,
   OLD_CLONE_DIR,
   RELEASES_DIR,
+  USER_STATE_DIR,
 } from "./paths";
+import { WORKSPACE_RECORD } from "./linkCommand";
 import { gitBranch } from "./runningVortex";
 import { NEEDS_CHECKOUT, vortexCheckoutOf } from "./config";
 import { gitText } from "./gitText";
@@ -62,6 +64,8 @@ export interface CheckDeps {
   userSettingsFile?: string;
   /** Claude Code's installed-plugins list. */
   installedPluginsFile?: string;
+  /** `doodlebot link`'s record of the workspace (default `~/.doodlebot/workspace.json`). */
+  workspaceRecordFile?: string;
   source?: () => SourceState | undefined | Promise<SourceState | undefined>;
   /** The Vortex clone older kits kept in the workspace (default OLD_CLONE_DIR). */
   oldClone?: string;
@@ -171,6 +175,44 @@ function egmRow(deps: CheckDeps): CheckRow {
     next: "install EGM at user scope: /plugin marketplace add google/elephant-goldfish-model, then /plugin install egm@egm (user scope)",
   };
 }
+const samePath = (a: string, b: string): boolean => {
+  const norm = (p: string) => path.resolve(p).replace(/[\\/]+$/, "");
+  return process.platform === "win32"
+    ? norm(a).toLowerCase() === norm(b).toLowerCase()
+    : norm(a) === norm(b);
+};
+
+/**
+ * The plugin's SessionStart hook finds the workspace through `doodlebot link`'s record; without
+ * it, a Vortex session gets only "run /doodlebot:setup" (designs/vortex-session-context.md).
+ */
+function sessionNoteRow(deps: CheckDeps, workspace: string): CheckRow {
+  const item = "Vortex session note";
+  const file = deps.workspaceRecordFile ?? path.join(USER_STATE_DIR, WORKSPACE_RECORD);
+  const record = readJson(file) as { workspace?: unknown } | undefined;
+  const named = typeof record?.workspace === "string" ? record.workspace : undefined;
+  const hosts =
+    "Claude Code loads it at start, so restart after installing or updating the plugin; " +
+    "Codex runs it only after you trust it in /hooks (again after each update)";
+  if (named !== undefined && samePath(named, workspace))
+    return {
+      area: "plugins",
+      item,
+      status: "ready",
+      detail: `the SessionStart hook finds this workspace through ${file}. ${hosts}`,
+    };
+  return {
+    area: "plugins",
+    item,
+    status: "missing",
+    detail:
+      named === undefined
+        ? `no workspace record at ${file}, so a Vortex session is only told to run /doodlebot:setup`
+        : `${file} names ${named}, not this workspace`,
+    next: "doodlebot link",
+  };
+}
+
 function sourceRow(state: SourceState | undefined): CheckRow {
   if (state === undefined)
     return {
@@ -384,6 +426,7 @@ export async function checkRows(deps: CheckDeps = {}): Promise<CheckRow[]> {
     workspace,
     ...doctorRows(deps.doctor === undefined ? [] : await deps.doctor()),
     egmRow(deps),
+    sessionNoteRow(deps, info.workspace),
     sourceRow(await (deps.source ?? checkoutState)()),
     ...oldCloneRows(deps),
     ...inventoryRows((deps.inventory ?? (() => readInventory()))()),
