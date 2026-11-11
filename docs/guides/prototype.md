@@ -8,12 +8,17 @@ round after round, until you have seen enough to design it.
 
 - [Set up doodlebot](../get-started/set-up.md), and have a Vortex checkout; see
   [Work on Vortex source](source-development.md).
-- In the Claude desktop app, start a **new worktree session** of your checkout; whatever branch
-  the app gives it is fine. The prototype never switches the branch of your main checkout, and
-  refuses to run there. In another agent, make a worktree yourself from upstream's default
-  branch (`git -C <checkout> worktree add <dir> upstream/<default>`, where `<default>` is what
-  `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` names, normally `master`)
-  and open the agent there.
+- Start in a worktree of your checkout. The prototype never switches the branch of your main
+  checkout, and refuses to run there.
+  - In the Claude desktop app, turn on **Worktree** in the row under the prompt before you start
+    the session; whatever branch the app gives it is fine.
+  - In the Codex app, select **Worktree** under the composer, based on upstream's default branch.
+    The worktree starts on a detached HEAD; the agent cuts `proto/<idea>` there with
+    `doodlebot source --branch`.
+  - In the Claude Code CLI, Codex CLI or another agent, make a worktree yourself from upstream's
+    default branch (`git -C <checkout> worktree add <dir> upstream/<default>`, where `<default>`
+    is what `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` names, normally
+    `master`) and open the agent there.
 - The worktree must be clean. Each worktree needs its own install and build, which takes
   minutes and several GB; the agent runs `/doodlebot:source` for it.
 
@@ -34,8 +39,8 @@ a `proto/*` branch.
 2. The agent checks the session: a worktree, not your main checkout, and a clean tree; either
    refusal comes with the reason. It then cuts `proto/<idea>` from upstream's default branch
    with `doodlebot source --no-build --branch proto/<idea>`, whatever branch the worktree was
-   on. The branch the app made for the session stays behind, unused; the agent offers to delete
-   it when it has no commits of its own.
+   on, a detached HEAD included. A branch the app made for the session stays behind, unused; the
+   agent offers to delete it when it has no commits of its own.
 3. Each round, the agent:
    1. changes Vortex's code for the idea;
    2. rebuilds the worktree;

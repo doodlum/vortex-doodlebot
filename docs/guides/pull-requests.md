@@ -2,7 +2,8 @@
 
 This page shows how to have the agent check a Vortex branch and open its pull request with
 `/doodlebot:pr`. The pull request is opened from the branch your session is on, so the Claude
-desktop app can show it, with its CI status, beside the session.
+desktop app can show it, with its CI status, beside the session. The Codex app shows its checks
+in the review pane.
 
 ## Before you begin
 
@@ -82,9 +83,10 @@ desktop app can show it, with its CI status, beside the session.
    `master`, in your fork as well as upstream. It is never your fork's own default branch, which
    can be another branch with work of its own (doodlum/Vortex's default branch is `linux`).
 
-8. In the Claude desktop app, the agent binds the pull request to the session if the app's PR
-   bar did not pick it up. Whether the app can show a pull request opened against
-   Nexus-Mods/Vortex from your fork is not yet established; the agent reports what happened.
+8. In the Claude desktop app, the agent binds the pull request to the session if the app did not
+   pick it up. Whether the app can show a pull request opened against Nexus-Mods/Vortex from
+   your fork is not yet established; the agent reports what happened. See
+   [In the Claude desktop app](#in-the-claude-desktop-app).
 
 9. The agent runs `doodlebot pr-checks <number>` to report the pull request's CI checks, with
    failed jobs expanded to their failed steps. When CI is red, it says why: a test failure, an
@@ -92,6 +94,31 @@ desktop app can show it, with its CI status, beside the session.
 
 The expected result: a preflight report, a description ready to post, and, once the pull request
 exists, its check status.
+
+## In the Claude desktop app
+
+- The app needs `gh` installed and signed in (`gh auth login`).
+- Once the pull request is open, it shows in the session details panel's **Changes** card, with
+  its CI status. If it does not, the agent binds it to the session.
+- The card's ⋮ menu has **Auto-fix** and **Merge when ready**. Merge when ready makes a squash
+  merge, unless the repository uses a merge queue.
+
+Source: [Claude Code desktop](https://code.claude.com/docs/en/desktop).
+
+## In the Codex app
+
+- A Codex app worktree starts on a detached HEAD, and `doodlebot push-branch` refuses one. Cut a
+  branch before you ask for the pull request: the app's **Create branch here**, or
+  `git switch -c <name>`, keeps the commits you made. `doodlebot source --branch <name>` starts
+  from upstream instead, so use it only before you commit.
+- The agent pushes the branch and opens the pull request with `gh`, as above. The Codex
+  documentation does not say whether the app opens pull requests itself.
+- The app's review pane stages, commits and pushes. A pull request's summary shows its
+  description, comments and checks; **Fix** in Checks attaches a failing check to a chat.
+- Auto-fix, following a pull request's CI, and auto-merge per task are not documented for the
+  Codex app. Ask the agent for `doodlebot pr-checks <number>` to read CI.
+
+Source: [Codex code review](https://learn.chatgpt.com/docs/code-review?surface=app).
 
 ## What's next
 

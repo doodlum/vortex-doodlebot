@@ -83,6 +83,9 @@ Use Vitest for logic that does not need Vortex: parsing, statistics, input valid
 DOM helpers. Put harness tests next to the code in `harness/src/*.test.ts`, and DOM logic in
 `src/uiAutomation.test.ts`, which runs under jsdom. A rule about the command line itself, such
 as `install` refusing an unquoted path with a space, belongs in `harness/src/cliArgs.test.ts`.
+A rule about Git state runs on real temporary repositories: `harness/src/source.test.ts` checks
+that `doodlebot source --exclude` keeps `.doodlebot/` and the Claude desktop app's
+`.claude/worktrees/` out of `git add -A`.
 
 ```powershell
 pnpm exec vitest run harness/src/perfSummary.test.ts

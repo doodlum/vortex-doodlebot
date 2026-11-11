@@ -28,6 +28,10 @@ codex plugin marketplace add doodlum/vortex-doodlebot
 codex plugin add doodlebot@doodlebot
 ```
 
+Doodlebot also works in the Claude desktop app's Code tab and in the Codex app: see
+[Claude desktop app](docs/get-started/install.md#claude-desktop-app) and
+[Codex app](docs/get-started/install.md#codex-app).
+
 Then run `/doodlebot:setup` in your agent. It installs the doodlebot workspace and command, and
 prepares a sandbox test profile.
 

@@ -44,11 +44,13 @@ own branch, cut from `upstream`.
    changes nothing it was not asked to, and reports:
    - **upstream pointing elsewhere**: it refuses and changes nothing. Tell the person the remote
      it named; they fix it themselves.
-   - **upstream missing**, or **`.doodlebot/` not excluded**: ask the person once, "May I add
-     Nexus-Mods/Vortex as `upstream`, and add `.doodlebot/` to this checkout's shared
-     `info/exclude` (every worktree uses it), so nothing doodlebot writes reaches a commit?" On
-     a yes, run `doodlebot source --no-build --add-upstream --exclude` (only the flags for what
-     was missing). On a no, carry on: without the exclude, EGM's artifact folder is
+   - **upstream missing**, **`.doodlebot/` not excluded**, or a note that **`.claude/worktrees/`
+     is not excluded**: ask the person once, "May I add Nexus-Mods/Vortex as `upstream`, and add
+     `.doodlebot/` and `.claude/worktrees/` (the Claude desktop app's worktrees) to this
+     checkout's shared `info/exclude` (every worktree uses it), so nothing doodlebot or the app
+     writes reaches a commit?" On a yes, run
+     `doodlebot source --no-build --add-upstream --exclude` (only the flags for what was
+     missing). On a no, carry on: without the exclude, EGM's artifact folder is
      `<workspace>/harness/.artifacts/egm/<checkout folder name>` instead of `.doodlebot/egm`.
    - **origin**: the person's fork, Nexus-Mods/Vortex itself, or absent. Without a fork, tell
      the person what it printed: building and testing work as they are; pushing later needs a
@@ -66,10 +68,12 @@ own branch, cut from `upstream`.
      `qa/<number>`. Do not build it yet: building a PR runs its code, and `/doodlebot:qa` asks
      the person's go-ahead first.
 5. **Several branches at once.** Another session works on another branch in its own worktree:
-   `git -C <checkout> worktree add <dir> <branch>`, or a Claude desktop worktree session. The
-   person opens Claude in that worktree and runs `/doodlebot:source` there: each worktree needs
-   its own install and build, several GB each. Only one test Vortex runs at a time on the
-   machine.
+   `git -C <checkout> worktree add <dir> <branch>`, a Claude desktop session with **Worktree**
+   on (in `<checkout>/.claude/worktrees/`, which `--exclude` keeps out of commits), or a Codex
+   app worktree (in `$CODEX_HOME/worktrees`, on a detached HEAD until a branch is cut with
+   `--branch`). The person opens the agent in that worktree and runs the source skill there:
+   each worktree needs its own install and build, several GB each. Only one test Vortex runs at
+   a time on the machine.
 6. **Install and build** (not for step 4): `doodlebot source`. It installs with the
    checkout's pinned pnpm (`--frozen-lockfile`), then runs
    `doodlebot build --checkout <checkout>`, which puts back `etc/vortex.api.md` and

@@ -161,9 +161,10 @@ You decide what becomes a change for everyone. See [What doodlebot learns](../co
 
 ## U12: Work on Vortex in this checkout
 
-1. Open Claude in your Vortex checkout, or in a worktree of it (a Claude desktop worktree session
-   works). With no checkout yet, ask for one: the agent runs `doodlebot source --clone <dir>` into
-   a folder you name, and you open Claude there.
+1. Open your agent in your Vortex checkout, or in a worktree of it: a Claude desktop session
+   with **Worktree** on, a Codex app chat with **Worktree** selected, or `git worktree add` for
+   either CLI. With no checkout yet, ask for one: the agent runs
+   `doodlebot source --clone <dir>` into a folder you name, and you open your agent there.
 2. Run `/doodlebot:source`. It installs and builds that checkout.
 
 Every command that builds or changes Vortex then uses the session's checkout, and
@@ -172,10 +173,11 @@ See [Work on Vortex source](source-development.md).
 
 ## U13: Prototype an idea
 
-1. In the Claude desktop app, start a new worktree session of your checkout on a new branch
-   `proto/<idea>` (or on the upstream default), then run `/doodlebot:prototype <idea>` there.
-2. The agent refuses a tree with changes in it, or a branch other than a new `proto/*` branch or
-   the upstream default.
+1. Start a worktree of your checkout: in the Claude desktop app, a new session with
+   **Worktree** on; in the Codex app, a new chat with **Worktree** selected (it starts on a
+   detached HEAD). Run `/doodlebot:prototype <idea>` there; the agent cuts `proto/<idea>` from
+   upstream.
+2. The agent refuses your main checkout, or a tree with changes in it.
 3. Each round it changes the code, rebuilds, runs the build in a test Vortex, shows you
    screenshots at several window sizes, and asks what to change. Nothing is reviewed or
    approved.

@@ -61,6 +61,8 @@ Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session
      rename it, `git -C <checkout> branch -m fix-<topic>`, after `git -C <checkout> fetch
 upstream` and only when it already sits at `upstream/<default>`; run it only on the
      person's yes.
+   - A Codex app worktree starts on a detached HEAD: the cut makes the branch there and leaves
+     nothing behind.
 3. **The control run (before).** Build the branch's base with
    `doodlebot build --checkout <checkout>` and repeat the reproduction with `/doodlebot:try`'s
    report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This

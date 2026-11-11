@@ -313,6 +313,39 @@ describe("preparing the session's checkout", { timeout: 120_000 }, () => {
     });
     expect(again.exclude).toBe("present");
     expect(read(exclude()).match(/\.doodlebot\//g)).toHaveLength(1);
+    expect(read(exclude()).match(/\.claude\/worktrees\//g)).toHaveLength(1);
+  });
+
+  it("exclude-shared: --exclude keeps a Claude desktop worktree in .claude/worktrees/ out of git add -A", async () => {
+    const nested = path.join(checkout, ".claude", "worktrees", "session");
+    git(checkout, "worktree", "add", "-q", "-b", "session", nested);
+    const stage = (): string[] => {
+      git(checkout, "add", "-A");
+      const staged = git(checkout, "diff", "--cached", "--name-only").split("\n").filter(Boolean);
+      git(checkout, "reset", "-q");
+      return staged;
+    };
+    // Without the exclude, the nested worktree is staged in the main checkout.
+    expect(stage().some((file) => file.startsWith(".claude/worktrees/"))).toBe(true);
+    // A checkout that already excludes .doodlebot/ is told about the second line.
+    fs.mkdirSync(path.dirname(exclude()), { recursive: true });
+    fs.appendFileSync(exclude(), ".doodlebot/\n");
+    const asked = await prepareCheckout({ checkout, upstreamUrl: upstream, build: false });
+    expect(asked.exclude).toBe("present");
+    expect(formatPrepared(asked)).toContain(".claude/worktrees/");
+
+    const prepared = await prepareCheckout({
+      checkout,
+      upstreamUrl: upstream,
+      exclude: true,
+      build: false,
+    });
+    expect(prepared.exclude).toBe("present");
+    expect(stage()).toEqual([]);
+    expect(git(checkout, "status", "--porcelain")).toBe("");
+    await prepareCheckout({ checkout, upstreamUrl: upstream, exclude: true, build: false });
+    expect(read(exclude()).match(/\.claude\/worktrees\//g)).toHaveLength(1);
+    expect(read(exclude()).match(/\.doodlebot\//g)).toHaveLength(1);
   });
 
   it("skips install and build when the build record matches the checkout", async () => {

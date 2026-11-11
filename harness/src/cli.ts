@@ -253,7 +253,8 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          that is not Nexus-Mods/Vortex (changing nothing), report origin,
                          install with its pinned pnpm and build it; reports the rest
     --add-upstream       Add Nexus-Mods/Vortex as upstream when it is missing
-    --exclude            Add .doodlebot/ to $(git rev-parse --git-common-dir)/info/exclude,
+    --exclude            Add .doodlebot/ and .claude/worktrees/ (the Claude desktop app's
+                         worktrees) to $(git rev-parse --git-common-dir)/info/exclude,
                          which every worktree of the checkout shares
     --clone <dir>        Clone your fork (origin) and Nexus-Mods/Vortex (upstream) into
                          <dir>, outside the workspace; without a fork, clone upstream alone

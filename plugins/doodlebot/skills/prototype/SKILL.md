@@ -39,8 +39,11 @@ The prototype never changes the branch of the person's own checkout.
    `git -C <checkout> rev-parse --git-common-dir` print the same folder in the main checkout
    and different folders in a worktree. In the main checkout, refuse: prototyping there would
    switch the person's own checkout to `proto/<idea>`.
-   - **Claude desktop:** ask the person to start a new worktree session of this checkout and run
-     `/doodlebot:prototype <idea>` there. Stop.
+   - **Claude desktop:** ask the person to start a new session of this checkout with
+     **Worktree** turned on under the prompt, and run `/doodlebot:prototype <idea>` there. Stop.
+   - **Codex app:** ask the person to start a new chat with **Worktree** selected under the
+     composer, based on upstream's default branch when they can pick it, and run the prototype
+     skill there. Its worktree starts on a detached HEAD; step 4 cuts the branch. Stop.
    - **Another agent:** offer a worktree, `git -C <checkout> worktree add <dir> upstream/<default>`
      (step 3 says how to find `<default>`), then open the agent in `<dir>`. Stop.
 2. **A clean tree.** `git -C <checkout> status --porcelain` must print nothing. If it prints
@@ -51,12 +54,14 @@ The prototype never changes the branch of the person's own checkout.
    `git -C <checkout> remote set-head upstream --auto` and read it again. Never hard-code
    `master`, and never use the fork's default branch (`origin`'s can be another branch).
 4. **The branch.** In a clean worktree any current branch is fine: a desktop worktree session
-   starts on a branch the app named (`claude/...`), a detached HEAD, or anything else.
+   starts on a branch the app named (`claude/...`), a Codex app worktree on a detached HEAD, or
+   anything else.
    - Already on `proto/<idea>` with no commits beyond upstream
      (`git -C <checkout> rev-list --count upstream/<default>..HEAD` prints `0`): continue.
    - Otherwise cut the branch: `doodlebot source --no-build --branch proto/<idea>`. It always
      cuts from `upstream/<default>`, whatever the worktree was on. It refuses an existing
      `proto/<idea>` branch: then ask the person for another `<idea>` name.
+   - On a detached HEAD there is no branch to leave behind.
    - The branch the session started on (an app-made `claude/...` branch) stays behind, unused.
      Say so, and offer to delete it (`git -C <checkout> branch -D <it>`) only when it has no
      commits of its own; never delete it without the person's yes.
