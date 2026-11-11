@@ -147,10 +147,12 @@ Nexus ever ships a search endpoint, the fix is the same shape as
 
 Each HTTP request has its own MCP server/transport; state listeners and UI refs
 remain shared within the renderer. Refs include a renderer-lifetime identifier
-and are invalidated by the next snapshot. Harness snapshot/action transactions
-are serialized with dialog watchers so they cannot invalidate each other's refs.
-That serialization is per client: two processes driving the instance at once can still
-invalidate each other's refs, so drive it from one session at a time.
+and stay valid across snapshots while their element is connected and keeps the
+role and accessible name it had when the ref was issued (a `WeakMap` fingerprint
+in `uiAutomation.ts`); a recycled row is refused, never redirected. Harness
+snapshot/action transactions are still serialized with dialog watchers, and
+nothing serializes two processes driving the instance at once, so drive it from
+one session at a time.
 
 The harness uses isolated userData/appData and a dedicated sandbox game for
 account-free tests. In harness mode only, `authCache.ts` restores the current

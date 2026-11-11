@@ -63,7 +63,10 @@ Repeat the person's own scenario on the fixed build with `/doodlebot:try`'s repo
 **UI changes: sizes and states.** Resize both dimensions: a list that works at a narrow width
 can still hide its footer in a short window. Run the same width at different heights and the
 same height at different widths, and record the real window and renderer sizes, since the OS
-may clamp a request. `doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"`
+may clamp a request. A width below Vortex's 1024 px minimum is reached with the renderer's zoom,
+as users reach it with Vortex's UI zoom or display scaling: `ui_set_viewport` returns
+`emulated: true` and the CSS width, or `emulated: false` with a reason (report that width as not
+tested). `doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"`
 sweeps sizes; run it in each state that applies, with its own `--label`:
 
 | State                             | What to verify                                               |
@@ -90,7 +93,8 @@ color or fidelity.
 
 ## Rules
 
-- **Never assert on a doodlebot `ref` across snapshots.** They are generation-scoped.
+- **Never assert on a doodlebot `ref` in a Vortex test.** A ref names an element only while it
+  shows the same role and name; a test asserts on what the element shows.
 - **Assert a direction, not an exact number,** for anything the OS clamps (window sizes).
 - **Do not silently skip a criterion.** Report an unavoidable external blocker separately.
 - **Wheel and focus:** a native wheel needs real input (`realWheel()` in the harness);

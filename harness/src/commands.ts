@@ -47,7 +47,7 @@ export const commands: CommandEntry[] = [
   { name: "purge" },
   { name: "e2e" },
   { name: "log" },
-  { name: "fixture", subcommands: ["mod"] },
+  { name: "fixture", subcommands: ["mod", "fomod"] },
   { name: "knowledge", subcommands: ["add", "search", "list", "remove", "note", "share", "path"] },
   { name: "gap", subcommands: ["add", "list", "close", "share"] },
   // Content the kit may write to

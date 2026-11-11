@@ -107,8 +107,9 @@ Only one test Vortex runs on the machine. It uses its own profile.
    `doodlebot press --key Escape`, or `doodlebot call <tool> --args-file <file>` (a JSON file
    avoids shell quoting). `doodlebot tools --json` lists every tool and its schema.
 3. Wait for the result (`doodlebot call ui_wait_for --args-file <file>`; check `matched`).
-4. Snapshot again. **Refs die on the next snapshot**: Vortex's tables recycle rows, so a reused
-   ref can act on the wrong mod.
+4. Snapshot again. A ref lasts while its element shows the same thing: Vortex's tables recycle
+   rows, and a recycled row's ref is refused ("now shows something else"), so take a new
+   snapshot then.
 
 ## Rules that save time
 
@@ -119,6 +120,8 @@ Only one test Vortex runs on the machine. It uses its own profile.
 - **Keys never reach an OS dialog.** Install archives with `doodlebot install <archive>`.
 - **No archive given?** `doodlebot fixture mod --out <run folder>/probe.zip` writes a one-file
   mod (`textures/automation-probe.txt`); in the sandbox it deploys to `<gamePath>/Data/textures/`.
+  `doodlebot fixture fomod --out <run folder>/probe-fomod.zip` writes a one-step FOMOD installer,
+  for a check that needs `install`'s dialog open.
 - **Deploy** with `doodlebot deploy` and the instance's flags (sandbox:
   `doodlebot deploy --installed --sandbox`); it refuses while an install runs.
 - **A Nexus collection** needs the `login` need. Run `doodlebot collection <url>` in the
@@ -160,8 +163,8 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
    port, so `doodlebot status` answering is only a liveness hint, never completion.
 3. For a command that may raise a dialog, poll `doodlebot call ui_active_dialogs` while it
    runs. When one appears, read its text, take a scoped `doodlebot snapshot` and answer with
-   `doodlebot click --ref <ref>` in the same shell call (an install's own watchers make refs
-   stale; on `Stale or unknown ref`, snapshot and click again). `install` gives up after 300
+   `doodlebot click --ref <ref>` in the same shell call (on `now shows something else` or
+   `Stale or unknown ref`, snapshot and click again). `install` gives up after 300
    seconds; a **Cancel** answer ends it with exit 1 and `McpError: canceled by user`, which is
    the expected end of a cancelled install.
 

@@ -113,7 +113,7 @@ from the workspace root.
 | `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`                      |
 | `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build`            |
 | `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                                    |
-| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`)                                                                      |
+| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`); `fixture fomod` writes a one-step FOMOD installer                   |
 | `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`               |
 | `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                                          |
 | `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `note`, `share`, `path` ("Knowledge") |
@@ -148,7 +148,8 @@ from the workspace root.
   `doodlebot call ui_active_dialogs`, take `doodlebot snapshot` for the button's ref and answer
   with `doodlebot click --ref <ref>` (`install` times out after 300 s). `install`'s own
   dialog and FOMOD watchers (`autoAnswerDialogs`, `autoAdvanceFomods`) snapshot while it
-  runs, so take the snapshot and click in one call and retry on `Stale or unknown ref`. A
+  runs; a ref you hold survives their snapshots while its element is unchanged. On `now shows
+something else` or `Stale or unknown ref`, snapshot and click again. A
   Cancel answer ends `install` with exit 1 and `McpError: canceled by user`.
 
 ## Working rules
@@ -386,7 +387,7 @@ through scoped dialog snapshots. Count outer dialog containers: stock react-over
 Bootstrap's modal in another dialog-role element, which is still one physical dialog.
 Separate sibling containers remain ambiguous even if their text is identical.
 Check physical container and enabled-button uniqueness before
-the click, then re-snapshot the selected container because scanning invalidates earlier refs.
+the click, then re-snapshot the selected container so its refs match what it shows now.
 Recheck exact driver ownership, query step and finished preparation after that scan and before
 the action; the client UI lock does not prevent Vortex's native driver from changing.
 `ui_click` reports the target role/name captured after actionability/confirmation checks and
@@ -735,29 +736,32 @@ checked, Learned; defined in `plugins/doodlebot/skills/try/SKILL.md`).
 
 `--args-file` avoids shell quoting (a PowerShell BOM is fine); keep credential-bearing ones private.
 
-The loop is snapshot, act, wait, inspect. Refs expire on the next snapshot, reload or element
-removal: never reuse one. Filter or scroll virtualized rows into the DOM first. Check
+The loop is snapshot, act, wait, inspect. A ref stays valid, across later snapshots, while its
+element is connected and shows the same role and accessible name. A reload, the element's removal
+or a recycled row (same element, new name: "The element for ref <r> now shows something else;
+take a new snapshot") ends it, and ref strings are never reused. Filter or scroll virtualized rows
+into the DOM first. Check
 `activeDialogs` when an action seems blocked. Drive the instance from one client at a time;
 nothing serializes UI actions from separate clients.
 
-| Tool/path                                                  | Use                                                                                                                                    |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `ui_snapshot`                                              | Tree, accessible names, refs, active dialogs; selector/index scope                                                                     |
-| `ui_active_dialogs`                                        | Open dialogs only; cheap to poll                                                                                                       |
-| `ui_click`, `ui_fill`                                      | Mouse sequence, React-compatible input                                                                                                 |
-| `ui_press_key`                                             | DOM key handlers; not native dialogs or text insertion                                                                                 |
-| `ui_select_option`                                         | Native select; custom dropdowns need click-then-click                                                                                  |
-| `ui_scroll`                                                | Scroll plus events for virtualized lists; not a native wheel                                                                           |
-| `ui_wait_for`                                              | Poll selector/text; check `matched`, a timeout returns false                                                                           |
-| `ui_hover` / harness `realHover()`                         | JavaScript hover only / real CDP mouse including `:hover`                                                                              |
-| harness `realWheel(config, selector, deltaY, { control })` | Native wheel, optionally with Control                                                                                                  |
-| `ui_get_viewport`, `ui_set_viewport`                       | Read/resize window and renderer                                                                                                        |
-| `ui_detect_layout_issues`, `ui_responsive_sweep`           | Advisory layout findings                                                                                                               |
-| `ui_read_console`                                          | Renderer console/errors since a sequence number                                                                                        |
-| `nexus_auth_status`                                        | Credential-presence booleans                                                                                                           |
-| `automation_status`                                        | Profile paths, renderer lifetime ID, NODE_ENV, `react.build`. The profile is `userDataDir`; Vortex's log is `<userDataDir>/vortex.log` |
-| `collection_install_state`                                 | Collection install driver, session and dialogs (below)                                                                                 |
-| `vortex_query`, `vortex_dispatch`                          | Inspect state, invoke documented actions/events                                                                                        |
+| Tool/path                                                  | Use                                                                                                                                      |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui_snapshot`                                              | Tree, accessible names, refs, active dialogs; selector/index scope                                                                       |
+| `ui_active_dialogs`                                        | Open dialogs only; cheap to poll                                                                                                         |
+| `ui_click`, `ui_fill`                                      | Mouse sequence, React-compatible input                                                                                                   |
+| `ui_press_key`                                             | DOM key handlers; not native dialogs or text insertion                                                                                   |
+| `ui_select_option`                                         | Native select; custom dropdowns need click-then-click                                                                                    |
+| `ui_scroll`                                                | Scroll plus events for virtualized lists; not a native wheel                                                                             |
+| `ui_wait_for`                                              | Poll selector/text; check `matched`, a timeout returns false                                                                             |
+| `ui_hover` / harness `realHover()`                         | JavaScript hover only / real CDP mouse including `:hover`                                                                                |
+| harness `realWheel(config, selector, deltaY, { control })` | Native wheel, optionally with Control                                                                                                    |
+| `ui_get_viewport`, `ui_set_viewport`                       | Read/resize window and renderer; below the 1024 px minimum, zoom emulates the width (`emulated`), and `reset` restores the person's zoom |
+| `ui_detect_layout_issues`, `ui_responsive_sweep`           | Advisory layout findings                                                                                                                 |
+| `ui_read_console`                                          | Renderer console/errors since a sequence number                                                                                          |
+| `nexus_auth_status`                                        | Credential-presence booleans                                                                                                             |
+| `automation_status`                                        | Profile paths, renderer lifetime ID, NODE_ENV, `react.build`. The profile is `userDataDir`; Vortex's log is `<userDataDir>/vortex.log`   |
+| `collection_install_state`                                 | Collection install driver, session and dialogs (below)                                                                                   |
+| `vortex_query`, `vortex_dispatch`                          | Inspect state, invoke documented actions/events                                                                                          |
 
 Harness `clickByName`/`fillByName` match exact case-insensitive names (or explicit regexes) and
 reject ambiguity; use accessible names and scope modals to their dialog. `{ selector, index? }`
@@ -807,6 +811,7 @@ uploads files that `--body-file` image references name (push access, under 10 MB
 
 ```powershell
 doodlebot fixture mod --out C:/fixtures/probe.zip [--name automation-probe]
+doodlebot fixture fomod --out C:/fixtures/probe-fomod.zip [--name automation-probe]
 doodlebot install C:/fixtures/example.zip
 doodlebot collection <collection-url>
 doodlebot deploy --game <active-game-id> [--purge]
@@ -816,6 +821,9 @@ doodlebot e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
 
 - `fixture mod` writes an archive with one file, `textures/<name>.txt` containing `<name>`; in
   the sandbox it deploys to `<gamePath>/Data/textures/<name>.txt`.
+- `fixture fomod` writes a FOMOD installer archive (`fomod/ModuleConfig.xml` with one install
+  step and one option, `<name> option`), so `install` opens Vortex's installer dialog and waits
+  for an answer: the check for driving a dialog while `install` runs.
 
 - `slow-download [--count <n>] [--seconds <n>] [--stagger <s>]` keeps real downloads in flight
   (throttled local files, no network or account) for work on the UI that reports them: the

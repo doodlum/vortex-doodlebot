@@ -22,6 +22,7 @@ import {
   click,
   detectLayoutIssues,
   fill,
+  getViewport,
   installConsoleCapture,
   isVisible,
   pressKey,
@@ -30,6 +31,8 @@ import {
   roleOf,
   scroll,
   selectOption,
+  setViewport,
+  setWebFrameForTests,
   snapshot,
   waitFor,
 } from "./uiAutomation";
@@ -362,6 +365,38 @@ describe("ref lifecycle", () => {
     expect(resolveTarget({ ref }).tagName).toBe("BUTTON");
   });
 
+  it("keeps a held ref valid across a second (concurrent) snapshot while its element is unchanged", () => {
+    setBody("<button>Install</button><button>Cancel</button>");
+    const held = snapshot().tree[0].ref;
+    const second = snapshot();
+    expect(second.tree[0].ref).toBe(held);
+    expect(resolveTarget({ ref: held }).textContent).toBe("Install");
+  });
+
+  it("refuses a ref whose element was recycled to show something else", () => {
+    setBody('<div role="row" aria-label="Mod A"></div>');
+    const held = snapshot().tree[0].ref;
+    // A virtualised table reuses the same element for another mod.
+    document.querySelector('[role="row"]')?.setAttribute("aria-label", "Mod B");
+    expect(() => resolveTarget({ ref: held })).toThrow(
+      `The element for ref ${held} now shows something else; take a new snapshot`,
+    );
+    // A later snapshot gives the recycled element a new ref; the old string never returns.
+    const fresh = snapshot().tree[0].ref;
+    expect(fresh).not.toBe(held);
+    expect(() => resolveTarget({ ref: held })).toThrow(/stale or unknown ref/i);
+    expect(resolveTarget({ ref: fresh }).getAttribute("aria-label")).toBe("Mod B");
+  });
+
+  it("refuses a held ref after its element is removed, even after another snapshot", () => {
+    setBody("<button>Gone</button><button>Stays</button>");
+    const held = snapshot().tree[0].ref;
+    document.body.firstElementChild?.remove();
+    expect(() => resolveTarget({ ref: held })).toThrow(/removed from the DOM/);
+    snapshot();
+    expect(() => resolveTarget({ ref: held })).toThrow(/stale or unknown ref/i);
+  });
+
   it("rejects a ref from a previous generation instead of silently reusing the index", () => {
     setBody("<button>First</button>");
     const staleRef = snapshot().tree[0].ref;
@@ -602,6 +637,89 @@ describe("detectLayoutIssues", () => {
     stubRect(el, { left: 10, right: 110, width: 100, height: 32, top: 10, bottom: 42 });
 
     expect(detectLayoutIssues().issues).toHaveLength(0);
+  });
+});
+
+describe("setViewport narrow widths", () => {
+  // A fake Vortex window with a 1024 px minimum whose renderer is 1 px narrower
+  // than the window (the spike measured 1023 at 1024), and a fake webFrame whose
+  // zoom divides the CSS width, rounding down as fractional scaling does.
+  const MIN_WIDTH = 1024;
+  let windowSize: [number, number];
+  let zoom: number;
+  let setZoomCalls: number[];
+
+  const frame = {
+    getZoomFactor: () => zoom,
+    setZoomFactor: (factor: number) => {
+      zoom = factor;
+      setZoomCalls.push(factor);
+    },
+  };
+
+  beforeEach(() => {
+    windowSize = [1280, 720];
+    zoom = 1.25; // the person's own zoom
+    setZoomCalls = [];
+    (globalThis as { api?: unknown }).api = {
+      window: {
+        getId: () => Promise.resolve(1),
+        getSize: () => Promise.resolve(windowSize),
+        setSize: (_id: number, width: number, height: number) => {
+          windowSize = [Math.max(width, MIN_WIDTH), height];
+          return Promise.resolve();
+        },
+        isMaximized: () => Promise.resolve(false),
+        unmaximize: () => Promise.resolve(),
+      },
+    };
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      get: () => Math.floor((windowSize[0] - 1) / zoom),
+    });
+    setWebFrameForTests(frame);
+  });
+
+  it("reaches a width below the minimum with zoom, keeping and restoring the person's zoom", async () => {
+    const narrow = await setViewport({ width: 640, height: 720 }, { settleMs: 0 });
+    expect(narrow.actual.width).toBe(MIN_WIDTH);
+    expect(narrow.emulated).toBe(true);
+    expect(Math.abs(narrow.cssWidth - 640)).toBeLessThanOrEqual(2);
+    expect(narrow.zoomFactor).toBeCloseTo((1.25 * Math.floor(1023 / 1.25)) / 640, 6);
+    expect((await getViewport()).keptZoomFactor).toBe(1.25);
+
+    // A second narrow call measures at the kept factor, not the emulated one.
+    const wider = await setViewport({ width: 800, height: 720 }, { settleMs: 0 });
+    expect(wider.emulated).toBe(true);
+    expect(Math.abs(wider.cssWidth - 800)).toBeLessThanOrEqual(2);
+    expect((await getViewport()).keptZoomFactor).toBe(1.25);
+
+    const normal = await setViewport({ width: 1280, height: 720 }, { settleMs: 0 });
+    expect(normal.emulated).toBe(false);
+    expect(normal.zoomFactor).toBe(1.25);
+    expect((await getViewport()).keptZoomFactor).toBeNull();
+  });
+
+  it("restores the kept zoom with reset, even at a narrow size", async () => {
+    await setViewport({ width: 640, height: 720 }, { settleMs: 0 });
+    const reset = await setViewport({ width: 640, height: 720 }, { settleMs: 0, reset: true });
+    expect(reset.emulated).toBe(false);
+    expect(reset.zoomFactor).toBe(1.25);
+  });
+
+  it("leaves the zoom alone at or above the minimum", async () => {
+    const result = await setViewport({ width: 1024, height: 720 }, { settleMs: 0 });
+    expect(result.emulated).toBe(false);
+    expect(setZoomCalls).toEqual([]);
+  });
+
+  it("reports emulated false with a reason when webFrame is unavailable", async () => {
+    setWebFrameForTests(null);
+    const result = await setViewport({ width: 640, height: 720 }, { settleMs: 0 });
+    expect(result.emulated).toBe(false);
+    expect(result.zoomFactor).toBeNull();
+    expect(result.reason).toMatch(/webFrame/);
+    expect(result.reason).toMatch(/not tested/);
   });
 });
 

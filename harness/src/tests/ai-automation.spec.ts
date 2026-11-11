@@ -45,14 +45,17 @@ test.describe("snapshot", () => {
     ).toBeAttached();
   });
 
-  test("invalidates refs from the previous generation", async ({ mcp }) => {
+  test("keeps a ref valid across a later snapshot while its element is unchanged", async ({
+    mcp,
+  }) => {
     const first = await snapshot(mcp);
     const ref = flatten(first.tree)[0]?.ref;
     expect(ref).toBeDefined();
 
     const second = await snapshot(mcp);
     expect(second.generation).toBeGreaterThan(first.generation);
-    await expect(mcp.call("ui_click", { ref })).rejects.toThrow(/stale or unknown ref/i);
+    expect(flatten(second.tree).map((node) => node.ref)).toContain(ref);
+    await expect(mcp.call("ui_hover", { ref })).resolves.toBeDefined();
   });
 });
 

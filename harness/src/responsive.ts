@@ -41,6 +41,11 @@ export interface SweepViewportResult {
   hasHorizontalOverflow: boolean;
   issues: LayoutIssue[];
   screenshot?: string;
+  /** The width is below the window's minimum and was reached with the renderer's zoom. */
+  emulated?: boolean;
+  zoomFactor?: number | null;
+  /** Why a width below the window's minimum could not be emulated: report it as not tested. */
+  notTested?: string;
 }
 
 export interface ResponsiveFinding {
@@ -123,7 +128,12 @@ export async function runResponsiveSweep(
   const screenshots: string[] = [];
   try {
     for (const viewport of viewports) {
-      const { actual } = await mcp.call<{ actual: Viewport }>("ui_set_viewport", {
+      const { actual, emulated, zoomFactor, reason } = await mcp.call<{
+        actual: Viewport;
+        emulated?: boolean;
+        zoomFactor?: number | null;
+        reason?: string;
+      }>("ui_set_viewport", {
         width: viewport.width,
         height: viewport.height,
       });
@@ -141,6 +151,8 @@ export async function runResponsiveSweep(
         inner: layout.viewport,
         hasHorizontalOverflow: layout.hasHorizontalOverflow,
         issues: layout.issues,
+        ...(emulated === true ? { emulated, zoomFactor: zoomFactor ?? null } : {}),
+        ...(reason === undefined ? {} : { notTested: reason }),
       };
 
       if (handle !== undefined) {
@@ -155,8 +167,9 @@ export async function runResponsiveSweep(
       results.push(result);
     }
   } finally {
+    // reset restores the person's zoom too, in case a narrow width was emulated by zoom.
     await mcp
-      .call("ui_set_viewport", { width: original.width, height: original.height })
+      .call("ui_set_viewport", { width: original.width, height: original.height, reset: true })
       .catch(() => undefined);
     await handle?.close();
   }

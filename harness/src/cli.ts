@@ -343,6 +343,9 @@ Driving a running instance
     --json               LogEntry[] with continuation lines in each message
   fixture mod --out <zip> [--name <text>]
                          A one-file mod archive (textures/<name>.txt) for install checks
+  fixture fomod --out <zip> [--name <text>]
+                         A FOMOD installer archive (one step, one option), so install
+                         opens Vortex's installer dialog
 
 Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
   knowledge search <words...> [--json]

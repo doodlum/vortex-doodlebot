@@ -2802,9 +2802,9 @@ export async function snapshotIfPresent(
 
 Snapshot, find one node, and click it.
 
-Always re-snapshots rather than reusing a caller's: refs are invalidated by
-the next snapshot, so acting on a ref the caller obtained earlier is exactly
-the stale-ref hazard the extension guards against.
+Always re-snapshots rather than reusing a caller's: a ref the caller obtained
+earlier may now name a recycled row, which the extension refuses, so a fresh
+snapshot finds the node by what it shows now.
 
 ```typescript
 export async function clickByName(

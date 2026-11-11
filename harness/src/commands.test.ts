@@ -49,7 +49,7 @@ describe("the command list", () => {
     expect(findCommand("evidence")?.subcommands).toEqual(["identity", "run", "runtime"]);
     for (const removed of ["design", "readiness", "vortex-e2e", "login-import", "pr-branch"])
       expect(findCommand(removed)).toBeUndefined();
-    expect(findCommand("fixture")?.subcommands).toEqual(["mod"]);
+    expect(findCommand("fixture")?.subcommands).toEqual(["mod", "fomod"]);
     expect(findCommand("knowledge")?.subcommands).toEqual([
       "add",
       "search",
