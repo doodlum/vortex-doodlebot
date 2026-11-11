@@ -29,9 +29,10 @@ const PLUGINS: Record<string, PluginSpec> = {
     displayName: "Doodlebot",
     description:
       "The agent companion for Vortex: try things in a test Vortex, prototype ideas, investigate and fix bugs, QA pull requests and releases, and measure builds.",
-    // The eight commands of designs/companion-simplified.md 4.1, one per use case, and the
-    // ninth, prototype (designs/vortex-checkout.md 4.7).
-    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr", "prototype"],
+    // The commands of designs/companion-simplified.md 4.1, one per use case, with prototype
+    // (designs/vortex-checkout.md 4.7) and without source (owner decision 2026-11-11: the
+    // commands that need a built checkout prepare it themselves).
+    skills: ["setup", "try", "investigate", "fix", "qa", "measure", "pr", "prototype"],
     shortDescription: "The agent companion for Vortex",
     capabilities: [
       "Try things in a test Vortex",
@@ -49,7 +50,7 @@ const PLUGINS: Record<string, PluginSpec> = {
 };
 const ICON = "./assets/icon.png";
 
-/** The commands the eight replaced (design 4.1); no text may name them as commands. */
+/** Removed commands (design 4.1, and source); no text may name them as commands. */
 const REMOVED_SKILLS = [
   "login",
   "baseline",
@@ -61,6 +62,8 @@ const REMOVED_SKILLS = [
   "ui-test",
   "compare",
   "design",
+  // Owner decision 2026-11-11: preparing the checkout is a step of try, fix, qa and prototype.
+  "source",
 ];
 
 /** Skills that run only when the person asks (`disable-model-invocation: true`). */
@@ -384,6 +387,25 @@ describe("skills", () => {
     expect(uses).toContain("doodlebot game folder <dir>");
     expect(uses).toContain("doodlebot setup --oauth <target> --no-wait");
     expect(uses).toContain("doodlebot update --ref <ref>");
+  });
+
+  it("prepares the checkout inside the commands that need a build, and setup clones one", () => {
+    const procedure = read("plugins/doodlebot/resources/checkout.md");
+    expect(procedure).toMatch(/^# Prepare this checkout$/m);
+    const uses = commandUses(procedure).map((use) => use.text);
+    expect(uses).toContain("doodlebot source --where");
+    expect(uses).toContain("doodlebot source --no-build");
+    expect(uses).toContain("doodlebot source --no-build --add-upstream --exclude");
+    expect(uses).toContain("doodlebot source");
+    for (const skill of ["try", "fix", "qa", "prototype"]) {
+      const text = read(skillFile("doodlebot", skill));
+      expect(text, skill).toContain("${CLAUDE_PLUGIN_ROOT}/resources/checkout.md");
+      expect(text, skill).toContain("doodlebot check --json");
+    }
+    const setup = read(skillFile("doodlebot", "setup"));
+    expect(setup).toContain("**No checkout yet.**");
+    expect(commandUses(setup).map((use) => use.text)).toContain("doodlebot source --clone <dir>");
+    expect(setup).toContain("${CLAUDE_PLUGIN_ROOT}/resources/checkout.md");
   });
 
   it("names the legacy lease store in the setup skill", () => {

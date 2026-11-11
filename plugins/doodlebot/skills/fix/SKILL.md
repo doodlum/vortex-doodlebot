@@ -46,13 +46,15 @@ Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session
    (`${CLAUDE_PLUGIN_ROOT}/skills/investigate/SKILL.md`). Continue only when it says
    **reproduced**, with a cause; otherwise report it and stop: a fix for an unreproduced bug is
    a guess.
-2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`;
-   `/doodlebot:source` prepares it), or one the person names with `--dev-dir <checkout>`.
+2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`),
+   or one the person names with `--dev-dir <checkout>`.
    Outside a checkout, ask the person to open Claude in one (or clone one with
    `doodlebot source --clone <dir>`) and stop. First `git -C <checkout> status --porcelain`
    must print nothing: cutting a branch carries uncommitted changes onto it, so with output,
    say what it printed and ask the person to commit or stash it, and stop. Then cut the branch
    from upstream: `doodlebot source --no-build --branch fix-<topic>`. Never work on `master`.
+   When it refuses because the checkout has no `upstream` remote, run step 3 ("Look") of
+   `${CLAUDE_PLUGIN_ROOT}/resources/checkout.md` (one question to the person), then cut again.
    - A desktop worktree session starts on a branch the app named (`claude/...`), which the cut
      leaves behind, unused. Say so. When that branch has no commits of its own
      (`git -C <checkout> rev-list --count upstream/<default>..HEAD` prints `0`, with `<default>`
@@ -63,8 +65,11 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
      person's yes.
    - A Codex app worktree starts on a detached HEAD: the cut makes the branch there and leaves
      nothing behind.
-3. **The control run (before).** Build the branch's base with
-   `doodlebot build --checkout <checkout>` and repeat the reproduction with `/doodlebot:try`'s
+3. **The control run (before).** When the session's checkout is not ready
+   (`doodlebot check --json`'s `this checkout` row is not `ready`, or it was never installed),
+   run "Prepare this checkout" (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) first: it asks
+   the person one question when remotes or the exclude are missing, then installs and builds.
+   Otherwise build the branch's base with `doodlebot build --checkout <checkout>`. Then repeat the reproduction with `/doodlebot:try`'s
    report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This
    is the "before" run report. It must show the symptom on the source build too; if it does
    not, the bug is version-specific: say so and stop.

@@ -39,9 +39,11 @@ The plugin's version differs from the workspace's. Run `/doodlebot:setup --updat
 
 `doodlebot doctor` reports a failing `Vortex` check. Install a released Vortex, or tell the agent
 where its `Vortex.exe` is; it passes `--exe <path>`. If you named a source checkout, the message
-`--dev-dir <path> is not a built Vortex checkout` means it is not built: run `/doodlebot:source`
-or build it first. In a session opened in a Vortex checkout, `This session's checkout <path> is
-not built` means the same for that checkout; to drive a release instead, name it with
+`--dev-dir <path> is not a built Vortex checkout` means it is not built: build it first
+(`doodlebot build --checkout <path>`, or `doodlebot source` there to install and build). In a
+session opened in a Vortex checkout, `This session's checkout <path> is
+not built` means the same for that checkout, which `/doodlebot:try` prepares when you ask for
+your build; to drive a release instead, name it with
 `--release <version>` or `--installed`.
 
 ## The build is older than the checkout
@@ -52,7 +54,8 @@ Starting a source build is refused when the checkout changed after its last buil
 The build is from 1a2b3c4d5e and the checkout has changed since (2 files, for example src/renderer/src/app.tsx). Run `doodlebot build --checkout C:\dev\Vortex`, or pass --stale-ok to launch it anyway.
 ```
 
-Rebuild with the command it names (or `/doodlebot:source`), then start again. Doodlebot compares
+Rebuild with the command it names (after a dependency change, `doodlebot source`, which installs
+and builds), then start again. Doodlebot compares
 file contents, not times, so switching branches and back does not trigger it. To run the old
 build on purpose, add `--stale-ok`; the output then says the build is stale. A build made without
 `doodlebot build` has no record: it starts with a warning instead.

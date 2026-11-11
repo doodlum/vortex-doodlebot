@@ -48,7 +48,9 @@ The prototype never changes the branch of the person's own checkout.
      (step 3 says how to find `<default>`), then open the agent in `<dir>`. Stop.
 2. **A clean tree.** `git -C <checkout> status --porcelain` must print nothing. If it prints
    anything, refuse: the tree has someone's work in it. Say what it printed and stop.
-3. **Upstream's default branch.** `<default>` is upstream's default branch name:
+3. **Upstream's default branch.** With no `upstream` remote (`git -C <checkout> remote` does
+   not list it), run step 3 ("Look") of `${CLAUDE_PLUGIN_ROOT}/resources/checkout.md` first: one
+   question to the person. `<default>` is upstream's default branch name:
    `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` without the `upstream/`
    prefix (normally `master`). If that prints nothing, run
    `git -C <checkout> remote set-head upstream --auto` and read it again. Never hard-code
@@ -65,8 +67,11 @@ The prototype never changes the branch of the person's own checkout.
    - The branch the session started on (an app-made `claude/...` branch) stays behind, unused.
      Say so, and offer to delete it (`git -C <checkout> branch -D <it>`) only when it has no
      commits of its own; never delete it without the person's yes.
-5. **Prepared.** Run `/doodlebot:source`'s procedure (`${CLAUDE_PLUGIN_ROOT}/skills/source/SKILL.md`)
-   when the checkout is not installed and built: it takes minutes and several GB per worktree.
+5. **Prepared.** When the worktree is not ready (`doodlebot check --json`'s `this checkout`
+   row is not `ready`, or it was never installed), run "Prepare this checkout"
+   (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`): one question to the person when remotes or
+   the exclude are missing, then install and build. It takes minutes and several GB per
+   worktree.
 
 ## Before every `doodlebot down`
 

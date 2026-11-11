@@ -50,6 +50,9 @@ const REMOVED_FILES = [
   "harness/KNOWLEDGE-ROUTES.md",
   // The drive guide is now docs/guides/try-vortex.md.
   "docs/guides/drive-vortex.md",
+  // Owner decision 2026-11-11: the commands that need a built checkout prepare it themselves
+  // (plugins/doodlebot/resources/checkout.md).
+  "plugins/doodlebot/skills/source",
 ];
 
 /**

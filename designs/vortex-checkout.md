@@ -11,6 +11,11 @@
   design changes its 4.10 (`.vortex-src`, worktrees), 4.11 (the EGM walk) and 4.2.1 (where
   Vortex designs live), and adds a ninth command.
 - **Brief:** `harness/.artifacts/egm/prototype-command-brief.md`
+- **Owner decision 2026-11-11:** `/doodlebot:source` removed; preparation happens in the
+  commands that need it (`try`, `fix`, `qa`, `prototype`, by
+  `plugins/doodlebot/resources/checkout.md`), and `setup --check` clones a checkout when there
+  is none. The `doodlebot source` CLI command is unchanged. Eight commands, not nine. The rest
+  of this design is kept as written.
 
 ## 1. Overview
 

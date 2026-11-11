@@ -86,12 +86,17 @@ Put each returned id in the QA report's Learned section, with the outcome the ga
 4. **Checkout.** The session's Vortex checkout, `<checkout>` (or `--dev-dir <checkout>`), must be clean:
    `git -C <checkout> status --porcelain` prints nothing, or QA refuses. Note the branch it is
    on (`git -C <checkout> symbolic-ref --short HEAD`, or the commit from
-   `git -C <checkout> rev-parse HEAD` when detached): QA puts it back at the end. Fetch the PR to
+   `git -C <checkout> rev-parse HEAD` when detached): QA puts it back at the end. When the
+   checkout is not ready (`doodlebot check --json`'s `this checkout` row is not `ready`, or it
+   has no `upstream` remote), run "Prepare this checkout"
+   (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) first, on that branch: one question to the
+   person when remotes or the exclude are missing, then install and build. Fetch the PR to
    a new branch `qa/<pr>` (`git -C <checkout> fetch upstream pull/<pr>/head:qa/<pr>`; a branch:
    its name). Bring upstream up to date first, `git -C <checkout> fetch upstream`, so the base is
    today's: the merge-base, `git -C <checkout> merge-base upstream/master qa/<pr>`.
 5. **Base build.** `git -C <checkout> switch --detach <merge-base>`, then
-   `doodlebot build --checkout <checkout>`. Run every claim and every selected entry on it
+   `doodlebot build --checkout <checkout>` (after a dependency change between the builds,
+   `doodlebot source` instead: it installs, then builds). Run every claim and every selected entry on it
    (`--dev-dir <checkout>`, `--fresh`). Entries with a check run `doodlebot test <check> <args>`
    on a fresh instance; scenario entries go to the driver.
 6. **PR build.** `doodlebot down`, `git -C <checkout> switch qa/<pr>`, rebuild, and run the
@@ -117,7 +122,8 @@ Put each returned id in the QA report's Learned section, with the outcome the ga
    **negative control**. A criterion without a control gets one you derive (the same check
    with the behaviour removed or the input changed), stated in the report.
 2. The subject is the branch that implements it; build it with
-   `doodlebot build --checkout <checkout>`. If you switch the checkout to it (or to the base),
+   `doodlebot build --checkout <checkout>`, after "Prepare this checkout"
+   (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) when the checkout is not ready. If you switch the checkout to it (or to the base),
    note the branch it was on first and switch back at the end, as Form 1's step 8 says.
 3. For each criterion run the proof and then its negative control, each from a fresh profile.
    A criterion **passes** only when the proof holds and the control shows the difference; a

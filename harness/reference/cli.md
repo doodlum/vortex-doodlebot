@@ -62,8 +62,8 @@ Machine-facing inventory and current built-in help. Canonical agent operating ru
 ```text
 doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot plugin, whose nine commands
-(/doodlebot:setup, source, try, prototype, investigate, fix, qa, measure and pr) run these.
+Used from Claude Code or Codex through the doodlebot plugin, whose eight commands
+(/doodlebot:setup, try, prototype, investigate, fix, qa, measure and pr) run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path

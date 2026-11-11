@@ -23,8 +23,10 @@ run it. Never write an approval the person has not given.
 - `<checkout>`: the session's checkout, from `doodlebot source --where`.
 - `<egm>`: EGM's artifact folder for this session.
   - `.doodlebot/egm` when `.doodlebot/` is excluded from the checkout's commits:
-    `git -C <checkout> check-ignore -q .doodlebot/egm` exits 0. `doodlebot source` adds the
-    exclude after the person's yes, and every worktree of the checkout shares it.
+    `git -C <checkout> check-ignore -q .doodlebot/egm` exits 0. When it is not, ask the
+    person once before the first EGM line, as step 3 of "Prepare this checkout"
+    (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) says; on a yes,
+    `doodlebot source --no-build --exclude` adds it, and every worktree of the checkout shares it.
   - Otherwise `<workspace>/harness/.artifacts/egm/<checkout folder name>`, so nothing lands in
     the Vortex tree.
 - `<draft>`: the draft EGM writes, `<egm>/design_draft.md`, as an absolute path

@@ -39,13 +39,15 @@ with `icon`) and a Codex manifest (`.codex-plugin/plugin.json`, `"skills": "./sk
 icon is `plugins/doodlebot/assets/icon.png` (512×512, rendered from `icon.svg`). Claude Code
 ignores `icon` at load time; Codex shows it in its plugin picker.
 
-Nine commands, one per use case (designs/companion-simplified.md, 4.1, and `prototype` from
-designs/vortex-checkout.md, 4.7):
+Eight commands, one per use case (designs/companion-simplified.md, 4.1, and `prototype` from
+designs/vortex-checkout.md, 4.7). There is no command that prepares the checkout (owner decision
+2026-11-11): `try` on a source build, `fix`, `qa` and `prototype` run "Prepare this checkout",
+`plugins/doodlebot/resources/checkout.md`, on the way when `doodlebot check --json` says it is
+not ready, and `setup --check` clones one (`source --clone <dir>`) when there is none.
 
 | Group (`docs/reference/commands.md`) | Skill (`plugins/doodlebot/skills/<name>/SKILL.md`) | Use case and what it replaced                                                                                     |
 | ------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Set up and run the test Vortex       | `setup`                                            | U0. Modes `setup`, `--check` (`doodlebot check`), `--login`, `--update [<ref>]`; was setup, login, update, status |
-|                                      | `source`                                           | U3–U5. Prepare the session's checkout, `--clone <dir>`, `--branch`, a PR's branch for QA                          |
 | Work on Vortex                       | `try`                                              | U1, U7. Content choice, starts and stops the test Vortex, the run report; was drive, start, stop, baseline        |
 |                                      | `prototype`                                        | U13. A worktree session on a new `proto/<idea>`: change, build, run, screenshots, ask; summary; never shipped     |
 |                                      | `investigate`                                      | U2. An issue report on the user's version; changes no code                                                        |
@@ -887,8 +889,9 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (`plugins/doodlebot/resources/testing.md`
   has the state matrix).
-- `doodlebot source` (`/doodlebot:source`) prepares the session's checkout (`--update`,
-  `--no-build`, `--where`, `--branch <name>`), and `source --clone <dir>` makes a new one; make
+- `doodlebot source` prepares the session's checkout (`--update`, `--no-build`, `--where`,
+  `--branch <name>`); the plugin's commands run it through
+  `plugins/doodlebot/resources/checkout.md` when they need a build. And `source --clone <dir>` makes a new one; make
   your changes on a branch of it, or in a checkout passed with `--dev-dir`. `up` defaults to the
   session's checkout. Select `--installed`, `--release <version>`, `--exe <path>` or
   `--dev-dir <path>` explicitly for reproducible checks. See "Vortex source, forks and sessions".
@@ -950,7 +953,9 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   remote **`upstream`**.
   - It clones into the folder the person names (resolved against the caller's folder), never
     into the workspace and never over a folder with something in it. There is no default folder.
-    It ends with "Open Claude in <dir> and run `/doodlebot:source`."
+    It ends with "Open Claude in <dir>. The first command that needs a build there
+    (/doodlebot:try, fix, qa or prototype) prepares it." `setup --check` runs it when the
+    session is in no checkout and the person names a folder.
   - With a fork: `git clone -o origin <fork>`, then `upstream` is added and fetched.
   - Without one (or with an unknown login): `git clone -o upstream`, no `origin`. Building,
     trying, QA and measuring need nothing more; it prints that pushing needs a fork
@@ -972,7 +977,8 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
     the checkout, which Vortex's `.gitignore` does not cover: a worktree made there would show
     in the main checkout's `git status` and `git add -A`. Each line is added once; the report's
     `exclude` field is about `.doodlebot/`, and a note names a missing `.claude/worktrees/`. The
-    skill asks the person one question before `--add-upstream` and `--exclude`.
+    procedure (`plugins/doodlebot/resources/checkout.md`) asks the person one question before
+    `--add-upstream` and `--exclude`.
   - Then it installs (`pnpm install --frozen-lockfile` with the checkout's pinned pnpm) and runs
     `doodlebot build --checkout <checkout>`, which puts back the `etc/` files the build rewrites,
     unless `--no-build`. It reports the checkout, branch, remotes, the exclude, whether it
@@ -994,7 +1000,7 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
   its own worktree (`git -C <checkout> worktree add <dir> <branch>`, a Claude desktop session
   with Worktree on, in `<checkout>/.claude/worktrees/`, or a Codex app worktree, in
   `$CODEX_HOME/worktrees` on a detached HEAD), each opened in its worktree, which is then that session's checkout; each needs its
-  own `/doodlebot:source` (install and build). Each worktree is a full build of several GB. Editing, building, unit tests and `ci`
+  own install and build, which the first command that needs it runs (`resources/checkout.md`). Each worktree is a full build of several GB. Editing, building, unit tests and `ci`
   run in parallel; anything that runs Vortex (`up`, `test core`, the checks) runs one at a time
   on the machine ("One instance"). A session never runs `down` on an instance another session
   started from another checkout: it waits, or tells the person.

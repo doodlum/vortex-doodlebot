@@ -99,6 +99,10 @@ The first time it finds no folder for game copies, the agent asks you for one an
 (`doodlebot game folder <dir>`), so it never asks again. The agent acts on a row only with your
 yes: it deletes nothing on its own.
 
+A checkout that is not built yet needs nothing from you: the first `/doodlebot:try` on your
+build (or `fix`, `qa`, `prototype`) prepares it. With no checkout yet, ask for one: the agent
+asks for a folder, runs `doodlebot source --clone <dir>`, and you open Claude in `<dir>`.
+
 If setup stops with an error, see [Troubleshooting](../troubleshooting.md).
 
 ## Update doodlebot

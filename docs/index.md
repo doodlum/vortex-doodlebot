@@ -14,17 +14,16 @@ Use doodlebot to:
 - measure how fast a Vortex flow is, or compare two Vortex builds.
 
 Doodlebot works with a stock, released Vortex. You need a Vortex source checkout only to change
-Vortex itself.
+Vortex itself: open your agent in it, and the commands that need it built prepare it on the way.
 
 ## The commands
 
-Doodlebot is one plugin, `doodlebot`, from a marketplace of the same name. It has nine
+Doodlebot is one plugin, `doodlebot`, from a marketplace of the same name. It has eight
 commands, one for each thing people ask:
 
 | You ask                                      | Command                  |
 | -------------------------------------------- | ------------------------ |
 | "Set up doodlebot" / "What can I test here?" | `/doodlebot:setup`       |
-| "Get me the Vortex source"                   | `/doodlebot:source`      |
 | "Try X in Vortex" / "Does X work?"           | `/doodlebot:try`         |
 | "Prototype this idea"                        | `/doodlebot:prototype`   |
 | "Find out why this is broken"                | `/doodlebot:investigate` |
