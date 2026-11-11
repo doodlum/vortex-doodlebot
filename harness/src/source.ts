@@ -510,18 +510,38 @@ export async function sharedExcludeFile(dir: string): Promise<string> {
   return path.join(path.resolve(dir, common), "info", "exclude");
 }
 
-/** Whether the shared exclude already keeps `.doodlebot/` out. */
-export function excludes(file: string): boolean {
+/**
+ * The Claude desktop app's default worktree folder, inside the checkout. Vortex's `.gitignore`
+ * does not cover it, so `--exclude` keeps it out too: otherwise a worktree made there shows in the
+ * main checkout's `git status` and `git add -A`.
+ */
+export const CLAUDE_WORKTREES_FOLDER = ".claude/worktrees/";
+
+/** Whether the exclude file has a line for `folder` (with or without its leading or trailing `/`). */
+function excludesFolder(file: string, folder: string): boolean {
+  const bare = folder.replace(/\/$/, "");
+  const forms = [bare, `${bare}/`, `/${bare}`, `/${bare}/`];
   try {
     return fs
       .readFileSync(file, "utf8")
       .split(/\r?\n/)
-      .some((line) =>
-        ["/.doodlebot/", ".doodlebot/", ".doodlebot", "/.doodlebot"].includes(line.trim()),
-      );
+      .some((line) => forms.includes(line.trim()));
   } catch {
     return false;
   }
+}
+
+/** Whether the shared exclude already keeps `.doodlebot/` out. */
+export function excludes(file: string): boolean {
+  return excludesFolder(file, DOODLEBOT_FOLDER);
+}
+
+/** Appends `folder` to the exclude file on a line of its own. */
+function appendExclude(file: string, folder: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  const separator = before === "" || before.endsWith("\n") ? "" : "\n";
+  fs.appendFileSync(file, `${separator}${folder}\n`);
 }
 
 /** What `source` did to the session's checkout, and what it found. */
@@ -550,7 +570,7 @@ export interface PrepareOptions {
   checkout: string;
   /** `--add-upstream`: add Nexus-Mods/Vortex as `upstream` when it is missing. */
   addUpstream?: boolean;
-  /** `--exclude`: add `.doodlebot/` to the exclude every worktree shares. */
+  /** `--exclude`: add `.doodlebot/` and `.claude/worktrees/` to the exclude every worktree shares. */
   exclude?: boolean;
   /** `--update`: fetch every remote first. */
   update?: boolean;
@@ -575,7 +595,8 @@ export interface PrepareOptions {
  *
  * 1. `upstream` must be Nexus-Mods/Vortex. Pointing anywhere else, it refuses before changing
  *    anything. Missing, it is added only with `--add-upstream` (the skill asks the person first).
- * 2. `.doodlebot/` goes into the exclude every worktree shares only with `--exclude` (asked too).
+ * 2. `.doodlebot/` goes into the exclude every worktree shares only with `--exclude` (asked too),
+ *    with `.claude/worktrees/`, the Claude desktop app's worktree folder inside the checkout.
  * 3. `--update` fetches every remote, `--branch` cuts a branch from upstream.
  * 4. Install with the checkout's pinned pnpm, then `doodlebot build --checkout <dir>`; skipped
  *    when the build record matches the checkout (productionMode.ts `checkBuildRecord`).
@@ -612,16 +633,24 @@ export async function prepareCheckout(options: PrepareOptions): Promise<Prepared
 
   let exclude: PreparedCheckout["exclude"] = excludes(excludeFile) ? "present" : "missing";
   if (exclude === "missing" && options.exclude === true) {
-    fs.mkdirSync(path.dirname(excludeFile), { recursive: true });
-    const before = fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, "utf8") : "";
-    const separator = before === "" || before.endsWith("\n") ? "" : "\n";
-    fs.appendFileSync(excludeFile, `${separator}${DOODLEBOT_FOLDER}\n`);
+    appendExclude(excludeFile, DOODLEBOT_FOLDER);
     report(`added ${DOODLEBOT_FOLDER} to ${excludeFile} (every worktree of this checkout)`);
     exclude = "added";
   } else if (exclude === "missing")
     notes.push(
       `${DOODLEBOT_FOLDER} is not excluded. With the person's yes, \`doodlebot source --exclude\` adds it to ${excludeFile}, which every worktree shares.`,
     );
+  if (!excludesFolder(excludeFile, CLAUDE_WORKTREES_FOLDER)) {
+    if (options.exclude === true) {
+      appendExclude(excludeFile, CLAUDE_WORKTREES_FOLDER);
+      report(
+        `added ${CLAUDE_WORKTREES_FOLDER} (the Claude desktop app's worktrees) to ${excludeFile}`,
+      );
+    } else if (exclude !== "missing")
+      notes.push(
+        `${CLAUDE_WORKTREES_FOLDER} (the Claude desktop app's worktree folder) is not excluded. With the person's yes, \`doodlebot source --exclude\` adds it to ${excludeFile}.`,
+      );
+  }
 
   if (options.update === true) await fetchRemotes(dir, report);
   const remotes = await remotesOf(dir);

@@ -123,7 +123,7 @@ to one command:
 | `--clone <dir>`               | `source`                  | Clone Vortex into that new folder, outside the workspace                                                 |
 | `--release <version>`         | `test <suite>`            | Run the suite on that registered release; not passed on to the suite                                     |
 | `--stale-ok`                  | `up`, `bootstrap`, `test` | Start a source build even though its checkout changed since the build, or it was built in the other mode |
-| `--add-upstream`, `--exclude` | `source`                  | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` out of Git                                       |
+| `--add-upstream`, `--exclude` | `source`                  | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` and `.claude/worktrees/` out of Git              |
 | `--file <draft>`              | `design-branch`           | The design draft to commit as `docs/designs/<topic>.md` on `designs/<topic>`                             |
 
 A path argument is one word to the shell, so quote a path that has spaces:
