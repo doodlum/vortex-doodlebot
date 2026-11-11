@@ -38,6 +38,7 @@ prepares a sandbox test profile.
 | "Set up doodlebot" / "What can I test here?" | `/doodlebot:setup`       |
 | "Get me the Vortex source"                   | `/doodlebot:source`      |
 | "Try X in Vortex" / "Does X work?"           | `/doodlebot:try`         |
+| "Prototype this idea"                        | `/doodlebot:prototype`   |
 | "Find out why this is broken"                | `/doodlebot:investigate` |
 | "Fix it"                                     | `/doodlebot:fix`         |
 | "Review / QA this PR" / "Check the release"  | `/doodlebot:qa`          |

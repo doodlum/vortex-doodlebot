@@ -55,6 +55,7 @@ nav:
   - Guides:
       - Use cases: guides/use-cases.md
       - Try things in Vortex: guides/try-vortex.md
+      - Prototype an idea: guides/prototype.md
       - Fix a Vortex bug: guides/fix-a-bug.md
       - Design a feature with EGM: guides/design-a-feature.md
       - Add a regression test: guides/regression-tests.md

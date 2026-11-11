@@ -39,13 +39,15 @@ with `icon`) and a Codex manifest (`.codex-plugin/plugin.json`, `"skills": "./sk
 icon is `plugins/doodlebot/assets/icon.png` (512×512, rendered from `icon.svg`). Claude Code
 ignores `icon` at load time; Codex shows it in its plugin picker.
 
-Eight commands, one per use case (designs/companion-simplified.md, 4.1):
+Nine commands, one per use case (designs/companion-simplified.md, 4.1, and `prototype` from
+designs/vortex-checkout.md, 4.7):
 
 | Group (`docs/reference/commands.md`) | Skill (`plugins/doodlebot/skills/<name>/SKILL.md`) | Use case and what it replaced                                                                                     |
 | ------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Set up and run the test Vortex       | `setup`                                            | U0. Modes `setup`, `--check` (`doodlebot check`), `--login`, `--update [<ref>]`; was setup, login, update, status |
 |                                      | `source`                                           | U3–U5. Prepare the session's checkout, `--clone <dir>`, `--branch`, a PR's branch for QA                          |
 | Work on Vortex                       | `try`                                              | U1, U7. Content choice, starts and stops the test Vortex, the run report; was drive, start, stop, baseline        |
+|                                      | `prototype`                                        | U13. A worktree session on a new `proto/<idea>`: change, build, run, screenshots, ask; summary; never shipped     |
 |                                      | `investigate`                                      | U2. An issue report on the user's version; changes no code                                                        |
 |                                      | `fix`                                              | U3. End to end, the regression test in the Vortex branch (`resources/testing.md`); was fix, ui-test               |
 |                                      | `qa`                                               | U4, U5, U8. A PR or branch (base then PR builds), `--design <file>`, `--release <version>`                        |
@@ -59,7 +61,11 @@ groups are `COMMAND_GROUPS` in `scripts/docs.cjs`; every skill must be in exactl
   removed, kit gaps recorded with `doodlebot gap add`, catalogue entries proposed, or "nothing".
   No skill patches the kit in the middle of a task. `try` defines the run report (Outcome,
   Tested against, Scenario and target, Steps, Dialogs and prompts answered, Errors and
-  warnings, Evidence, Not checked, Learned); `measure` the benchmark report.
+  warnings, Evidence, Not checked, Learned); `measure` the benchmark report; `prototype` the
+  prototype summary, `harness/.artifacts/prototypes/<idea>/summary.md` in the workspace (shared
+  by every worktree, linking each round's run report), which ends with the `/egm:egm-brainstorm`
+  lines from `plugins/doodlebot/resources/egm.md`. A `proto/*` branch is never shipped:
+  `push-branch` and `pr-preflight` refuse it.
 - A skill never runs `doodlebot down` on a test Vortex another session started from another
   checkout: it waits, or tells the person.
 - Commands are `/doodlebot:<skill>` in Claude Code (`/doodlebot:try`). Claude Code namespaces

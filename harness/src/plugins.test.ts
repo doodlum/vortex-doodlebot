@@ -28,12 +28,14 @@ const PLUGINS: Record<string, PluginSpec> = {
   doodlebot: {
     displayName: "Doodlebot",
     description:
-      "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds.",
-    // The eight commands of designs/companion-simplified.md 4.1, one per use case.
-    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr"],
+      "The agent companion for Vortex: try things in a test Vortex, prototype ideas, investigate and fix bugs, QA pull requests and releases, and measure builds.",
+    // The eight commands of designs/companion-simplified.md 4.1, one per use case, and the
+    // ninth, prototype (designs/vortex-checkout.md 4.7).
+    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr", "prototype"],
     shortDescription: "The agent companion for Vortex",
     capabilities: [
       "Try things in a test Vortex",
+      "Prototype Vortex ideas",
       "Investigate and fix Vortex bugs",
       "QA pull requests and releases",
       "Measure Vortex builds",
@@ -89,7 +91,7 @@ const BENCHMARK_REPORT_SECTIONS = [
   "Learned",
 ];
 /** The skills whose report is a markdown template; each must hold a `## Learned` heading. */
-const REPORT_TEMPLATES = new Set(["try", "investigate", "qa", "measure"]);
+const REPORT_TEMPLATES = new Set(["try", "investigate", "qa", "measure", "prototype"]);
 const RUN_SEQUENCE = [
   "doodlebot up",
   "doodlebot call automation_status",
@@ -526,6 +528,58 @@ describe("skills", () => {
     expect(flat).toContain("<fork>/blob/<sha>/docs/designs/<topic>.md");
     expect(flat).toContain("**A `proto/*` branch is refused**");
     expect(text).not.toMatch(/pr-branch|(?<!\/)pr\/<topic>|design\/<topic>/);
+  });
+
+  it("prototype starts clean on a new proto/* branch, loops build-run-ask, and is never shipped", () => {
+    const text = read(skillFile("doodlebot", "prototype"));
+    const flat = text.replace(/\s+/g, " ");
+    const at = (phrase: string): number => {
+      const index = flat.indexOf(phrase);
+      expect(index, phrase).toBeGreaterThan(-1);
+      return index;
+    };
+    // prototype-clean-tree: a worktree session first, then a clean tree, then the branch rule.
+    const worktree = at("ask the person to start a new worktree session");
+    const clean = at("must print nothing. If it prints anything, refuse");
+    const branch = at("**A new `proto/<idea>` branch,** with no commits beyond upstream");
+    expect(worktree).toBeLessThan(clean);
+    expect(clean).toBeLessThan(branch);
+    at("Only ever from the upstream default");
+    at("**Anything else** (a `feat/*` or `fix-*` branch, a `proto/*` branch with commits");
+    at("never changes the branch of the person's own checkout");
+    const uses = commandUses(text).map((use) => use.text);
+    expect(uses).toContain("doodlebot source --no-build --branch proto/<idea>");
+    // prototype-loop: change, build, a try-style run with screenshots at testing.md's sizes, ask.
+    const loop = flat.slice(flat.indexOf("## The loop"), flat.indexOf("## Finish"));
+    const order = [
+      "**Change**",
+      "doodlebot build --checkout <checkout>",
+      "doodlebot up --dev-dir <checkout>",
+      'doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"',
+      "doodlebot down",
+      "**Show and ask.**",
+    ];
+    let from = 0;
+    for (const step of order) {
+      const index = loop.indexOf(step, from);
+      expect(index, step).toBeGreaterThanOrEqual(from);
+      from = index + step.length;
+    }
+    expect(read("plugins/doodlebot/resources/testing.md")).toContain(
+      '--viewports "1024x720,1280x720,1280x1000,1920x1080"',
+    );
+    // The finish: the shared summary, the brainstorm lines, then "never shipped".
+    const finish = flat.slice(flat.indexOf("## Finish"));
+    const summary = finish.indexOf("`<workspace>/harness/.artifacts/prototypes/<idea>/summary.md`");
+    const brainstorm = finish.indexOf(
+      "/egm:egm-brainstorm <the idea> EGM artifact directory: .doodlebot/egm Start from <workspace>/harness/.artifacts/prototypes/<idea>/summary.md",
+    );
+    const never = finish.indexOf("**Never shipped.**");
+    expect(summary).toBeGreaterThan(-1);
+    expect(brainstorm).toBeGreaterThan(summary);
+    expect(never).toBeGreaterThan(brainstorm);
+    expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/resources/egm.md");
+    expect(text).toContain("[run report](<path to the round's report.md>)");
   });
 
   it("defines the benchmark report in measure, with a Verdict only for two builds", () => {

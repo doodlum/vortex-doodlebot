@@ -118,12 +118,12 @@ describe("EGM resources", () => {
     expect(egm).toContain("never commit it on the feature branch");
   });
 
-  it("points doodlebot's own AGENTS.md and the fix and pr skills at the resource", () => {
+  it("points doodlebot's own AGENTS.md and the fix, pr and prototype skills at the resource", () => {
     const agents = read("AGENTS.md").replace(/\r\n/g, "\n");
     expect(agents).toContain("plugins/doodlebot/resources/egm.md");
     // doodlebot's own designs keep their artifact folder.
     expect(agents).toMatch(/^EGM artifact directory: harness\/\.artifacts\/egm$/m);
-    for (const skill of ["fix", "pr"])
+    for (const skill of ["fix", "pr", "prototype"])
       expect(read(`plugins/doodlebot/skills/${skill}/SKILL.md`), skill).toContain(
         "${CLAUDE_PLUGIN_ROOT}/resources/egm.md",
       );

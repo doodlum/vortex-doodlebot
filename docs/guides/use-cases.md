@@ -20,6 +20,8 @@ section (U11).
 | U9  | "Ship it"                                     | `/doodlebot:pr`                             |
 | U10 | "Improve doodlebot itself"                    | Edits in the workspace, `pnpm run ci`       |
 | U11 | "The kit couldn't do that" / "That was wrong" | The Learned section of every report         |
+| U12 | "Work on Vortex in this checkout"             | Open the agent there, `/doodlebot:source`   |
+| U13 | "Prototype this idea"                         | `/doodlebot:prototype <idea>`               |
 
 ## U0: Set up doodlebot, or see what you can test
 
@@ -167,3 +169,17 @@ You decide what becomes a change for everyone. See [What doodlebot learns](../co
 Every command that builds or changes Vortex then uses the session's checkout, and
 `doodlebot up` runs its build. Outside a checkout those commands refuse and say how to get one.
 See [Work on Vortex source](source-development.md).
+
+## U13: Prototype an idea
+
+1. In the Claude desktop app, start a new worktree session of your checkout on a new branch
+   `proto/<idea>` (or on the upstream default), then run `/doodlebot:prototype <idea>` there.
+2. The agent refuses a tree with changes in it, or a branch other than a new `proto/*` branch or
+   the upstream default.
+3. Each round it changes the code, rebuilds, runs the build in a test Vortex, shows you
+   screenshots at several window sizes, and asks what to change. Nothing is reviewed or
+   approved.
+
+You get a summary of what was tried, with links to each round's run report, and the
+`/egm:egm-brainstorm` lines that start the design from it (U4). The prototype is never shipped:
+`/doodlebot:pr` refuses `proto/*`. See [Prototype an idea](prototype.md).

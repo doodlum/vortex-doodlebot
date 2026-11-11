@@ -1,7 +1,7 @@
 {
   "name": "doodlebot",
   "version": "2.0.0",
-  "description": "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds.",
+  "description": "The agent companion for Vortex: try things in a test Vortex, prototype ideas, investigate and fix bugs, QA pull requests and releases, and measure builds.",
   "author": {
     "name": "doodlum"
   },
@@ -17,6 +17,7 @@
     "category": "Developer Tools",
     "capabilities": [
       "Try things in a test Vortex",
+      "Prototype Vortex ideas",
       "Investigate and fix Vortex bugs",
       "QA pull requests and releases",
       "Measure Vortex builds"
