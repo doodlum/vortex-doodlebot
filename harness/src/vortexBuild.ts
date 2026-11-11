@@ -15,6 +15,11 @@
  *     `etc/Dependency Report.md`, tracked files, which then make the checkout dirty and the next
  *     preflight refuse. Their bytes are saved first and put back when the build changed them.
  *
+ * A successful build writes the build record, `$(git rev-parse --git-dir)/doodlebot-build.json`:
+ * the checkout's HEAD and working-tree changes as they were when the build started, and the mode.
+ * `up` and `bootstrap` refuse a source build whose checkout no longer matches it
+ * (productionMode.ts `checkBuildRecord`). It is in the git folder, so `git status` never shows it.
+ *
  * It refuses while the harness Vortex runs from the checkout (its instance record): the running
  * app holds native modules open (KNOWLEDGE.md) and would be rebuilt underneath.
  */
@@ -24,7 +29,13 @@ import path from "node:path";
 
 import { ConfigError } from "./errors";
 import { abortOnSignals, runEvidenceProcess } from "./processRunner";
-import { bundleModeOf, type BundleMode } from "./productionMode";
+import {
+  bundleModeOf,
+  checkoutBuildIdentity,
+  clearBuildRecord,
+  writeBuildRecord,
+  type BundleMode,
+} from "./productionMode";
 import { assertNoVortexRunningFrom } from "./runningVortex";
 import {
   childEnv,
@@ -132,6 +143,11 @@ export interface BuildReport {
   restored: string[];
   /** What the renderer bundle is afterwards (productionMode.ts's check). */
   bundleMode: BundleMode;
+  /**
+   * The build record written after a successful build, in the worktree's own git folder
+   * (`$(git rev-parse --git-dir)/doodlebot-build.json`); `up` compares the checkout with it.
+   */
+  record?: string;
 }
 
 async function installedPnpmVersion(dir: string): Promise<string | undefined> {
@@ -167,6 +183,10 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
       `${pnpm.exact ? "" : `; pnpm on PATH is not ${wanted}`})`,
   );
   const saved = saveFiles(dir, GENERATED_FILES);
+  // The record describes what this build compiled: the identity before it ran. An interrupted or
+  // failed build leaves none, so `up` warns rather than trusting an older record.
+  clearBuildRecord(dir);
+  const identity = checkoutBuildIdentity(dir);
   const started = Date.now();
   let exitCode = 1;
   let restored: string[] = [];
@@ -191,6 +211,11 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
       exitCode = 1;
     }
   }
+  let record: string | undefined;
+  if (exitCode === 0 && identity !== undefined) {
+    record = writeBuildRecord(dir, identity, options.production ? "production" : "development");
+    if (record !== undefined) report(`recorded the build in ${record}`);
+  } else if (identity === undefined) report("not a git checkout: no build record written");
   return {
     checkout: dir,
     command,
@@ -199,5 +224,6 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
     elapsedMs: Date.now() - started,
     restored,
     bundleMode: bundleModeOf(dir),
+    ...(record === undefined ? {} : { record }),
   };
 }

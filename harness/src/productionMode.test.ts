@@ -1,14 +1,21 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  BUILD_RECORD_NAME,
+  buildRecordFile,
   bundleModeFromText,
   bundleModeOf,
+  checkBuildRecord,
+  checkoutBuildIdentity,
   productionErrorMessage,
   productionProblem,
+  readBuildRecord,
+  writeBuildRecord,
 } from "./productionMode";
 
 describe("productionProblem", () => {
@@ -71,5 +78,110 @@ describe("bundleModeOf", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the build record (stale-build-refused)", { timeout: 60_000 }, () => {
+  let root: string;
+  let checkout: string;
+  const git = (...args: string[]): string =>
+    execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", windowsHide: true }).trim();
+  const write = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(path.join(checkout, file)), { recursive: true });
+    fs.writeFileSync(path.join(checkout, file), text);
+  };
+  /** What `doodlebot build` does around the build itself. */
+  const recordBuild = (): void => {
+    const identity = checkoutBuildIdentity(checkout)!;
+    write("src/main/build/renderer.js", "bundle\n");
+    writeBuildRecord(checkout, identity, "development");
+  };
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "build-record-"));
+    checkout = path.join(root, "vortex");
+    fs.mkdirSync(checkout);
+    git("init", "-q", "-b", "master");
+    git("config", "core.autocrlf", "false");
+    git("config", "user.email", "t@example.test");
+    git("config", "user.name", "T");
+    write(".gitignore", "src/main/build/\n");
+    write("src/renderer/a.ts", "export const a = 1;\n");
+    write("src/renderer/b.ts", "export const b = 1;\n");
+    git("add", "-A");
+    git("commit", "-qm", "base");
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it("lives in the worktree's git folder, so git status never shows it", () => {
+    recordBuild();
+    expect(buildRecordFile(checkout)).toBe(
+      path.join(git("rev-parse", "--absolute-git-dir"), BUILD_RECORD_NAME),
+    );
+    expect(readBuildRecord(checkout)).toMatchObject({
+      head: git("rev-parse", "HEAD"),
+      mode: "development",
+      changes: {},
+    });
+    expect(git("status", "--porcelain")).toBe("");
+    expect(checkBuildRecord(checkout).status).toBe("match");
+  });
+
+  it("refuses an edit after the build, naming the file and the build command", () => {
+    recordBuild();
+    write("src/renderer/a.ts", "export const a = 2;\n");
+    const check = checkBuildRecord(checkout);
+    expect(check).toMatchObject({ status: "stale", files: ["src/renderer/a.ts"] });
+    expect(check.status === "stale" && check.message).toBe(
+      `The build is from ${git("rev-parse", "HEAD").slice(0, 10)} and the checkout has changed since ` +
+        `(1 file, for example src/renderer/a.ts). Run \`doodlebot build --checkout ${checkout}\`, ` +
+        "or pass --stale-ok to launch it anyway.",
+    );
+    // Put back, it matches again: contents are compared, not file times.
+    write("src/renderer/a.ts", "export const a = 1;\n");
+    expect(checkBuildRecord(checkout).status).toBe("match");
+    // A new untracked file is a change too; an ignored one is not.
+    write("src/renderer/c.ts", "new\n");
+    expect(checkBuildRecord(checkout)).toMatchObject({
+      status: "stale",
+      files: ["src/renderer/c.ts"],
+    });
+  });
+
+  it("refuses after a git switch that changed files, and matches again after switching back", () => {
+    git("switch", "-q", "-c", "other");
+    write("src/renderer/b.ts", "export const b = 2;\n");
+    git("commit", "-qam", "other");
+    git("switch", "-q", "master");
+    recordBuild();
+    git("switch", "-q", "other");
+    expect(checkBuildRecord(checkout)).toMatchObject({
+      status: "stale",
+      files: ["src/renderer/b.ts"],
+    });
+    // git switch rewrote the file and its time; the contents are what was built.
+    git("switch", "-q", "master");
+    expect(checkBuildRecord(checkout).status).toBe("match");
+  });
+
+  it("matches when the very changes that were built are committed afterwards", () => {
+    write("src/renderer/a.ts", "export const a = 3;\n");
+    recordBuild();
+    expect(readBuildRecord(checkout)?.changes).toHaveProperty("src/renderer/a.ts");
+    git("commit", "-qam", "the built change");
+    expect(checkBuildRecord(checkout).status).toBe("match");
+  });
+
+  it("has no record for a build made some other way, and says so without refusing", () => {
+    expect(checkBuildRecord(checkout)).toMatchObject({
+      status: "none",
+      message: expect.stringContaining("has no doodlebot build record"),
+    });
+    recordBuild();
+    // A raw `pnpm run build` afterwards replaces the bundle the record describes.
+    write("src/main/build/renderer.js", "another bundle\n");
+    expect(checkBuildRecord(checkout)).toMatchObject({
+      status: "none",
+      message: expect.stringContaining("rebuilt outside doodlebot build"),
+    });
   });
 });

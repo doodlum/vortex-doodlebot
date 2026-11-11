@@ -57,6 +57,7 @@ import {
   userFolderRoots,
   userFoldersOf,
 } from "./userFolders";
+import { checkBuildRecord } from "./productionMode";
 import { missingBuildOutputs } from "./source";
 
 /**
@@ -207,6 +208,11 @@ export interface BootstrapOptions {
   skipGame?: boolean;
   /** Progress reporting. */
   onProgress?: (message: string) => void;
+  /**
+   * `--stale-ok`: launch a source build whose build record no longer matches its checkout, and
+   * say so, instead of refusing.
+   */
+  staleOk?: boolean;
 }
 
 export interface BootstrapResult {
@@ -246,6 +252,14 @@ export async function bootstrap(
         `start and then fail at the first install. Build it: \`doodlebot build --checkout ${checkout!}\`` +
         ` (or \`node build.mjs\` in its src/main).`,
     );
+  // A stale build never runs silently (design 4.6): the checkout must still be what was built.
+  if (checkout !== undefined) {
+    const record = checkBuildRecord(checkout);
+    if (record.status === "stale") {
+      if (options.staleOk !== true) throw new ConfigError(record.message);
+      report(`warning: launching a stale build (--stale-ok): ${record.message}`);
+    } else if (record.status === "none") report(`warning: ${record.message}`);
+  }
 
   fs.mkdirSync(config.cacheDir, { recursive: true });
   // A shared-login cache uses ~/.doodlebot/login directly; an older workspace's login moves there

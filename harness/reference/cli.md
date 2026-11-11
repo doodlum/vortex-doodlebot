@@ -92,7 +92,10 @@ Instance lifecycle
     --no-game            Global UI without managing a game
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
-  bootstrap              Build/reset baseline and launch (--no-game supported)
+    --stale-ok           Launch a source build whose build record no longer matches its
+                         checkout, and say so (otherwise refused, naming a changed file);
+                         a build with no record is launched with a warning
+  bootstrap              Build/reset baseline and launch (--no-game, --stale-ok supported)
   down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
                          then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
@@ -183,6 +186,9 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
+                         A successful build writes the build record,
+                         $(git rev-parse --git-dir)/doodlebot-build.json (HEAD, a hash of
+                         the working-tree changes, the mode), which up checks
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema

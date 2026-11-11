@@ -111,18 +111,20 @@ Both ports must be distinct integers between 1 and 65535.
 Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands. A few belong
 to one command:
 
-| Flag                    | Command                | Effect                                                                     |
-| ----------------------- | ---------------------- | -------------------------------------------------------------------------- |
-| `--new`                 | `game copy`            | Make another copy even when one of the same version exists                 |
-| `--older-than <days>`   | `clean`                | What counts as old; default 30 days                                        |
-| `--dry-run`, `--yes`    | `clean`                | List only; delete what is listed (without `--yes` it only lists)           |
-| `--touching <paths...>` | `qa list`              | Vortex files a change touches, relative to the Vortex root                 |
-| `--allow-logout`        | `qa list`              | Also select entries that log out of the account (only after you agree)     |
-| `--need <need>`         | `inventory`            | The content chosen for these needs (repeatable), instead of every item     |
-| `--json`                | `inventory`, `qa list` | Print JSON                                                                 |
-| `--clone <dir>`         | `source`               | Clone Vortex into that new folder, outside the workspace                   |
-| `--release <version>`   | `test <suite>`         | Run the suite on that registered release; not passed on to the suite       |
-| `--design-commit <sha>` | `pr-branch`            | Tag that approved design commit `design/<topic>`; without it, no tag moves |
+| Flag                          | Command                | Effect                                                                     |
+| ----------------------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `--new`                       | `game copy`            | Make another copy even when one of the same version exists                 |
+| `--older-than <days>`         | `clean`                | What counts as old; default 30 days                                        |
+| `--dry-run`, `--yes`          | `clean`                | List only; delete what is listed (without `--yes` it only lists)           |
+| `--touching <paths...>`       | `qa list`              | Vortex files a change touches, relative to the Vortex root                 |
+| `--allow-logout`              | `qa list`              | Also select entries that log out of the account (only after you agree)     |
+| `--need <need>`               | `inventory`            | The content chosen for these needs (repeatable), instead of every item     |
+| `--json`                      | `inventory`, `qa list` | Print JSON                                                                 |
+| `--clone <dir>`               | `source`               | Clone Vortex into that new folder, outside the workspace                   |
+| `--release <version>`         | `test <suite>`         | Run the suite on that registered release; not passed on to the suite       |
+| `--stale-ok`                  | `up`, `bootstrap`      | Start a source build even though its checkout changed since the build      |
+| `--add-upstream`, `--exclude` | `source`               | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` out of Git         |
+| `--design-commit <sha>`       | `pr-branch`            | Tag that approved design commit `design/<topic>`; without it, no tag moves |
 
 A path argument is one word to the shell, so quote a path that has spaces:
 `doodlebot install "C:\Users\Nexus Two\probe.zip"`. `install` refuses more than one path
@@ -130,16 +132,17 @@ instead of installing the first part of a split one, which can name another file
 
 ## Files doodlebot keeps
 
-| Path                             | Contents                                                  |
-| -------------------------------- | --------------------------------------------------------- |
-| `~/.doodlebot/instance.json`     | The record of the running test Vortex                     |
-| `~/.doodlebot/content.json`      | Registered game copies and releases, pending restores     |
-| `~/.doodlebot/releases/`         | Official releases extracted by `release get`              |
-| `<workspace>/harness/.cache`     | Test profiles, baselines and saved logins                 |
-| `<workspace>/harness/.artifacts` | Run reports, benchmark reports, designs and other outputs |
-| `<workspace>/harness/qa/`        | The QA catalogue, checked in                              |
-| `<workspace>/harness/.env`       | Optional private local configuration                      |
-| `<workspace>/dist/`              | The built doodlebot extension                             |
+| Path                                           | Contents                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `~/.doodlebot/instance.json`                   | The record of the running test Vortex                                             |
+| `~/.doodlebot/content.json`                    | Registered game copies and releases, pending restores                             |
+| `~/.doodlebot/releases/`                       | Official releases extracted by `release get`                                      |
+| `<workspace>/harness/.cache`                   | Test profiles, baselines and saved logins                                         |
+| `<workspace>/harness/.artifacts`               | Run reports, benchmark reports, designs and other outputs                         |
+| `<workspace>/harness/qa/`                      | The QA catalogue, checked in                                                      |
+| `<workspace>/harness/.env`                     | Optional private local configuration                                              |
+| `<workspace>/dist/`                            | The built doodlebot extension                                                     |
+| `<checkout's git folder>/doodlebot-build.json` | What `doodlebot build` built; `up` refuses a build the checkout no longer matches |
 
 Git ignores these paths in the workspace, but logs, screenshots and reports still need a privacy
 check before you share them. See [Security and privacy](../security.md).

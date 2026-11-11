@@ -884,6 +884,25 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
     runtime's checkout, and a `doodlebot` child gets `--dev-dir <checkout>` after its command
     (`withDevDir`). `doodlebot test --dev-dir <dir> <suite>` and `script --dev-dir <dir>` hand the
     checkout on the same way.
+- **A stale build never runs silently** (`productionMode.ts`, beside `bundleModeOf`).
+  `doodlebot build` deletes the build record when it starts and, after a successful build, writes
+  `$(git rev-parse --git-dir)/doodlebot-build.json` (the worktree's own git folder, never in the
+  working tree, so `git status` never shows it): the checkout's `HEAD`, each file whose content
+  differed from it (tracked or untracked, not ignored: `worktreeChanges` in `evidence.ts`, the
+  identity code `evidence` uses) with its hash, a hash of those, the mode, and the hash of
+  `src/main/build/renderer.js` it produced. The identity is the one taken before the build ran.
+  File times are never used: `git switch` and worktree creation rewrite them.
+  - `up` and `bootstrap` with a source build compare the checkout with it (`checkBuildRecord`):
+    the built tree is the record's `HEAD` plus its changes, the checkout's is its working tree,
+    compared by content. Committing exactly what was built still matches.
+  - A mismatch refuses, naming a changed file: "The build is from <HEAD short> and the checkout
+    has changed since (<n> files, for example <file>). Run `doodlebot build --checkout
+<checkout>`, or pass --stale-ok to launch it anyway."
+  - No record (a build not made by `doodlebot build`, a failed one, or a renderer bundle rebuilt
+    since) is a warning, not a refusal.
+  - `--stale-ok` launches anyway and says so in the output
+    (`warning: launching a stale build (--stale-ok): ...`).
+  - `source` skips install and build when the record matches and the outputs are present.
 - **Which repository** (`source.ts`). `source --clone <dir>` finds the GitHub login (`VORTEX_AI_GITHUB_USER`,
   `gh api user`, git's `github.user`, a noreply email, then `user.name`) and the fork
   `<login>/Vortex`, or `VORTEX_AI_VORTEX_REPO=<owner>/<repo>`. Nexus-Mods/Vortex is always the
@@ -1202,7 +1221,8 @@ timing meant to reflect users needs production:
   its pinned pnpm, refusing while the harness Vortex runs from it (`... before building it.`), with
   NODE_ENV=production for the build only (unset otherwise). It restores `etc/vortex.api.md` and
   `etc/Dependency Report.md` if rewritten. The caller's environment is untouched; in the agent
-  sandbox clear a variable with `$env:NODE_ENV=$null`.
+  sandbox clear a variable with `$env:NODE_ENV=$null`. A successful build writes the build record
+  ("A stale build never runs silently").
 - `up --dev-dir <checkout> --production` **fails unless `automation_status` shows
   `nodeEnv: "production"` and `react.build: "production"`**, and warns on a development bundle.
 - Compare A/B builds in the same mode from the same `--fresh` baseline; record

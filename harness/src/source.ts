@@ -529,8 +529,11 @@ export interface PreparedCheckout {
   exclude: "present" | "added" | "missing";
   /** `--branch`: the branch cut, and what from. */
   cut?: { branch: string; from: string };
-  /** Whether install and build ran, were skipped (`--no-build`), or failed. */
-  build: "built" | "skipped" | "failed";
+  /**
+   * Whether install and build ran, were skipped (`--no-build`), were not needed (`current`: the
+   * build record matches the checkout), or failed.
+   */
+  build: "built" | "skipped" | "current" | "failed";
   /** Notes for the person, one per line. */
   notes: string[];
 }
@@ -551,6 +554,8 @@ export interface PrepareOptions {
   install?: (dir: string) => Promise<void>;
   /** Builds the checkout (`doodlebot build --checkout <dir>`); resolves to its exit code. */
   runBuild?: (dir: string) => Promise<{ exitCode: number }>;
+  /** Whether the checkout's build is current (its build record matches); then nothing is built. */
+  upToDate?: (dir: string) => boolean;
   /** The Nexus repository's clone URL (tests use a local one). */
   upstreamUrl?: string;
   onProgress?: (message: string) => void;
@@ -564,7 +569,8 @@ export interface PrepareOptions {
  *    anything. Missing, it is added only with `--add-upstream` (the skill asks the person first).
  * 2. `.doodlebot/` goes into the exclude every worktree shares only with `--exclude` (asked too).
  * 3. `--update` fetches every remote, `--branch` cuts a branch from upstream.
- * 4. Install with the checkout's pinned pnpm, then `doodlebot build --checkout <dir>`.
+ * 4. Install with the checkout's pinned pnpm, then `doodlebot build --checkout <dir>`; skipped
+ *    when the build record matches the checkout (productionMode.ts `checkBuildRecord`).
  */
 export async function prepareCheckout(options: PrepareOptions): Promise<PreparedCheckout> {
   const report = options.onProgress ?? ((): void => undefined);
@@ -624,7 +630,10 @@ export async function prepareCheckout(options: PrepareOptions): Promise<Prepared
     cut = await cutWorkBranch(dir, options.branch, { onProgress: report });
 
   let build: PreparedCheckout["build"] = "skipped";
-  if (options.build !== false) {
+  if (options.build !== false && options.upToDate?.(dir) === true) {
+    report("the build record matches the checkout: nothing to install or build");
+    build = "current";
+  } else if (options.build !== false) {
     if (options.runBuild === undefined) throw new ForkError("prepareCheckout needs runBuild.");
     await (
       options.install ??
@@ -663,15 +672,17 @@ export function formatPrepared(prepared: PreparedCheckout): string {
     `Build:    ${
       prepared.build === "built"
         ? "built"
-        : prepared.build === "failed"
-          ? "FAILED (its output is above)"
-          : "not built (--no-build)"
+        : prepared.build === "current"
+          ? "already built (the build record matches the checkout)"
+          : prepared.build === "failed"
+            ? "FAILED (its output is above)"
+            : "not built (--no-build)"
     }`,
     ...prepared.notes.map((note) => `Note:     ${note}`),
     "",
     prepared.build === "failed"
       ? `Next: fix the build, then \`doodlebot build --checkout ${prepared.checkout}\`.`
-      : prepared.build === "built"
+      : prepared.build === "built" || prepared.build === "current"
         ? "Next: `doodlebot up` from this checkout drives this build."
         : `Next: \`doodlebot build --checkout ${prepared.checkout}\` before \`doodlebot up\`.`,
   ].join("\n");

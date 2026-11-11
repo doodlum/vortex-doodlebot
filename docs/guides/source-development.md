@@ -98,6 +98,9 @@ session's runs is refused. Wait for the other session to finish; never stop its 
 
 - `/doodlebot:try <scenario> on my source build` starts the session's build with
   `doodlebot up --sandbox`.
+- `doodlebot build` records what it built in the checkout's Git folder (never in your working
+  tree). If the checkout changed since, `doodlebot up` refuses and names a changed file; rebuild,
+  or pass `--stale-ok` to run the old build on purpose.
 - A source build runs in development mode, with React's slower development build. For timings
   that reflect users, the agent builds with `doodlebot build --checkout <dir> --production` and
   starts with `--production`. It then confirms that Vortex reports production mode.

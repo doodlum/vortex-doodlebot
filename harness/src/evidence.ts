@@ -48,6 +48,45 @@ function git(checkout: string, args: string[]): string {
   });
 }
 
+/** A working-tree file's content hash: a link's target, `"deleted"` when gone, `"directory"`. */
+export function hashWorktreeFile(root: string, file: string): string {
+  const abs = path.join(root, file);
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(abs);
+  } catch {
+    return "deleted";
+  }
+  if (stat.isSymbolicLink()) return hashBytes(fs.readlinkSync(abs));
+  if (stat.isDirectory()) return "directory";
+  return hashBytes(fs.readFileSync(abs));
+}
+
+/** Untracked files `git add -A` would take (`ls-files --others --exclude-standard`), sorted. */
+function untrackedFiles(root: string): string[] {
+  return git(root, ["ls-files", "--others", "--exclude-standard", "-z"])
+    .split("\0")
+    .filter(Boolean)
+    .sort();
+}
+
+/**
+ * Every file whose working-tree content differs from `against` (tracked, staged or not, and
+ * untracked files that are not ignored), each with `hashWorktreeFile`'s hash. The build record
+ * (productionMode.ts) compares two of these; file times are never used.
+ */
+export function worktreeChanges(root: string, against = "HEAD"): Record<string, string> {
+  const files = new Set([
+    ...git(root, ["diff", "--no-ext-diff", "--name-only", "-z", against, "--"])
+      .split("\0")
+      .filter(Boolean),
+    ...untrackedFiles(root),
+  ]);
+  return Object.fromEntries(
+    [...files].sort().map((file) => [file, hashWorktreeFile(root, file)] as const),
+  );
+}
+
 /** Includes staged, unstaged and nonignored untracked contents, without saving source bytes. */
 export function captureCheckoutIdentity(checkout: string, base = "HEAD"): CheckoutIdentity {
   const root = fs.realpathSync.native(
@@ -58,18 +97,10 @@ export function captureCheckoutIdentity(checkout: string, base = "HEAD"): Checko
   const args = ["--no-ext-diff", "--no-textconv", "--binary"];
   const unstaged = git(root, ["diff", ...args, "HEAD", "--"]);
   const staged = git(root, ["diff", ...args, "--cached", "--"]);
-  const untracked = git(root, ["ls-files", "--others", "--exclude-standard", "-z"])
-    .split("\0")
-    .filter(Boolean)
-    .sort()
-    .map((file) => {
-      const abs = path.join(root, file);
-      const stat = fs.lstatSync(abs);
-      return {
-        file,
-        hash: hashBytes(stat.isSymbolicLink() ? fs.readlinkSync(abs) : fs.readFileSync(abs)),
-      };
-    });
+  const untracked = untrackedFiles(root).map((file) => ({
+    file,
+    hash: hashWorktreeFile(root, file),
+  }));
   const changedFiles = [
     ...new Set([
       ...git(root, ["diff", "--no-ext-diff", "--name-only", "-z", baseSha, "--"])

@@ -315,6 +315,23 @@ describe("preparing the session's checkout", { timeout: 120_000 }, () => {
     expect(read(exclude()).match(/\.doodlebot\//g)).toHaveLength(1);
   });
 
+  it("skips install and build when the build record matches the checkout", async () => {
+    const prepared = await prepareCheckout({
+      checkout,
+      upstreamUrl: upstream,
+      upToDate: () => true,
+      install: async () => {
+        throw new Error("no install when the build is current");
+      },
+      runBuild: quiet.runBuild,
+    });
+    expect(prepared.build).toBe("current");
+    expect(built).toEqual([]);
+    expect(formatPrepared(prepared)).toContain(
+      "already built (the build record matches the checkout)",
+    );
+  });
+
   it("reports a failed build with the build command as the next step", async () => {
     const prepared = await prepareCheckout({
       checkout,

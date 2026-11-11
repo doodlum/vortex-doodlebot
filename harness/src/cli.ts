@@ -81,9 +81,11 @@ import {
   commandEnv,
   detectGitHubUser,
   formatPrepared,
+  missingBuildOutputs,
   prepareCheckout,
   resolveVortexRepo,
 } from "./source";
+import { checkBuildRecord } from "./productionMode";
 import { gapCommand } from "./gapCommand";
 import { prBranchCommand } from "./prPush";
 
@@ -199,7 +201,10 @@ Instance lifecycle
     --no-game            Global UI without managing a game
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
-  bootstrap              Build/reset baseline and launch (--no-game supported)
+    --stale-ok           Launch a source build whose build record no longer matches its
+                         checkout, and say so (otherwise refused, naming a changed file);
+                         a build with no record is launched with a warning
+  bootstrap              Build/reset baseline and launch (--no-game, --stale-ok supported)
   down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
                          then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
@@ -290,6 +295,9 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
+                         A successful build writes the build record,
+                         $(git rev-parse --git-dir)/doodlebot-build.json (HEAD, a hash of
+                         the working-tree changes, the mode), which up checks
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -526,7 +534,8 @@ async function main(): Promise<number> {
     log(
       `[build] exit ${String(report.exitCode)} after ${String(Math.round(report.elapsedMs / 1000))}s; ` +
         `renderer bundle: ${report.bundleMode}` +
-        (report.restored.length > 0 ? `; restored ${report.restored.join(", ")}` : ""),
+        (report.restored.length > 0 ? `; restored ${report.restored.join(", ")}` : "") +
+        (report.record === undefined ? "" : `; build record ${report.record}`),
     );
     if (report.exitCode === 0 && flags.production === true && report.bundleMode !== "production") {
       log(
@@ -752,6 +761,7 @@ async function main(): Promise<number> {
           skipGame: flags["no-game"] === true,
           rebuildSnapshot: flags["rebuild-snapshot"] === true,
           rebuildExtension: flags["rebuild-extension"] === true,
+          staleOk: flags["stale-ok"] === true,
           fresh: true,
           onProgress: (m) => log(`  ${m}`),
         });
@@ -769,6 +779,7 @@ async function main(): Promise<number> {
           rebuildSnapshot: flags["rebuild-snapshot"] === true,
           skipGame: flags["no-game"] === true,
           rebuildExtension: flags["rebuild-extension"] === true,
+          staleOk: flags["stale-ok"] === true,
           onProgress: (m) => log(`  ${m}`),
         });
         log(
@@ -983,6 +994,8 @@ async function main(): Promise<number> {
           ...(typeof flags.branch === "string" ? { branch: flags.branch } : {}),
           build: flags.build !== false && flags["no-build"] !== true,
           onProgress: (m) => log(`  ${m}`),
+          upToDate: (dir) =>
+            checkBuildRecord(dir).status === "match" && missingBuildOutputs(dir).length === 0,
           runBuild: (dir) =>
             buildCheckout({
               checkout: dir,
