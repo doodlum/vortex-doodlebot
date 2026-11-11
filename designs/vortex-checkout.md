@@ -382,7 +382,7 @@ Each step updates its own tests, manuals and site pages and runs `pnpm run docs:
    - `plugins.test.ts` (9 commands), `scripts/docs.cjs` `COMMAND_GROUPS`, both manifests and
      the marketplaces.
 7. **Issues 2, 4, 5, 6** (4.8):
-   - `cdp.ts` and the new `viewport` command, `responsive.ts`;
+   - `src/uiAutomation.ts` `setViewport` (renderer zoom) and `responsive.ts`;
    - `src/uiAutomation.ts` and `src/uiAutomation.test.ts`, `src/mcpServer.ts` (the tool
      description);
    - `entryStore.ts`, `gapCommand.ts`, `knowledgeCommand.ts` and their tests;
