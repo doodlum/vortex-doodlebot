@@ -17,6 +17,8 @@ suite, or measure a release.
 ## Open Claude in your checkout
 
 Doodlebot works in the Vortex checkout your Claude session is opened in, or in a worktree of it.
+The same holds for the Claude desktop app, the Codex app and the Codex CLI: open the session in
+the checkout's folder.
 That is the session's checkout: commands that build or change Vortex use it, and `doodlebot up`
 runs its build. Doodlebot's own workspace stays where setup put it.
 
@@ -39,11 +41,13 @@ Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot sourc
 
 2. The agent runs `doodlebot source`. It checks the remotes: `upstream` must be
    Nexus-Mods/Vortex, and if it points anywhere else, `source` stops and changes nothing.
-3. If `upstream` is missing, or doodlebot's `.doodlebot/` folder is not yet kept out of Git, the
-   agent asks you once: "May I add Nexus-Mods/Vortex as `upstream`, and add `.doodlebot/` to this
-   checkout's shared `info/exclude`?" On a yes it runs `doodlebot source --add-upstream
---exclude`. The exclude file is shared by every worktree of the checkout, so nothing
-   doodlebot writes in any of them reaches a commit.
+3. If `upstream` is missing, or doodlebot's `.doodlebot/` folder or the Claude desktop app's
+   `.claude/worktrees/` folder is not yet kept out of Git, the agent asks you once: "May I add
+   Nexus-Mods/Vortex as `upstream`, and add `.doodlebot/` and `.claude/worktrees/` to this
+   checkout's shared `info/exclude`?" On a yes it runs
+   `doodlebot source --add-upstream --exclude`. The exclude file is shared by every worktree of
+   the checkout, so nothing doodlebot writes in any of them reaches a commit, and the desktop
+   app's worktrees inside the checkout do not show in its `git status`.
 4. `source` installs Vortex's dependencies with its pinned pnpm and builds the checkout. The
    build puts back the `etc/` files it rewrites, so `git status` stays clean.
 
@@ -83,18 +87,54 @@ design's sibling branch `designs/<topic>` (`doodlebot design-branch`).
 
 ### Several branches at once
 
-You can keep several branches built side by side, each in its own worktree, and use one Claude
-session per branch:
+You can keep several branches built side by side, each in its own worktree, and use one agent
+session per branch. In every worktree, run the source skill (`/doodlebot:source`) once: each
+worktree needs its own install and build. Commands in that session then use the worktree; no
+flag is needed. How you make the worktree depends on your agent.
 
-1. Make a worktree: `git -C <checkout> worktree add <dir> <branch>`, or start a worktree session
-   in the Claude desktop app.
-2. Open Claude in that worktree and run `/doodlebot:source`: each worktree needs its own install
-   and build.
-3. Commands in that session use the worktree; no flag is needed.
+#### Claude desktop app
+
+1. Before you start the session, turn on **Worktree** in the row under the prompt. It is off by
+   default.
+2. The app makes the worktree in `<checkout>/.claude/worktrees/`, inside your checkout.
+   `doodlebot source --exclude` keeps that folder out of the checkout's `git status` and
+   commits. Settings → Code → **Worktree location** moves it elsewhere.
+3. Settings → Code → **Branch prefix** is put in front of every worktree branch the app makes.
+   Which commit the worktree starts from is not documented: cut your work branch from upstream
+   with `doodlebot source --branch <name>`.
+4. Run `/doodlebot:source` in the new session.
+
+Gitignored files are copied into a new worktree only when they are listed in
+`.worktreeinclude`. Source: [Claude Code desktop](https://code.claude.com/docs/en/desktop).
+
+#### Claude Code CLI
+
+1. Make a worktree: `git -C <checkout> worktree add <dir> <branch>`.
+2. Start `claude` in `<dir>` and run `/doodlebot:source`.
+
+#### Codex app
+
+1. Select **Worktree** under the composer, and pick the branch it is based on.
+2. The worktree starts on a **detached HEAD**, in `$CODEX_HOME/worktrees` (Settings →
+   Worktrees → **Worktree root** changes it), outside your checkout.
+3. Run the doodlebot source skill (type `$` or `@` to pick it). Cut a branch before you commit:
+   `doodlebot source --branch <name>` cuts it from upstream. The app's **Create branch here**
+   also makes one, with a suggested `codex/` prefix, on the commit the worktree is on.
+
+The app honours `.worktreeinclude` too. Source:
+[Codex worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees).
+
+#### Codex CLI
+
+1. Make a worktree: `git -C <checkout> worktree add <dir> <branch>`.
+2. Start `codex` in `<dir>` and run the doodlebot source skill.
+
+#### One test Vortex
 
 Each worktree is a full Vortex build of several GB. Editing, building and unit tests run in
-parallel. Only one test Vortex runs at a time on the machine, so starting one while another
-session's runs is refused. Wait for the other session to finish; never stop its Vortex.
+parallel. Only one test Vortex runs at a time on the machine, whichever app or CLI started it,
+so starting one while another session's runs is refused. Wait for the other session to finish;
+never stop its Vortex.
 
 ## Run your build
 

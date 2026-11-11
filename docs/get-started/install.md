@@ -6,7 +6,8 @@ doodlebot plugin, and install EGM for design review.
 ## Before you begin
 
 - Check the [requirements](requirements.md).
-- Know which coding agent you use. Follow the section for it.
+- Know which coding agent you use. Follow the section for it: Claude Code in a terminal, Codex
+  CLI, the [Claude desktop app](#claude-desktop-app) or the [Codex app](#codex-app).
 
 ## Claude Code
 
@@ -127,10 +128,10 @@ The `//c/` prefix is the absolute path `C:\`.
    current version. The agent records the EGM version at the top of every review report, so you
    can compare it with what you installed.
 
-3. If the version is newer than `0.1.1`, pin the release with a marketplace ref if your Codex
-   supports one (`codex plugin marketplace add --help` lists the options). Otherwise keep the
-   newer version, note its number, and bear in mind that doodlebot was checked with `0.1.1`
-   only.
+3. If the version is newer than `0.1.1`, remove the `egm` marketplace and add it again at the
+   release tag with `codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.1`.
+   If your Codex does not accept `--ref`, keep the newer version, note its number, and bear in
+   mind that doodlebot was checked with `0.1.1` only.
 
 ### What EGM can guarantee in each agent
 
@@ -146,8 +147,72 @@ rules, but that is an instruction, not a restriction. EGM
 [issue 237](https://github.com/google/elephant-goldfish-model/issues/237) reports that the
 repository's agent instructions still reach them.
 
-The ChatGPT and Codex desktop apps have not been checked with doodlebot. Doodlebot's commands
-need an agent that can run commands on your machine.
+## Claude desktop app
+
+Doodlebot works in the Code tab of the Claude desktop app, in local sessions. Plugins are not
+available in cloud or WSL sessions. The desktop app, the terminal and VS Code read the same
+settings files, so a plugin installed at user scope in one of them is available in all three.
+
+1. In a terminal, add both marketplaces:
+
+   ```powershell
+   claude plugin marketplace add doodlum/vortex-doodlebot
+   claude plugin marketplace add google/elephant-goldfish-model#v0.1.1
+   ```
+
+   The Claude Code documentation does not say whether the desktop app's plugin browser can add
+   a marketplace itself, so add them from the terminal.
+
+2. Install doodlebot and EGM **at user scope**, in either of two ways:
+   - In the terminal:
+
+     ```powershell
+     claude plugin install doodlebot@doodlebot --scope user
+     claude plugin install egm@egm --scope user
+     ```
+
+   - In the desktop app: click **+** next to the prompt, then **Add plugins** (or **Plugins** →
+     **Browse plugins**). Install `doodlebot` and `egm`, and choose **User** as the scope.
+
+3. Start a new local session in any folder. Type `/` (or click **+** → **Slash commands**) and
+   check that the `/doodlebot:` commands are listed. `/doodlebot:setup` works as it does in the
+   terminal.
+
+Install at user scope, not project or local scope. A Vortex checkout never reads the doodlebot
+workspace's project settings, so `doodlebot check` reports EGM installed only for a project as
+missing. The `/plugin` command belongs to the terminal; the desktop app has its plugin manager
+instead.
+
+Sources: [Claude Code desktop](https://code.claude.com/docs/en/desktop) and
+[Discover plugins](https://code.claude.com/docs/en/discover-plugins).
+
+## Codex app
+
+The Codex app runs on Windows (from the Microsoft Store, or
+`winget install --id 9PLM9XGG6VKS -s msstore`) and uses PowerShell by default.
+
+1. In a terminal, add both marketplaces and install the plugins with the Codex CLI:
+
+   ```powershell
+   codex plugin marketplace add doodlum/vortex-doodlebot
+   codex plugin add doodlebot@doodlebot
+   codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.1
+   codex plugin add egm@egm
+   ```
+
+2. In the app, open the **Plugins** tab and check that `doodlebot` and `egm` are there. The Codex
+   documentation does not say whether marketplaces added with the CLI appear in the app's
+   Plugins tab. If they do not, install them from that tab.
+3. Start a new chat: new installs appear in a new chat. Type `@` to pick the plugin or a skill,
+   or mention a skill with `$`, for example `$setup`.
+
+In the Codex CLI, `/plugins` lists the plugins. The Codex IDE extension does not support plugins.
+As in the Codex CLI, the plugin ships no agents: the app runs the driver's procedure in your
+session, and design reviewers run as general-purpose subagents.
+
+Sources: [Codex developer commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli),
+[Codex plugins](https://learn.chatgpt.com/docs/plugins) and
+[Codex on Windows](https://learn.chatgpt.com/docs/windows/windows-app).
 
 ## What's next
 

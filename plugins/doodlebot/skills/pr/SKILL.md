@@ -7,7 +7,7 @@ argument-hint: "[PR number, once it exists] [ready]"
 # Ship a Vortex pull request
 
 This command opens the PR from the branch the session is on, so the Claude desktop app can show
-it in its PR bar. It prepares everything first and publishes only when the person says so: a
+it in the session's Changes card. It prepares everything first and publishes only when the person says so: a
 draft unless they say otherwise. It never pushes anywhere but the person's own fork, never
 ships a `proto/*` prototype branch, and never opens a PR before the person's real scenario
 passed on the change.
@@ -37,6 +37,11 @@ passed on the change.
 
 1. **The branch.** `<branch>` is the session's branch:
    `git -C <checkout> symbolic-ref --short HEAD`.
+   - **A detached HEAD** (a Codex app worktree starts on one): `push-branch` refuses it. Say so
+     and stop: the person cuts a branch first. To keep commits made on the detached HEAD, the
+     branch starts at the current commit: `git -C <checkout> switch -c <name>`, or the Codex
+     app's **Create branch here**. `doodlebot source --branch <name>` starts from upstream
+     instead, and fits only when nothing was committed yet.
    - **A `proto/*` branch is refused** (and `push-branch` and the preflight refuse it too). A
      prototype is never shipped: say so, and that a feature
      starts as `feat/<topic>` from upstream after an approved design, with the prototype's diff
@@ -90,11 +95,18 @@ passed on the change.
         Nexus-Mods/Vortex. Never use the fork's own default branch: a fork's default can be
         another branch entirely (doodlum/Vortex's is `linux`), and a PR against it would carry
         that branch's work.
-   4. **On Claude desktop, bind it.** When the app's PR tools are available and the PR bar did
-      not pick the PR up, bind it to this session with them (`bind_pr`, given the PR's URL), so the app shows its CI status and Auto-fix. A PR into the fork binds, because the
-      fork is `origin`; whether one into Nexus-Mods/Vortex binds is not established: report
-      what happened.
-   5. Check the published description:
+   4. **On Claude desktop, bind it.** The app shows an opened PR in the session details panel's
+      Changes card, with its CI status; its ⋮ menu has **Auto-fix** and **Merge when ready**.
+      The app needs `gh` installed and signed in. When the app's PR tools are available and the
+      Changes card did not pick the PR up, bind it to this session with them (`bind_pr`, given
+      the PR's URL). A PR into the fork binds, because the fork is `origin`; whether one into
+      Nexus-Mods/Vortex binds is not established: report what happened.
+   5. **In the Codex app**, the push and the PR are this skill's, as above (`push-branch`, then
+      `gh pr create`); whether the app opens PRs itself is not documented. Its review pane shows
+      the PR's description, comments and checks, and **Fix** in Checks attaches a failing check
+      to a chat. Auto-fix, monitoring and binding a PR to a task are not documented: tell the
+      person to follow CI with step 6.
+   6. Check the published description:
       `doodlebot pr-preflight --checkout <checkout> --skip-revert --pr <number> --repo <owner/name>`.
 6. **CI.** `doodlebot pr-checks <number> --repo <owner/name>` reports the head's checks, with
    failed jobs expanded to their failed steps; it exits nonzero while any is pending or failed.

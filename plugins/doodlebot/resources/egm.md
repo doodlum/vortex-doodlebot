@@ -81,8 +81,8 @@ Sonnet session for an all-Sonnet review.
 
 ## After approval
 
-- Cut the work branch from upstream: `doodlebot source --no-build --branch feat/<topic>`, or a
-  new desktop worktree session on `feat/<topic>`. When a prototype came first, port its diff
+- Cut the work branch from upstream: `doodlebot source --no-build --branch feat/<topic>`, in the
+  checkout or in a new Claude desktop or Codex app worktree session. When a prototype came first, port its diff
   there; the `proto/*` branch is never shipped.
 - Implement following Vortex's own `AGENTS.md`, `CLAUDE.md` and `docs/README.md`, with the tests
   that prove each criterion in the same branch (`${CLAUDE_PLUGIN_ROOT}/resources/testing.md`).

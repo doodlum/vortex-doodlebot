@@ -967,7 +967,11 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
     check (`prPush.ts`) is unchanged.
   - `--exclude` appends `.doodlebot/` to `$(git rev-parse --git-common-dir)/info/exclude`, the
     file every worktree of the checkout shares, so doodlebot's per-worktree folder
-    (`<checkout>/.doodlebot/`, EGM's artifacts) never reaches a commit; it is added once. The
+    (`<checkout>/.doodlebot/`, EGM's artifacts) never reaches a commit; it is added once. It
+    also appends `.claude/worktrees/`, the Claude desktop app's default worktree folder inside
+    the checkout, which Vortex's `.gitignore` does not cover: a worktree made there would show
+    in the main checkout's `git status` and `git add -A`. Each line is added once; the report's
+    `exclude` field is about `.doodlebot/`, and a note names a missing `.claude/worktrees/`. The
     skill asks the person one question before `--add-upstream` and `--exclude`.
   - Then it installs (`pnpm install --frozen-lockfile` with the checkout's pinned pnpm) and runs
     `doodlebot build --checkout <checkout>`, which puts back the `etc/` files the build rewrites,
@@ -987,8 +991,9 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
   absent `origin`, Nexus-Mods/Vortex itself (whatever rights the person has there) and someone
   else's fork are refused, and nothing is pushed.
 - **Sessions per branch.** Several Claude sessions can work on several Vortex branches, each in
-  its own worktree (`git -C <checkout> worktree add <dir> <branch>`, or a desktop worktree
-  session), each opened in its worktree, which is then that session's checkout; each needs its
+  its own worktree (`git -C <checkout> worktree add <dir> <branch>`, a Claude desktop session
+  with Worktree on, in `<checkout>/.claude/worktrees/`, or a Codex app worktree, in
+  `$CODEX_HOME/worktrees` on a detached HEAD), each opened in its worktree, which is then that session's checkout; each needs its
   own `/doodlebot:source` (install and build). Each worktree is a full build of several GB. Editing, building, unit tests and `ci`
   run in parallel; anything that runs Vortex (`up`, `test core`, the checks) runs one at a time
   on the machine ("One instance"). A session never runs `down` on an instance another session
@@ -1117,7 +1122,10 @@ receipt cannot certify a later commit. Verify the actual final commit for public
 - **The PR comes from the session's branch.** `/doodlebot:pr` opens it with
   `gh pr create --head <fork owner>:<branch>` (a draft unless the person says otherwise), in the
   fork or against Nexus-Mods/Vortex as the person chooses, and on Claude desktop binds it with
-  the app's PR tools when the PR bar did not pick it up. There is no separate PR branch.
+  the app's PR tools when the session's Changes card did not pick it up. The Codex app has no
+  documented binding; its review pane shows the PR's checks. There is no separate PR branch.
+  `push-branch` refuses a detached HEAD (a Codex app worktree starts on one): a branch is cut
+  first.
 - `doodlebot push-branch [--checkout <dir>]` (`prPush.ts`, `pushSessionBranch`) pushes the
   session's branch to `origin` with `-u`, only after the fork check (`checkPushRemote`). It
   refuses a detached HEAD, a `proto/*` branch (a prototype is never shipped), a `designs/*`
