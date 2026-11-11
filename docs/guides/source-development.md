@@ -83,9 +83,8 @@ branch there.
 Before any push, doodlebot checks with GitHub that `origin` is your own fork of Vortex. It
 refuses to push to Nexus-Mods/Vortex itself or to someone else's fork, even if you are allowed
 to push there. An organisation's fork is accepted only when you set it in
-`VORTEX_AI_VORTEX_REPO` and can push to it. Doodlebot pushes two kinds of branch there: the
-branch your session is on, which a pull request is opened from (`doodlebot push-branch`), and a
-design's sibling branch `designs/<topic>` (`doodlebot design-branch`).
+`VORTEX_AI_VORTEX_REPO` and can push to it. Doodlebot pushes only the branch your session
+is on, which a pull request is opened from (`doodlebot push-branch`).
 
 ### Several branches at once
 

@@ -63,7 +63,6 @@ export const commands: CommandEntry[] = [
   { name: "evidence", subcommands: ["identity", "run", "runtime"] },
   { name: "pr-checks" },
   { name: "pr-preflight" },
-  { name: "design-branch" },
   { name: "push-branch" },
 ];
 

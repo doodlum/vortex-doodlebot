@@ -26,39 +26,38 @@ about EGM is written into Vortex.
 
 1. Optionally, `/doodlebot:prototype <idea>` first, to see the idea working before it is
    designed, or `/doodlebot:try` on the current build to see today's behaviour.
-2. Type `/egm:egm-brainstorm <the idea>` with the artifact line under it, as the agent gives it.
+2. Start on the work branch: the agent cuts `feat/<topic>` from upstream
+   (`doodlebot source --branch feat/<topic>`), or you open a new worktree session on it. The
+   design is committed where the code will be.
+3. Type `/egm:egm-brainstorm <the idea>` with the artifact line under it, as the agent gives it.
    After a prototype, a third line points EGM at the prototype's summary.
-3. Type `/egm:egm-draft`. The draft stays in `.doodlebot/egm`, never on the feature branch. When
-   it is ready to read, the agent asks to commit it to the sibling branch `designs/<topic>` on
-   your fork with `doodlebot design-branch`, and gives you the link at that commit. Your own
-   checkout never switches branch.
-4. Type `/egm:egm-review <draft>`: EGM's staged review. Give it the Vortex files the design
+4. Type `/egm:egm-draft`. At its save step, keep EGM's default, `docs/designs/`: the design is
+   `docs/designs/<topic>.md` in your checkout. EGM's scratch files stay in `.doodlebot/egm`.
+5. Type `/egm:egm-review <design>`: EGM's staged review. Give it the Vortex files the design
    names.
-5. Type the `/egm:egm-review-loop` line the agent gives you. It is filled in with your design's
+6. Type the `/egm:egm-review-loop` line the agent gives you. It is filled in with your design's
    path, doodlebot's runtime reviewer and its standard, and the files the reviewer reads. The
    runtime reviewer (on Sonnet, read-only) checks that every acceptance criterion can be proved
    on a real Vortex, with a negative control, the content it needs and the build it runs on.
    The loop applies the fixes you agree to.
-6. **You approve.** Set the design's Status to Approved, or tell the agent to. The approved
-   revision is the `designs/<topic>` commit holding the text you approved. The agent never
-   writes an approval you have not given.
-7. Ask the agent to start the feature: `doodlebot source --branch feat/<topic>` cuts the work
-   branch from upstream, or open a new
-   worktree session on `feat/<topic>`. The agent implements there, following Vortex's own rules, and writes
+7. **You approve.** Set the design's Status to Approved, or tell the agent to. The agent then
+   asks to commit it on `feat/<topic>` as `docs(design): <topic>`. The agent never writes an
+   approval you have not given.
+8. Ask the agent to implement it. The agent implements on the same branch, following Vortex's own rules, and writes
    the tests that prove it in the same branch. A prototype's diff is ported, never shipped.
    `/doodlebot:try` shows it working.
-8. `/doodlebot:qa --design <draft>`: from a fresh profile, each acceptance criterion with its
+9. `/doodlebot:qa --design <design>`: from a fresh profile, each acceptance criterion with its
    negative control, and the QA catalogue entries the change touches.
-9. `/doodlebot:pr`: opens the pull request from your branch, with the design's Overview,
-   criteria, approval line and a link to the design at its approved commit on your fork.
+10. `/doodlebot:pr`: opens the pull request from your branch. The design travels in it, and
+    the description carries its Overview, criteria and approval line.
 
 ## Where the files go
 
-| Files                                           | Folder                                                                                                                           |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| EGM's briefs, drafts and stage reports (Vortex) | `.doodlebot/egm` in the checkout, kept out of commits; without that, `<workspace>/harness/.artifacts/egm/<checkout folder name>` |
-| A design for a change to Vortex                 | `docs/designs/<topic>.md` on the sibling branch `designs/<topic>` in your fork                                                   |
-| A design for a change to doodlebot              | `designs/<topic>.md` in the doodlebot repository, in `designs/SITEMAP.md`; EGM's files in `harness/.artifacts/egm`               |
+| Files                                   | Folder                                                                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| EGM's briefs and stage reports (Vortex) | `.doodlebot/egm` in the checkout, kept out of commits; without that, `<workspace>/harness/.artifacts/egm/<checkout folder name>` |
+| A design for a change to Vortex         | `docs/designs/<topic>.md` in your checkout, committed on the work branch and carried in the pull request                         |
+| A design for a change to doodlebot      | `designs/<topic>.md` in the doodlebot repository, in `designs/SITEMAP.md`; EGM's files in `harness/.artifacts/egm`               |
 
 ## What a design must contain
 

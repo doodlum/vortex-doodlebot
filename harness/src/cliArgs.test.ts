@@ -292,14 +292,8 @@ describe("path rules", () => {
     expect(parse(["gap", "close", "--wontfix", "g-1"]).positional).toEqual(["close", "g-1"]);
   });
 
-  it("resolves design-branch's --file against the caller's folder", () => {
-    expect(
-      parse(["design-branch", "zoom", "--file", ".doodlebot/egm/design_draft.md"]),
-    ).toMatchObject({
-      positional: ["zoom"],
-      flags: { file: at(".doodlebot/egm/design_draft.md") },
-    });
-    // pr-branch's --push is gone with it: a word after it is the flag's value now.
+  it("has no --push flag", () => {
+    // pr-branch's --push is gone: a word after it is the flag's value now.
     expect(BOOLEAN_FLAGS.has("push")).toBe(false);
   });
 

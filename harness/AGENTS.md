@@ -905,7 +905,7 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   the session's checkout; then `--release`, `--installed` or `--exe`, otherwise the installed
   Vortex or a registered release. A target flag puts its build in front of the checkout. No
   environment variable names a checkout; one left in a shell by an older kit is ignored.
-  - `build`, `source` (except `--clone`), `design-branch`, `push-branch` and `pr-preflight` need a checkout
+  - `build`, `source` (except `--clone`), `push-branch` and `pr-preflight` need a checkout
     (`--checkout`, `--dev-dir` or the session's); outside one they refuse with "Open Claude in a
     Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`)."
   - `up`, `bootstrap` and `setup` in an unbuilt checkout refuse with "This session's checkout
@@ -1056,12 +1056,10 @@ Doodlebot has no design command of its own.
   `designs/SITEMAP.md`; this version implements `designs/companion-simplified.md` and
   `designs/vortex-checkout.md`.
 
-- A Vortex design lives on the sibling branch `designs/<topic>` in the person's fork, as
-  `docs/designs/<topic>.md` committed `docs(design): <topic>` by `doodlebot design-branch`
-  (below), never on the feature branch. The approved revision is the commit the person
-  approved, and the PR links it; `pr-preflight` FAILs when a docs/designs file is in the PR's
-  diff or commits. (The plural `designs/` avoids the `design/<topic>` tags earlier versions
-  pushed to forks; those are left alone.)
+- A Vortex design is a project file, as EGM intends: EGM's draft step saves it as
+  `docs/designs/<topic>.md` in the checkout, and after the person's approval it is committed
+  `docs(design): <topic>` on the work branch, so it travels in the PR with the code. Only EGM's
+  scratch work goes in the excluded `.doodlebot/egm` (`plugins/doodlebot/resources/egm.md`).
 - The tests that prove the change go in the same Vortex branch
   (`plugins/doodlebot/resources/testing.md`), and `/doodlebot:qa --design <file>` checks each
   acceptance criterion with its negative control from a fresh profile.
@@ -1134,18 +1132,8 @@ receipt cannot certify a later commit. Verify the actual final commit for public
   first.
 - `doodlebot push-branch [--checkout <dir>]` (`prPush.ts`, `pushSessionBranch`) pushes the
   session's branch to `origin` with `-u`, only after the fork check (`checkPushRemote`). It
-  refuses a detached HEAD, a `proto/*` branch (a prototype is never shipped), a `designs/*`
-  branch and the default branch.
-- `doodlebot design-branch <topic> --file <draft> [--checkout <dir>] [--base <ref>]`
-  (`designBranch`) commits the draft as `docs/designs/<topic>.md` on `designs/<topic>`
-  (`docs(design): <topic>`) in a temporary worktree (`withTempWorktree`), so the session's
-  branch and `git status` never change. The branch continues from its local head, else
-  `origin/designs/<topic>`, else the merge-base of `HEAD` and `--base` (default
-  `upstream/<default branch>`); an unchanged draft makes no commit. The fork check runs before
-  anything is committed; then it pushes the branch and prints
-  `https://github.com/<fork>/blob/<sha>/docs/designs/<topic>.md`, the link the PR description
-  uses for the approved revision. It refuses a missing draft, a bad topic and running on
-  `designs/<topic>` itself.
+  refuses a detached HEAD, a `proto/*` branch (a prototype is never shipped) and the
+  default branch.
 - **The fork check** reads every push URL (`git remote get-url --push --all origin`, which
   `pushurl` and `pushInsteadOf` change) and refuses unless each is the fork it verified:
   `origin fetches from <fork> but pushes to <url>`.
@@ -1163,7 +1151,6 @@ receipt cannot certify a later commit. Verify the actual final commit for public
 | Dispatchers of reducers  | WARN: each changed reducer's action creator, its calls and type-string uses                                                                                              |
 | Revert check             | Branch failure or a reverted pass is FAIL; a reverted failure is INCONCLUSIVE until its intended assertion is inspected                                                  |
 | Measurements in comments | WARN for timing or size figures in added comments                                                                                                                        |
-| Design kept out          | FAIL when any `docs/designs/` file is in the diff or in a commit of the range (designs live on `designs/<topic>`)                                                        |
 | Branch                   | FAIL when the head is a `proto/*` branch, checked out or named with `--head`: a prototype is never shipped                                                               |
 | PR description           | With `--pr <n>`: FAIL on a non-Conventional or >72-char title, missing section, "Not run", no head sha                                                                   |
 

@@ -46,8 +46,8 @@ is not built fails with `This session's checkout <path> is not built: ...`, nami
 `doodlebot build --checkout <path>`. `doodlebot doctor` reports either as a failing `Vortex`
 check, and its `This checkout` line names the session's checkout.
 
-`build`, `source` (except `source --clone <dir>`), `design-branch`, `push-branch` and
-`pr-preflight` need a checkout. Outside one they refuse with
+`build`, `source` (except `source --clone <dir>`), `push-branch` and `pr-preflight` need a
+checkout. Outside one they refuse with
 `Open Claude in a Vortex checkout or worktree (or clone one with doodlebot source --clone <dir>).`
 
 `doodlebot doctor` reports the baseline for the flags you give it. With `--no-game` its
@@ -124,7 +124,6 @@ to one command:
 | `--release <version>`         | `test <suite>`            | Run the suite on that registered release; not passed on to the suite                                     |
 | `--stale-ok`                  | `up`, `bootstrap`, `test` | Start a source build even though its checkout changed since the build, or it was built in the other mode |
 | `--add-upstream`, `--exclude` | `source`                  | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` and `.claude/worktrees/` out of Git              |
-| `--file <draft>`              | `design-branch`           | The design draft to commit as `docs/designs/<topic>.md` on `designs/<topic>`                             |
 
 A path argument is one word to the shell, so quote a path that has spaces:
 `doodlebot install "C:\Users\Nexus Two\probe.zip"`. `install` refuses more than one path

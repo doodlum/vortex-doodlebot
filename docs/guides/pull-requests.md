@@ -27,8 +27,8 @@ in the review pane.
    ```
 
 2. The agent checks your branch. It refuses a `proto/*` branch. The design, if there is one, is
-   not on this branch: it lives on its own branch, `designs/<topic>`, in your fork
-   ([Design with EGM](../concepts/design-first.md#designs-live-on-a-sibling-branch)).
+   committed on this branch and goes into the pull request
+   ([Design with EGM](../concepts/design-first.md#designs-travel-with-the-code)).
 
 3. The agent runs `doodlebot pr-preflight` on your branch. It compares the committed branch with
    its merge base and reports PASS, WARN, FAIL or SKIP for each check:
@@ -41,7 +41,6 @@ in the review pane.
    | Dispatchers of reducers  | Each changed reducer's action creator and its uses                          |
    | Revert check             | Whether the tests fail with the fix reverted, which shows they test the fix |
    | Measurements in comments | Timing or size figures in added comments                                    |
-   | Design kept out          | FAIL when a `docs/designs/` file is in the diff or its commits              |
    | Branch                   | FAIL on a `proto/*` prototype branch                                        |
 
    The agent gives each meaningful warning a disposition.
@@ -51,8 +50,8 @@ in the review pane.
    - **Problem**: the trigger, the user-visible result, the affected scope and the cause, with
      the issue link.
    - **Change**: the resulting behavior and the relevant decisions. With a design, its Overview
-     and acceptance criteria verbatim, and "Design approved by <owner> on <date>", with a link
-     to the design at the `designs/<topic>` commit you approved; "None" for a bug fix.
+     and acceptance criteria verbatim, and "Design approved by <owner> on <date>", naming the
+     design file the pull request carries; "None" for a bug fix.
    - **Behaviour changes**: what users and extension authors can observe.
    - **Evidence**: revision and platform, the before and after run reports, the regression
      test and its control, each acceptance criterion with its negative control (with a design),

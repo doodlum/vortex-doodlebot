@@ -8,8 +8,6 @@ import {
   type GitRunner,
   type RunResult,
   checkPushRemote,
-  designBranch,
-  designBranchCommand,
   parseGitHubRepo,
   pushSessionBranch,
 } from "./prPush";
@@ -130,7 +128,7 @@ describe("the push check", () => {
 });
 
 // ---------------------------------------------------------------------------
-// designs/<topic> in a real temporary repository, from a worktree session
+// push-branch in a real temporary repository, from a worktree session
 // ---------------------------------------------------------------------------
 
 const dirs: string[] = [];
@@ -158,23 +156,21 @@ const tempDir = (prefix: string): string => {
 
 /**
  * A clone whose session is a worktree on `feat/zoom`, one commit past `master`, with an
- * uncommitted edit and an untracked file, and a draft outside it.
+ * uncommitted edit and an untracked file.
  */
-function worktreeSession(): { main: string; session: string; draft: string; base: string } {
-  const main = tempDir("design-branch-");
+function worktreeSession(): { main: string; session: string } {
+  const main = tempDir("push-branch-");
   run(main, "init", "-q", "-b", "master");
   run(main, "config", "user.email", "t@example.test");
   run(main, "config", "user.name", "T");
   run(main, "config", "core.autocrlf", "false");
-  const base = commit(main, "base", { "src/a.ts": "export const a = 1;\n" });
-  const session = path.join(tempDir("design-session-"), "wt");
+  commit(main, "base", { "src/a.ts": "export const a = 1;\n" });
+  const session = path.join(tempDir("push-session-"), "wt");
   run(main, "worktree", "add", "-q", "-b", "feat/zoom", session, "master");
   commit(session, "feat: zoom", { "src/a.ts": "export const a = 2;\n" });
   fs.writeFileSync(path.join(session, "src/a.ts"), "export const a = 3;\n");
   fs.writeFileSync(path.join(session, "notes.txt"), "untracked\n");
-  const draft = path.join(tempDir("design-draft-"), "design_draft.md");
-  fs.writeFileSync(draft, "# Zoom\n\nDraft 1\n");
-  return { main, session, draft, base };
+  return { main, session };
 }
 
 /** Real git, except that pushes are recorded and origin is the person's fork. */
@@ -192,7 +188,7 @@ function forkGit(
     // The fork has no copy of the branch unless a test sets refs/remotes/origin/... itself.
     if (args[0] === "fetch") {
       options.fetches?.push(args);
-      return { code: 128, stdout: "", stderr: "fatal: couldn't find remote ref designs/zoom" };
+      return { code: 128, stdout: "", stderr: "fatal: couldn't find remote ref feat/zoom" };
     }
     if (args.join(" ") === "remote get-url origin")
       return ok("https://github.com/doodlum/Vortex\n");
@@ -204,165 +200,6 @@ function forkGit(
   };
 }
 
-describe("design-branch", { timeout: 60_000 }, () => {
-  it("commits the draft on designs/<topic> from the upstream base, without touching the session", () => {
-    const { main, session, draft, base } = worktreeSession();
-    const status = run(session, "status", "--porcelain");
-    const head = run(session, "rev-parse", "HEAD");
-    const pushes: string[][] = [];
-    const { gh } = ghFor(fork("doodlum"));
-    const result = designBranch(session, "zoom", draft, {
-      base: "master",
-      git: forkGit(pushes),
-      gh,
-    });
-
-    expect(result).toMatchObject({
-      branch: "designs/zoom",
-      committed: true,
-      fork: "doodlum/Vortex",
-    });
-    expect(result.link).toBe(
-      `https://github.com/doodlum/Vortex/blob/${result.commit}/docs/designs/zoom.md`,
-    );
-    expect(run(main, "show", "designs/zoom:docs/designs/zoom.md")).toBe("# Zoom\n\nDraft 1");
-    expect(run(main, "log", "-1", "--format=%s", "designs/zoom")).toBe("docs(design): zoom");
-    // Built on the session branch's upstream base, so it holds only the design.
-    expect(run(main, "rev-parse", "designs/zoom~1")).toBe(base);
-    expect(run(main, "diff", "--name-only", base, "designs/zoom")).toBe("docs/designs/zoom.md");
-    expect(pushes).toEqual([["push", "origin", `${result.commit}:refs/heads/designs/zoom`]]);
-
-    // The session's branch, head and status are unchanged, and no worktree is left behind.
-    expect(run(session, "symbolic-ref", "--short", "HEAD")).toBe("feat/zoom");
-    expect(run(session, "rev-parse", "HEAD")).toBe(head);
-    expect(run(session, "status", "--porcelain")).toBe(status);
-    expect(run(main, "worktree", "list").split("\n")).toHaveLength(2);
-    expect(run(main, "diff", "--name-only", "master", "feat/zoom")).toBe("src/a.ts");
-  });
-
-  it("adds each revision on top of the last, and commits nothing for an unchanged draft", () => {
-    const { main, session, draft } = worktreeSession();
-    const pushes: string[][] = [];
-    const deps = { base: "master", git: forkGit(pushes), gh: ghFor(fork("doodlum")).gh };
-    const first = designBranch(session, "zoom", draft, deps);
-    fs.writeFileSync(draft, "# Zoom\n\nDraft 2, approved\n");
-    const second = designBranch(session, "zoom", draft, deps);
-    expect(second).toMatchObject({ committed: true, from: "designs/zoom" });
-    expect(run(main, "rev-parse", "designs/zoom~1")).toBe(first.commit);
-    const again = designBranch(session, "zoom", draft, deps);
-    expect(again).toMatchObject({ committed: false, commit: second.commit });
-    // Each revision's link names its own commit, so the approved one stays readable.
-    expect(first.link).not.toBe(second.link);
-  });
-
-  it("refuses before committing anything when origin is not the person's fork", () => {
-    const { main, session, draft } = worktreeSession();
-    const pushes: string[][] = [];
-    expect(() =>
-      designBranch(session, "zoom", draft, {
-        base: "master",
-        git: forkGit(pushes),
-        gh: ghFor(fork("someone")).gh,
-        configuredRepo: "",
-      }),
-    ).toThrow(/not by doodlum/);
-    expect(pushes).toEqual([]);
-    expect(() => run(main, "rev-parse", "--verify", "--quiet", "designs/zoom")).toThrow();
-  });
-
-  it("refuses a missing draft, a bad topic, and running on designs/<topic> itself", () => {
-    const { main, session, draft } = worktreeSession();
-    const deps = { base: "master", git: forkGit([]), gh: ghFor(fork("doodlum")).gh };
-    expect(() => designBranch(session, "zoom", `${draft}.missing`, deps)).toThrow(/is not a file/);
-    expect(() => designBranch(session, "../zoom", draft, deps)).toThrow(/not a usable topic/);
-    run(main, "switch", "-q", "-c", "designs/zoom");
-    expect(() => designBranch(main, "zoom", draft, deps)).toThrow(/designs\/zoom is checked out/);
-    expect(() => designBranchCommand(["zoom"], {}, { checkout: session })).toThrow(
-      /--file <draft>/,
-    );
-  });
-
-  it("S4: fetches the fork first and builds on its newer revision", () => {
-    const { main, session, draft } = worktreeSession();
-    const fetches: string[][] = [];
-    const deps = { base: "master", git: forkGit([], { fetches }), gh: ghFor(fork("doodlum")).gh };
-    const first = designBranch(session, "zoom", draft, deps);
-    expect(fetches).toEqual([
-      ["fetch", "origin", "+refs/heads/designs/zoom:refs/remotes/origin/designs/zoom"],
-    ]);
-    // Another session pushed a revision on top of it.
-    const tree = run(main, "rev-parse", "designs/zoom^{tree}");
-    const theirs = run(main, "commit-tree", tree, "-p", first.commit, "-m", "their revision");
-    run(main, "update-ref", "refs/remotes/origin/designs/zoom", theirs);
-    fs.writeFileSync(draft, "# Zoom\n\nDraft 2\n");
-    const second = designBranch(session, "zoom", draft, deps);
-    expect(second.from).toBe("origin/designs/zoom");
-    expect(run(main, "rev-parse", "designs/zoom~1")).toBe(theirs);
-    // Diverged copies are refused.
-    const other = run(main, "commit-tree", tree, "-p", first.commit, "-m", "elsewhere");
-    run(main, "update-ref", "refs/remotes/origin/designs/zoom", other);
-    expect(() => designBranch(session, "zoom", draft, deps)).toThrow(/have diverged/);
-  });
-
-  it("S4: removes only its own temporary worktree, never pruning the others", () => {
-    const { session, draft } = worktreeSession();
-    const calls: string[] = [];
-    const inner = forkGit([]);
-    const git: GitRunner = (dir, args) => {
-      calls.push(args.join(" "));
-      return inner(dir, args);
-    };
-    designBranch(session, "zoom", draft, { base: "master", git, gh: ghFor(fork("doodlum")).gh });
-    expect(calls.some((call) => call.startsWith("worktree remove --force "))).toBe(true);
-    expect(calls.filter((call) => call.includes("prune"))).toEqual([]);
-  });
-
-  it("S4: refuses while another worktree has designs/<topic> checked out", () => {
-    const { main, session, draft } = worktreeSession();
-    const deps = { base: "master", git: forkGit([]), gh: ghFor(fork("doodlum")).gh };
-    designBranch(session, "zoom", draft, deps);
-    const holder = path.join(tempDir("design-holder-"), "wt");
-    run(main, "worktree", "add", "-q", holder, "designs/zoom");
-    const before = run(main, "rev-parse", "designs/zoom");
-    fs.writeFileSync(draft, "# Zoom\n\nDraft 2\n");
-    expect(() => designBranch(session, "zoom", draft, deps)).toThrow(
-      /designs\/zoom is checked out in /,
-    );
-    expect(run(main, "rev-parse", "designs/zoom")).toBe(before);
-  });
-
-  it("S4: never leaves the branch moved when the push fails", () => {
-    const { main, session, draft } = worktreeSession();
-    const ghDeps = { base: "master", gh: ghFor(fork("doodlum")).gh };
-    const first = designBranch(session, "zoom", draft, { ...ghDeps, git: forkGit([]) });
-    fs.writeFileSync(draft, "# Zoom\n\nDraft 2\n");
-    expect(() =>
-      designBranch(session, "zoom", draft, { ...ghDeps, git: forkGit([], { pushFails: true }) }),
-    ).toThrow(/Pushing designs\/zoom failed/);
-    expect(run(main, "rev-parse", "designs/zoom")).toBe(first.commit);
-    // And a branch that never existed is not created by a failed push.
-    expect(() =>
-      designBranch(session, "other", draft, { ...ghDeps, git: forkGit([], { pushFails: true }) }),
-    ).toThrow(/Pushing designs\/other failed/);
-    expect(() => run(main, "rev-parse", "--verify", "--quiet", "designs/other")).toThrow();
-  });
-
-  it("prints the branch, the fork and the link", () => {
-    const { session, draft } = worktreeSession();
-    const text = designBranchCommand(
-      ["zoom"],
-      { base: "master", file: draft },
-      { checkout: session, git: forkGit([]), gh: ghFor(fork("doodlum")).gh },
-    );
-    expect(text).toMatch(
-      /^designs\/zoom at [0-9a-f]{7} \(from master \(merge-base [0-9a-f]{7}\)\)$/m,
-    );
-    expect(text).toContain("pushed to doodlum/Vortex");
-    expect(text).toMatch(
-      /^design: https:\/\/github\.com\/doodlum\/Vortex\/blob\/[0-9a-f]{40}\/docs\/designs\/zoom\.md$/m,
-    );
-  });
-});
 describe("push-branch", { timeout: 60_000 }, () => {
   it("pushes the session's branch after the fork check, and refuses what is never shipped", () => {
     const { main, session } = worktreeSession();
@@ -381,8 +218,6 @@ describe("push-branch", { timeout: 60_000 }, () => {
     run(session, "stash", "-q", "-u");
     run(session, "switch", "-q", "-c", "proto/zoom");
     expect(() => pushSessionBranch(session, deps)).toThrow(/prototype is never shipped/);
-    run(session, "switch", "-q", "-c", "designs/zoom");
-    expect(() => pushSessionBranch(session, deps)).toThrow(/design-branch/);
     expect(() => pushSessionBranch(main, deps)).toThrow(/master is the default branch/);
     run(session, "switch", "-q", "--detach");
     expect(() => pushSessionBranch(session, deps)).toThrow(/HEAD is detached/);

@@ -161,8 +161,8 @@ function commandUses(markdown: string): { text: string; command: string; word?: 
 }
 
 const REPO_SEGMENT = /(^|\/)(harness|designs)\//;
-/** Vortex branch names that look like a repository path: a design's sibling branch. */
-const BRANCH_NAME = /^designs\/(?:<topic>|\*)$/;
+/** Vortex's own design folder, where EGM saves a Vortex design: not a doodlebot path. */
+const VORTEX_DESIGNS = /^(?:<checkout>\/)?docs\/designs\//;
 
 /**
  * Code tokens holding a repository path (a `harness/` or `designs/` segment)
@@ -187,7 +187,7 @@ function pathTokenViolations(markdown: string): string[] {
       token = token.replace(/\\/g, "/");
       if (
         REPO_SEGMENT.test(token) &&
-        !BRANCH_NAME.test(token) &&
+        !VORTEX_DESIGNS.test(token) &&
         !token.startsWith("<workspace>/") &&
         !token.startsWith("${CLAUDE_PLUGIN_ROOT}/")
       )
@@ -549,9 +549,9 @@ describe("skills", () => {
       "Open the pull request in your fork (<fork>), or against Nexus-Mods/Vortex?",
     );
     expect(flat).toContain("`bind_pr`");
-    // The design is linked at its approved commit on designs/<topic>, never carried.
-    expect(flat).toContain("Design approved by <owner> on <date>");
-    expect(flat).toContain("<fork>/blob/<sha>/docs/designs/<topic>.md");
+    // The approved design travels in the pull request, as EGM intends.
+    expect(flat).toContain("Design approved by <owner> on <date>: `docs/designs/<topic>.md`");
+    expect(text).not.toContain("design-branch");
     expect(flat).toContain("**A `proto/*` branch is refused**");
     expect(text).not.toMatch(/pr-branch|(?<!\/)pr\/<topic>|design\/<topic>/);
   });
@@ -768,8 +768,10 @@ describe("workspace paths in plugin skills and agents", () => {
     expect(pathTokenViolations("`doodlebot test core harness/src/tests/a.spec.ts`")).toEqual([]);
     expect(pathTokenViolations("`doodlebot up harness/src/tests/a.spec.ts`")).toHaveLength(1);
     expect(pathTokenViolations("See harness/AGENTS.md in prose.")).toEqual([]);
-    // A design's sibling branch is a Vortex branch name, not a doodlebot path.
-    expect(pathTokenViolations("`designs/<topic>` and `designs/*`")).toEqual([]);
+    // A Vortex design's file is in the Vortex checkout, not a doodlebot path.
+    expect(
+      pathTokenViolations("`docs/designs/<topic>.md` and `<checkout>/docs/designs/x.md`"),
+    ).toEqual([]);
     expect(pathTokenViolations("`designs/x.md`")).toHaveLength(1);
   });
 
