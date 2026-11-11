@@ -7,3 +7,5 @@ Approved and in-progress designs for changes to doodlebot itself. Vortex designs
   Superseded by the simplified companion.
 - [Doodlebot, simplified: a Vortex companion built around real use cases](companion-simplified.md):
   use cases approved by the owner, implemented, target `doodlebot`.
+- [Doodlebot in your Vortex checkout, and /doodlebot:prototype](vortex-checkout.md): draft,
+  target `doodlebot`.
