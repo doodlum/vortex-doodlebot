@@ -19,8 +19,8 @@ Read the [Overview](../index.md) for what doodlebot does.
                              v
           node <workspace>/bin/doodlebot.cjs
                              v
-   workspace (clone of the doodlebot repository): harness, built extension, caches, .vortex-src
-                             v
+   workspace (clone of the doodlebot repository): harness, built extension, caches, releases
+                             v         (Vortex source: the Vortex checkout your session is in)
        one isolated test Vortex per machine (record: ~/.doodlebot/instance.json)
 ```
 
@@ -31,8 +31,10 @@ Read the [Overview](../index.md) for what doodlebot does.
    which Claude Code uses on Windows. Both run `<workspace>/bin/doodlebot.cjs` with Node.js.
 3. **The workspace** is a clone of the doodlebot repository with its dependencies installed. It
    holds the harness that launches and drives Vortex, the built doodlebot extension, and the
-   caches, profiles, saved logins, reports and the Vortex source clone. The plugins and the
-   workspace are separate, so a plugin update never replaces code under a running Vortex.
+   caches, profiles, saved logins and reports. Vortex's own source is not in the workspace: work
+   on Vortex's code happens in the Vortex checkout (or worktree) you open your session in. The
+   plugins and the workspace are separate, so a plugin update never replaces code under a
+   running Vortex.
 4. **The test Vortex** is your released Vortex, or a source build, started with its own private
    profile. Doodlebot installs its extension into that profile only. Your own Vortex profile is
    not touched.

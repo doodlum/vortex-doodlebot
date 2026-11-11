@@ -47,9 +47,9 @@ describe("the command list", () => {
     for (const name of ["version", "test", "link", "fixture", "log", "perf-summary", "update"])
       expect(names).toContain(name);
     expect(findCommand("evidence")?.subcommands).toEqual(["identity", "run", "runtime"]);
-    for (const removed of ["design", "readiness", "vortex-e2e", "login-import"])
+    for (const removed of ["design", "readiness", "vortex-e2e", "login-import", "pr-branch"])
       expect(findCommand(removed)).toBeUndefined();
-    expect(findCommand("fixture")?.subcommands).toEqual(["mod"]);
+    expect(findCommand("fixture")?.subcommands).toEqual(["mod", "fomod"]);
     expect(findCommand("knowledge")?.subcommands).toEqual([
       "add",
       "search",
@@ -60,7 +60,8 @@ describe("the command list", () => {
       "path",
     ]);
     expect(findCommand("gap")?.subcommands).toEqual(["add", "list", "close", "share"]);
-    expect(findCommand("pr-branch")?.subcommands).toBeUndefined();
+    expect(findCommand("design-branch")).toEqual({ name: "design-branch" });
+    expect(findCommand("push-branch")).toEqual({ name: "push-branch" });
     expect(findCommand("game")?.subcommands).toEqual(["copy", "register", "restore", "folder"]);
     expect(findCommand("release")?.subcommands).toEqual(["get", "list"]);
     expect(findCommand("qa")?.subcommands).toEqual(["list", "check"]);

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -63,14 +64,15 @@ beforeEach(() => {
       local: path.join(root, "knowledge.md"),
       shared: path.join(root, "shared-knowledge.md"),
     },
-    settingsFiles: [settings],
+    userSettingsFile: settings,
     installedPluginsFile: path.join(root, "installed_plugins.json"),
     source: () => ({
-      dir: path.join(root, ".vortex-src"),
+      dir: path.join(root, "vortex"),
       remotes: { upstream: "https://github.com/Nexus-Mods/Vortex.git" },
       branch: "master",
       built: false,
     }),
+    oldClone: path.join(root, "old-clone"),
     artifactDir: path.join(root, "artifacts"),
     cacheDir: path.join(root, "cache"),
     releasesDir: path.join(root, "releases"),
@@ -99,11 +101,14 @@ describe("doodlebot check", () => {
       next: "/doodlebot:setup --login",
     });
     expect(row(rows, "EGM (Elephant-Goldfish Model)")?.status).toBe("ready");
-    expect(row(rows, ".vortex-src")).toMatchObject({
+    expect(row(rows, "this checkout")).toMatchObject({
       status: "missing",
-      next: `doodlebot build --checkout ${path.join(root, ".vortex-src")}`,
+      next: `doodlebot build --checkout ${path.join(root, "vortex")}`,
     });
-    expect(row(rows, ".vortex-src")?.detail).toMatch(/upstream https:.*no fork as origin.*master/);
+    expect(row(rows, "this checkout")?.detail).toMatch(
+      /upstream https:.*no fork as origin.*master/,
+    );
+    expect(row(rows, "old Vortex clone")).toBeUndefined();
     expect(row(rows, "sandbox")?.status).toBe("ready");
     expect(row(rows, "copy folder")).toMatchObject({
       status: "missing",
@@ -181,21 +186,77 @@ describe("doodlebot check", () => {
   });
 
   it("reports EGM missing with the install step when no settings file enables it", async () => {
-    deps.settingsFiles = [path.join(root, "absent.json")];
+    deps.userSettingsFile = path.join(root, "absent.json");
     expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
       status: "missing",
-      next: expect.stringContaining("/plugin install egm@egm"),
+      next: expect.stringContaining("install EGM at user scope"),
     });
   });
 
-  it("suggests cloning when there is no .vortex-src, and prints a table or JSON", async () => {
+  it("U4: counts only user scope for EGM; a project-scope install alone is missing", async () => {
+    deps.userSettingsFile = path.join(root, "absent.json");
+    const install = (scope: string) =>
+      fs.writeFileSync(
+        deps.installedPluginsFile!,
+        JSON.stringify({
+          version: 2,
+          plugins: {
+            "egm@egm": [{ scope, ...(scope === "project" ? { projectPath: root } : {}) }],
+          },
+        }),
+      );
+    install("project");
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "missing",
+      detail: expect.stringContaining("installed only at project scope"),
+      next: expect.stringContaining("install EGM at user scope"),
+    });
+    install("user");
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "ready",
+      detail: "installed at user scope",
+    });
+  });
+
+  it("outside a Vortex checkout, names the step that makes one, and prints a table or JSON", async () => {
     deps.source = () => undefined;
     const text = await checkCommand({}, deps);
-    expect(text).toContain("[MISSING ] .vortex-src: not cloned");
-    expect(text).toContain("next: doodlebot source");
+    expect(text).toContain("[advisory] this checkout: this session is not in a Vortex checkout");
+    expect(text).toContain(
+      "next: Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
+    );
     expect(text).toMatch(/item\(s\) missing or blocked/);
     const json = JSON.parse(await checkCommand({ json: true }, deps)) as { rows: CheckRow[] };
-    expect(row(json.rows, ".vortex-src")?.next).toBe("doodlebot source");
+    expect(row(json.rows, "this checkout")?.status).toBe("advisory");
     expect(formatCheck([])).toContain("Nothing missing.");
+  });
+
+  it("S1: reports an old Vortex clone with its worktrees and no delete step", async () => {
+    const clone = deps.oldClone!;
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
+    fs.mkdirSync(clone);
+    git(clone, "init", "-q", "-b", "master");
+    git(
+      clone,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "init",
+    );
+    for (const name of ["wt-a", "wt-b"])
+      git(clone, "worktree", "add", "-q", "-b", name, path.join(root, name));
+    expect(row(await checkRows(deps), "old Vortex clone")).toEqual({
+      area: "vortex source",
+      item: "old Vortex clone",
+      status: "advisory",
+      detail: `Your Vortex clone from an older doodlebot (${clone}, 2 worktrees): open Claude in it or one of its worktrees`,
+    });
+    expect(await checkCommand({}, deps)).not.toMatch(/doodlebot clean/);
   });
 });

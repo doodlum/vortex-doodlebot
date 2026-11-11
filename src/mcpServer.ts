@@ -1346,18 +1346,18 @@ function registerWriteTools(server: McpServer, api: IExtensionApi): void {
 // ---------------------------------------------------------------------------
 
 // Shared target shape for every tool that acts on one element. `ref` is the
-// normal path (it comes straight out of ui_snapshot and survives virtualised
-// list recycling via the generation check); `selector` is the escape hatch for
+// normal path (it comes straight out of ui_snapshot and is refused, not
+// redirected, when a virtualised list recycles its element); `selector` is the escape hatch for
 // something a snapshot pruned, and for stable hooks like [data-testid].
 const uiTargetSchema = {
   ref: z
     .string()
     .optional()
     .describe(
-      "Element ref from the most recent ui_snapshot (e.g. 'e42'). Refs are invalidated by the " +
-        "next ui_snapshot — a stale one throws rather than silently resolving to a different " +
-        "element, which matters because Vortex's mod/plugin tables are virtualised and recycle " +
-        "rows as they scroll.",
+      "Element ref from a ui_snapshot (e.g. 'e42-1a2b3c4d'). A ref stays valid, across later " +
+        "snapshots, while its element is connected and still shows the same role and accessible " +
+        "name in the same table row; otherwise it throws rather than silently resolving to a different element, which " +
+        "matters because Vortex's mod/plugin tables are virtualised and recycle rows in place.",
     ),
   selector: z
     .string()
@@ -1389,7 +1389,12 @@ function registerUiReadTools(server: McpServer, api: IExtensionApi): void {
         "describes controls rather than React's div soup. Hidden elements are excluded by " +
         "default. Any open modal's text is ALSO surfaced at the top level as `activeDialogs` — " +
         "check it first when a click appears to do nothing, since a modal is the most common " +
-        "reason. Every call allocates a new ref generation and invalidates the previous one.",
+        "reason. A ref stays valid across later snapshots (including concurrent ones, such as " +
+        "install's dialog watchers) while its element is connected and shows the same role and " +
+        "accessible name in the same row (a row's switch or '...' button is told apart by its " +
+        "row). A recycled element is refused with 'The element for ref <r> now shows " +
+        "something else; take a new snapshot', and a snapshot gives it a new ref; ref strings " +
+        "are never reused.",
       inputSchema: z.object({
         selector: z
           .string()
@@ -1469,8 +1474,10 @@ function registerUiReadTools(server: McpServer, api: IExtensionApi): void {
     {
       description:
         "Report the Electron window's outer size, the renderer's inner (CSS px) size, and the " +
-        "device pixel ratio. The two sizes differ by the window chrome, so compare layout " +
-        "findings against `inner`, not `window`.",
+        "device pixel ratio, the renderer's zoom factor (null when Electron's webFrame is " +
+        "unavailable) and `keptZoomFactor`, the person's own zoom while ui_set_viewport " +
+        "emulates a narrow width (null otherwise). The two sizes differ by the window chrome, " +
+        "so compare layout findings against `inner`, not `window`.",
       inputSchema: z.object({}),
     },
     async () => ({ content: [jsonText(await ui.getViewport())] }),
@@ -1693,17 +1700,36 @@ function registerUiWriteTools(server: McpServer, api: IExtensionApi): void {
         "Resize the real Electron window to test responsive layout. Unmaximises first, because " +
         "setSize on a maximised window is silently ignored on Windows — without that, every " +
         "size in a sweep reports the same maximised dimensions and the results are meaningless. " +
-        "Returns both the requested and the ACTUAL resulting size: the OS enforces the window's " +
-        "minimum, so a request below it is clamped, and comparing the two is how you tell. " +
-        "This moves the window of whoever is sitting in front of Vortex.",
+        "Returns { requested, actual, zoomFactor, cssWidth, emulated, reason? }. A width below " +
+        "the window's minimum (Vortex's is 1024 px) is reached the way users reach it, with the " +
+        "renderer's zoom: the window stays at its minimum and the zoom factor makes the CSS " +
+        "viewport (`cssWidth`) the requested width, so `emulated` is true and screenshots show " +
+        "the narrow layout at a higher devicePixelRatio. The person's own zoom is kept and " +
+        "restored by any later call at or above the minimum, and by `reset: true`. When this " +
+        "Vortex doesn't expose Electron's webFrame, `emulated` is false with a `reason`: report " +
+        "that width as not tested. This moves the window of whoever is sitting in front of Vortex.",
       inputSchema: z.object({
-        width: z.number().int().describe("Target outer window width in px."),
-        height: z.number().int().describe("Target outer window height in px."),
+        width: z
+          .number()
+          .int()
+          .optional()
+          .describe("Target outer window width in px. Defaults to the current width."),
+        height: z
+          .number()
+          .int()
+          .optional()
+          .describe("Target outer window height in px. Defaults to the current height."),
+        reset: z
+          .boolean()
+          .optional()
+          .describe("Restore the person's own zoom factor; never emulates a narrow width."),
       }),
     },
-    async ({ width, height }) => ({
-      content: [jsonText(await ui.setViewport({ width, height }))],
-    }),
+    async ({ width, height, reset }) => {
+      const current = (await ui.getViewport()).window;
+      const viewport = { width: width ?? current.width, height: height ?? current.height };
+      return { content: [jsonText(await ui.setViewport(viewport, { reset }))] };
+    },
   );
 
   server.registerTool(

@@ -10,9 +10,9 @@ End to end: an issue report, a branch in the Vortex checkout, the fix, a regress
 the Vortex branch** (a Vortex unit or e2e test that goes in the PR), the revert control, the
 person's reproduction on the fix, and then the offer of `/doodlebot:pr`. A bug fix needs no
 design unless the person asks for one; features and refactors start with EGM, whose `/egm:*`
-commands only the person can type (they have `disable-model-invocation: true`): tell them to
-type `/egm:egm-brainstorm`, and give them the filled-in `/egm:egm-review-loop` line from
-`<workspace>/AGENTS.md` when the design reaches the runtime review.
+commands only the person can type (they have `disable-model-invocation: true`). Follow
+`${CLAUDE_PLUGIN_ROOT}/resources/egm.md`: it gives the walk for a Vortex session and the
+filled-in lines to hand the person, from `/egm:egm-brainstorm` to the runtime review.
 
 ## Before you begin
 
@@ -34,7 +34,10 @@ type `/egm:egm-brainstorm`, and give them the filled-in `/egm:egm-review-loop` l
 Commands that launch Vortex or run long run in the background with a log, as
 `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md` describes under "Commands that block". Only one
 test Vortex runs at a time; stop this session's with `doodlebot down` before building or
-changing the checkout, and never stop one another session started.
+changing the checkout, and never stop one another session started. It is this session's only
+by setup's ownership rule (`${CLAUDE_PLUGIN_ROOT}/skills/setup/SKILL.md`, "A running test
+Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session launched and its
+`startedAt` is after this session's own launch.
 
 ## Steps
 
@@ -43,11 +46,21 @@ changing the checkout, and never stop one another session started.
    (`${CLAUDE_PLUGIN_ROOT}/skills/investigate/SKILL.md`). Continue only when it says
    **reproduced**, with a cause; otherwise report it and stop: a fix for an unreproduced bug is
    a guess.
-2. **Source and branch.** The person's checkout (`--dev-dir <checkout>`, `--checkout <checkout>`)
-   or `<workspace>/.vortex-src` (`/doodlebot:source`). `<checkout>` below is whichever. Cut the
-   branch from upstream: `doodlebot source --no-build --branch fix-<topic>` for the managed
-   checkout, or `git -C <checkout> switch --no-track -c fix-<topic> upstream/master`. Never
-   work on `master`.
+2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`;
+   `/doodlebot:source` prepares it), or one the person names with `--dev-dir <checkout>`.
+   Outside a checkout, ask the person to open Claude in one (or clone one with
+   `doodlebot source --clone <dir>`) and stop. First `git -C <checkout> status --porcelain`
+   must print nothing: cutting a branch carries uncommitted changes onto it, so with output,
+   say what it printed and ask the person to commit or stash it, and stop. Then cut the branch
+   from upstream: `doodlebot source --no-build --branch fix-<topic>`. Never work on `master`.
+   - A desktop worktree session starts on a branch the app named (`claude/...`), which the cut
+     leaves behind, unused. Say so. When that branch has no commits of its own
+     (`git -C <checkout> rev-list --count upstream/<default>..HEAD` prints `0`, with `<default>`
+     from `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` without its
+     `upstream/` prefix), offer instead to
+     rename it, `git -C <checkout> branch -m fix-<topic>`, after `git -C <checkout> fetch
+upstream` and only when it already sits at `upstream/<default>`; run it only on the
+     person's yes.
 3. **The control run (before).** Build the branch's base with
    `doodlebot build --checkout <checkout>` and repeat the reproduction with `/doodlebot:try`'s
    report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This

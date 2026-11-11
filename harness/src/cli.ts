@@ -17,8 +17,13 @@ import { parseArgs, type ParsedArgs } from "./cliArgs";
 import {
   ConfigError,
   REPO_ROOT,
+  SUITE_CHECKOUT_ENV,
+  TARGET_EXE_ENV,
   loadConfig,
+  requireCheckout,
+  resolveTarget,
   resolveTargetSafely,
+  vortexCheckoutOf,
   type ConfigOverrides,
   type HarnessConfig,
 } from "./config";
@@ -74,30 +79,36 @@ import { settlePendingRestores } from "./userFolders";
 import { waitForCollectionCompletion } from "./collectionCompletion";
 import {
   NO_FORK_NOTE,
-  buildVortexSource,
+  cloneVortex,
   commandEnv,
-  cutWorkBranch,
   detectGitHubUser,
-  ensureVortexSource,
-  hasVortexSource,
+  formatPrepared,
+  prepareCheckout,
   resolveVortexRepo,
-  vortexSourceDir,
-  type ForkInfo,
 } from "./source";
+import { sourceBuildIsCurrent } from "./productionMode";
 import { gapCommand } from "./gapCommand";
-import { prBranchCommand } from "./prPush";
+import { IssuesDisabledError } from "./share";
+import { designBranchCommand, pushSessionBranch } from "./prPush";
+
+/** Commands that launch Vortex: an unbuilt session checkout refuses instead of falling back. */
+const LAUNCHES = new Set(["up", "bootstrap", "setup"]);
 
 /**
- * The configuration the flags select. An explicit `--dev-dir` that is not a built checkout
- * throws its ConfigError, except for `doctor`, which reports it as its failing Vortex check
- * (`targetError`) against an empty installed target.
+ * The configuration the flags select. Without a target flag the session's checkout (the Vortex
+ * checkout holding the caller's folder) comes first. An explicit `--dev-dir` that is not a built
+ * checkout throws its ConfigError, as does an unbuilt session checkout for a launch, except for
+ * `doctor`, which reports it as its failing Vortex check (`targetError`) against an empty
+ * installed target.
  */
 function configFrom(
   flags: ParsedArgs["flags"],
   command: string,
-): { config: HarnessConfig; targetError?: string } {
+): { config: HarnessConfig; targetError?: string; sessionCheckout?: string | null } {
   const overrides: ConfigOverrides = {};
   let targetError: string | undefined;
+  /** The session's checkout when probed: null for none, undefined when a flag named the target. */
+  let sessionCheckout: string | null | undefined;
   if (typeof flags.game === "string") overrides.gameId = flags.game;
   if (typeof flags["game-path"] === "string") overrides.gamePath = flags["game-path"];
   const devDir = typeof flags["dev-dir"] === "string" ? flags["dev-dir"] : undefined;
@@ -120,6 +131,21 @@ function configFrom(
       targetError = error.message;
       overrides.target = { kind: "installed", executable: "", args: [], appName: "Vortex" };
     }
+  } else {
+    // The session's checkout, probed once (doctor reports it as well).
+    sessionCheckout = vortexCheckoutOf(callerCwd()) ?? null;
+    try {
+      overrides.target = resolveTarget({ cwd: callerCwd(), checkout: sessionCheckout });
+    } catch (error) {
+      if (!(error instanceof ConfigError)) throw error;
+      // A launch from an unbuilt session checkout refuses with the build command, rather than
+      // quietly starting the installed Vortex instead; doctor reports it as its Vortex check. A
+      // command that launches nothing talks to the running instance, so an unbuilt checkout is
+      // not its concern: it gets the empty installed target (loadConfig would refuse it).
+      if (LAUNCHES.has(command)) throw error;
+      if (command === "doctor" && sessionCheckout !== null) targetError = error.message;
+      overrides.target = { kind: "installed", executable: "", args: [], appName: "Vortex" };
+    }
   }
   if (typeof flags.port === "string") overrides.mcpPort = Number(flags.port);
   if (typeof flags["cdp-port"] === "string") overrides.cdpPort = Number(flags["cdp-port"]);
@@ -131,8 +157,11 @@ function configFrom(
     throw new ConfigError("Choose one of --sandbox and --bethesda-sandbox.");
   }
   const keepKey = flags["with-api-key"] === true;
-  const result = (chosen: HarnessConfig) =>
-    targetError === undefined ? { config: chosen } : { config: chosen, targetError };
+  const result = (chosen: HarnessConfig) => ({
+    config: chosen,
+    ...(targetError === undefined ? {} : { targetError }),
+    ...(sessionCheckout === undefined ? {} : { sessionCheckout }),
+  });
   if (flags["bethesda-sandbox"] === true) {
     return result(localOnlyConfig(bethesdaSandboxConfig(config), keepKey));
   }
@@ -150,8 +179,8 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
 
 const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot plugin, whose eight commands
-(/doodlebot:setup, source, try, investigate, fix, qa, measure and pr) run these.
+Used from Claude Code or Codex through the doodlebot plugin, whose nine commands
+(/doodlebot:setup, source, try, prototype, investigate, fix, qa, measure and pr) run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
@@ -172,15 +201,20 @@ Initial account setup (only for Nexus collections)
 Instance lifecycle
   doctor                 Report prerequisites and actionable fixes
   check [--json]         The read-only status table /doodlebot:setup --check prints: the
-                         workspace, doctor, EGM, .vortex-src, the inventory, the login,
-                         the copy folder, pending restores, open kit gaps, local lessons
-                         KNOWLEDGE.md now holds, and disk use (warns below 10 GB free)
+                         workspace, doctor, EGM, this session's Vortex checkout, the
+                         inventory, the login, the copy folder, pending restores, open kit
+                         gaps, local lessons KNOWLEDGE.md now holds, and disk use (warns
+                         below 10 GB free); a Vortex clone an older doodlebot kept in the
+                         workspace is reported with its worktrees, never deleted
   up                     Start/restart the matching working profile
     --fresh              Reset working state from its baseline; reuse current OAuth
     --no-game            Global UI without managing a game
     --rebuild-snapshot   Rebuild baseline with current OAuth cache
     --rebuild-extension  Force extension build
-  bootstrap              Build/reset baseline and launch (--no-game supported)
+    --stale-ok           Launch a source build whose build record no longer matches its
+                         checkout, and say so (otherwise refused, naming a changed file);
+                         a build with no record is launched with a warning
+  bootstrap              Build/reset baseline and launch (--no-game, --stale-ok supported)
   down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
                          then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
@@ -210,26 +244,39 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          List what disk use to free (default 30 days): binaries in old
                          run, QA and benchmark folders (each report.md and files under
                          1 MB stay), unused baselines and caches, releases content.json
-                         no longer names; deletes only with --yes. Never touches game
-                         copies, the login, pending restores or the running instance
-  source                 Clone your fork (origin) and Nexus-Mods/Vortex (upstream) to
-                         .vortex-src and build it; without a fork, clone upstream alone
-                         (enough to build and test; pushing needs a fork)
-    --update             Fetch every remote of an existing clone (adds a missing upstream)
+                         no longer names, and the Vortex clone older kits kept in the
+                         workspace (no longer used); deletes only with --yes. Never
+                         touches game copies, the login, pending restores or the running
+                         instance
+  source                 Prepare this session's Vortex checkout (the one holding the folder
+                         you run doodlebot in, or --dev-dir): refuse an upstream remote
+                         that is not Nexus-Mods/Vortex (changing nothing), report origin,
+                         install with its pinned pnpm and build it; reports the rest
+    --add-upstream       Add Nexus-Mods/Vortex as upstream when it is missing
+    --exclude            Add .doodlebot/ to $(git rev-parse --git-common-dir)/info/exclude,
+                         which every worktree of the checkout shares
+    --clone <dir>        Clone your fork (origin) and Nexus-Mods/Vortex (upstream) into
+                         <dir>, outside the workspace; without a fork, clone upstream alone
+                         (enough to build and test; pushing needs a fork). No default
+    --update             Fetch every remote of the checkout
     --branch <name>      Cut a new work branch from upstream/<default branch>
-    --no-build           Clone only
-    --where              Print managed source path
-  pr-branch <topic>      Build pr/<topic> from the merge-base with upstream: every commit
-                         except docs(design) ones (a non-design commit touching
-                         docs/designs/ is refused)
-    --design-commit <sha>  The approved design commit: tag it design/<topic>; a tag already
-                         on an earlier approval is kept as design/<topic>-v<n>. Without it
-                         no tag is set or moved (never tag an unapproved revision)
-    --checkout <dir>     Vortex checkout (default: .vortex-src)
-    --base <ref>         Base (default: upstream/<default branch>)
-    --push               Push both to origin, only after gh shows origin is your own fork
-                         of Nexus-Mods/Vortex (or the VORTEX_AI_VORTEX_REPO fork you can
-                         push to)
+    --no-build           Skip install and build
+    --where              Print the session's checkout
+  design-branch <topic> --file <draft>
+                         Commit the draft as docs/designs/<topic>.md on the sibling branch
+                         designs/<topic> (docs(design): <topic>), in a temporary worktree:
+                         the session's branch and files never change. The branch continues
+                         from its own head, else the fork's, else the merge-base of HEAD and
+                         the base. Pushes it to origin only after gh shows origin is your own
+                         fork of Nexus-Mods/Vortex (or the VORTEX_AI_VORTEX_REPO fork you can
+                         push to), and prints <fork>/blob/<sha>/docs/designs/<topic>.md
+    --checkout <dir>     Vortex checkout (default: this session's)
+    --base <ref>         Base for a new branch (default: upstream/<default branch>)
+  push-branch            Push the session's branch (the one /doodlebot:pr opens the PR from)
+                         to origin with -u, after the same fork check. Refuses a detached
+                         HEAD, a proto/* prototype branch (never shipped), a designs/* branch
+                         and the default branch
+    --checkout <dir>     Vortex checkout (default: this session's)
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
   evidence identity --checkout <dir> --base <ref>
@@ -244,8 +291,9 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          Newly produced JSON reporter output, required for test counts
   pr-preflight           Mechanical checks on a Vortex branch before pushing: size,
                          callers outside the diff, revert check (negative control),
-                         measurements in comments, design kept out, PR description
-    --checkout <dir>     Vortex checkout (default: .vortex-src)
+                         measurements in comments, design kept out (no docs/designs/ file),
+                         branch (a proto/* branch fails), PR description
+    --checkout <dir>     Vortex checkout (default: this session's)
     --base <ref>         Base to diff from (default: upstream/master, via merge-base)
     --head <ref>         Compare this ref without checking it out (no revert check)
     --test <path>        Test file for the revert check; repeatable (default: the
@@ -258,10 +306,13 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --pr <number|url>    Also lint that PR's title and description (--repo as above)
     --json               Machine-readable report; exit code 1 on any failure
   build                  Build a Vortex checkout with its pinned pnpm:
-    --checkout <dir>     (default .vortex-src)
+    --checkout <dir>     (default: this session's checkout)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
+                         A successful build writes the build record,
+                         $(git rev-parse --git-dir)/doodlebot-build.json (HEAD, a hash of
+                         the working-tree changes, the mode), which up checks
 
 Driving a running instance
   tools --json           Discover every live tool and its full input schema
@@ -282,7 +333,8 @@ Driving a running instance
                          script's.
                          VORTEX_AI_KIT holds the import URL of harness/src/kit.ts
   record                 Save WebM; --ffmpeg <path> --seconds <1-60> --label <name>
-  install <archive>      Install local ZIP/7z through Vortex; no account needed
+  install <archive>      Install local ZIP/7z through Vortex; no account needed. Takes one
+                         path: quote one with spaces, or a split path is refused
   slow-download          Real Vortex downloads of throttled local files, for download UI
                          work; returns once they finish (run it in the background)
     --count <n> --seconds <n> --stagger <s>   (defaults 1, 30, 0)
@@ -301,6 +353,9 @@ Driving a running instance
     --json               LogEntry[] with continuation lines in each message
   fixture mod --out <zip> [--name <text>]
                          A one-file mod archive (textures/<name>.txt) for install checks
+  fixture fomod --out <zip> [--name <text>]
+                         A FOMOD installer archive (one step, one option), so install
+                         opens Vortex's installer dialog
 
 Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
   knowledge search <words...> [--json]
@@ -310,8 +365,11 @@ Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
                          Record a lesson whose cause you checked (never credentials)
   knowledge note <id> <text>   Append a dated note, e.g. "does not hold on <version>"
   knowledge list [--json] | knowledge remove <id> | knowledge path
+                         --json (list, search): each lesson's fields at the top level
   knowledge share <id>   Print the redacted lesson for a GitHub issue on
-                         doodlum/vortex-doodlebot; publishes nothing without --yes
+                         doodlum/vortex-doodlebot; publishes nothing without --yes. When
+                         the repository has issues disabled, prints the text and the
+                         reason, creates nothing and exits 2
     --yes                Publish (after the person confirmed the printed text); an open
                          issue with the same title gets a comment instead
     --print              Only the text, to paste into an issue by hand (no gh)
@@ -324,13 +382,16 @@ Kit gaps (what the kit should have done and didn't, in ~/.doodlebot/gaps.md)
                          Same command and title: counts it again; a wontfix gap is not
                          recorded; a gap closed --by a commit re-opens only when this kit
                          contains that commit
-  gap list [--all] [--json]    Open gaps (--all: closed too; --json always lists all)
+  gap list [--all] [--json]    Open gaps (--all: closed too; --json always lists all, each
+                               gap's fields at the top level: command, status, ...)
   gap close <id> --by <commit> | --wontfix
   gap share <id> [--yes] [--print] [--include-third-party]   As knowledge share
 
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
-                         the suite is the suite's (core: Playwright's)
+                         the suite is the suite's (core: Playwright's), except the kit's
+                         --release <version> and --stale-ok. A source checkout (--dev-dir,
+                         else the session's) must be built and current before it starts
   test --list            List the suites (also test --help or test -h)
   qa list [--touching <paths...>] [--allow-logout] [--json]
                          The QA catalogue (harness/qa/catalog.json): checks Vortex's own
@@ -341,8 +402,9 @@ Testing and iteration
                          each unmet need with the command that meets it) and its verdict
                          rule. --allow-logout also selects entries that log out of the
                          account (only with the person's go-ahead)
-  qa check               Validate the catalogue; with .vortex-src, also list specs added
-                         since its recorded commit and guards that match no file
+  qa check               Validate the catalogue; in a Vortex checkout, also list specs added
+                         since its recorded commit and guards that match no file (outside
+                         one, that comparison is skipped and the output says so)
   perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
                          Medians, ranges and a verdict from performance-check evidence; one
                          side (no --b) has no verdict
@@ -354,7 +416,7 @@ Testing and iteration
   build-extension        Force extension build
 
 Target and isolation (repeat the same flags for all commands)
-  --installed            Use released Vortex even when .vortex-src exists
+  --installed            Use released Vortex even in a Vortex checkout
   --exe <path>           Explicit Vortex.exe
   --release <version>    A release registered by release get
   --dev-dir <path>       Explicit source checkout
@@ -371,7 +433,11 @@ Target and isolation (repeat the same flags for all commands)
                          use for any timing meant to reflect users' experience.
                          up fails unless the renderer loaded production React
 
-Without a target flag: .vortex-src if present, otherwise installed Vortex.
+Without a target flag: this session's Vortex checkout (the git top level holding the folder you
+run doodlebot in, when its package.json is @vortex/monorepo; a worktree counts), otherwise the
+installed Vortex. build, source (except --clone), design-branch, push-branch and pr-preflight
+need a checkout:
+outside one they refuse.
 Relative paths you type are yours: they resolve against the directory you run doodlebot in.
 For Vortex changes follow its contribution rules and task-specific documentation.
 `;
@@ -463,7 +529,7 @@ async function main(): Promise<number> {
     let report;
     try {
       report = await runPreflight({
-        checkout: text("checkout") ?? vortexSourceDir(),
+        checkout: checkoutFlag(flags),
         base: text("base"),
         head: text("head"),
         tests: [...(lists.test ?? []), ...positional],
@@ -484,7 +550,7 @@ async function main(): Promise<number> {
   }
 
   if (command === "build") {
-    const checkout = typeof flags.checkout === "string" ? flags.checkout : vortexSourceDir();
+    const checkout = checkoutFlag(flags);
     const report = await buildCheckout({
       checkout,
       production: flags.production === true,
@@ -493,7 +559,8 @@ async function main(): Promise<number> {
     log(
       `[build] exit ${String(report.exitCode)} after ${String(Math.round(report.elapsedMs / 1000))}s; ` +
         `renderer bundle: ${report.bundleMode}` +
-        (report.restored.length > 0 ? `; restored ${report.restored.join(", ")}` : ""),
+        (report.restored.length > 0 ? `; restored ${report.restored.join(", ")}` : "") +
+        (report.record === undefined ? "" : `; build record ${report.record}`),
     );
     if (report.exitCode === 0 && flags.production === true && report.bundleMode !== "production") {
       log(
@@ -524,19 +591,27 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  if (command === "knowledge") {
-    log(knowledgeCommand(positional, flags));
+  if (command === "knowledge" || command === "gap") {
+    try {
+      log(command === "gap" ? gapCommand(positional, flags) : knowledgeCommand(positional, flags));
+      return 0;
+    } catch (err) {
+      // share on a repository without issues: the text and the reason on stdout, exit 2.
+      if (!(err instanceof IssuesDisabledError)) throw err;
+      log(err.output);
+      return err.exitCode;
+    }
+  }
+
+  if (command === "push-branch") {
+    const { branch, fork } = pushSessionBranch(checkoutFlag(flags));
+    log(`pushed ${branch} to ${fork}`);
     return 0;
   }
 
-  if (command === "gap") {
-    log(gapCommand(positional, flags));
-    return 0;
-  }
-
-  if (command === "pr-branch") {
-    const result = prBranchCommand(positional, flags, {
-      checkout: typeof flags.checkout === "string" ? flags.checkout : vortexSourceDir(),
+  if (command === "design-branch") {
+    const result = designBranchCommand(positional, flags, {
+      checkout: checkoutFlag(flags),
       onProgress: (message) => log(`  ${message}`),
     });
     log(result);
@@ -568,7 +643,13 @@ async function main(): Promise<number> {
   }
 
   if (command === "qa") {
-    const result = qaCommand(positional, flags, lists, { vortexDir: vortexSourceDir() });
+    const vortexDir = vortexCheckoutOf(callerCwd());
+    const result = qaCommand(
+      positional,
+      flags,
+      lists,
+      vortexDir === undefined ? {} : { vortexDir },
+    );
     log(result.text);
     return result.code;
   }
@@ -585,10 +666,11 @@ async function main(): Promise<number> {
     log(
       await checkCommand(flags, {
         doctor: async () => {
-          const { config, targetError } = configFrom(doctorFlags, "doctor");
+          const { config, targetError, sessionCheckout } = configFrom(doctorFlags, "doctor");
           const report = await runDoctor(config, {
             skipGame: flags["no-game"] === true,
             ...(targetError === undefined ? {} : { targetError }),
+            ...(sessionCheckout === undefined ? {} : { checkout: sessionCheckout ?? undefined }),
           });
           return report.checks;
         },
@@ -603,7 +685,7 @@ async function main(): Promise<number> {
     return result.code;
   }
 
-  const { config, targetError } = configFrom(flags, command);
+  const { config, targetError, sessionCheckout } = configFrom(flags, command);
   const dispatch = async (): Promise<number> => {
     switch (command) {
       case "log": {
@@ -703,6 +785,7 @@ async function main(): Promise<number> {
         const report = await runDoctor(config, {
           skipGame: flags["no-game"] === true,
           ...(targetError === undefined ? {} : { targetError }),
+          ...(sessionCheckout === undefined ? {} : { checkout: sessionCheckout ?? undefined }),
         });
         log(formatDoctorReport(report));
         return report.ok ? 0 : 1;
@@ -713,6 +796,7 @@ async function main(): Promise<number> {
           skipGame: flags["no-game"] === true,
           rebuildSnapshot: flags["rebuild-snapshot"] === true,
           rebuildExtension: flags["rebuild-extension"] === true,
+          staleOk: flags["stale-ok"] === true,
           fresh: true,
           onProgress: (m) => log(`  ${m}`),
         });
@@ -730,6 +814,7 @@ async function main(): Promise<number> {
           rebuildSnapshot: flags["rebuild-snapshot"] === true,
           skipGame: flags["no-game"] === true,
           rebuildExtension: flags["rebuild-extension"] === true,
+          staleOk: flags["stale-ok"] === true,
           onProgress: (m) => log(`  ${m}`),
         });
         log(
@@ -915,47 +1000,46 @@ async function main(): Promise<number> {
       }
 
       case "source": {
-        // Everything needed to go from "just cloned this repo" to "can build and
-        // test Vortex", in one command.
-        if (flags.where === true) {
-          log(vortexSourceDir());
+        // A new checkout: cloned into the folder the person named, never into the workspace.
+        if (typeof flags.clone === "string") {
+          const user = await detectGitHubUser();
+          log(`GitHub user: ${user ?? "(unknown)"}`);
+          const repo = await resolveVortexRepo();
+          log(`Fork:        ${repo?.fullName ?? "(none; cloning upstream)"}`);
+          const source = await cloneVortex(flags.clone, {
+            resolveRepo: async () => repo,
+            onProgress: (m) => log(`  ${m}`),
+          });
+          if (!source.hasFork) log(`  ${NO_FORK_NOTE}`);
+          log("");
+          log(`Open Claude in ${source.dir} and run \`/doodlebot:source\`.`);
           return 0;
         }
 
-        if (!hasVortexSource() || flags.update === true) {
-          let resolveRepo: (() => Promise<ForkInfo | undefined>) | undefined;
-          if (!hasVortexSource()) {
-            const user = await detectGitHubUser();
-            log(`GitHub user: ${user ?? "(unknown)"}`);
-            const repo = await resolveVortexRepo();
-            log(`Fork:        ${repo?.fullName ?? "(none; cloning upstream)"}`);
-            resolveRepo = async () => repo;
-          }
-          const source = await ensureVortexSource({
-            update: flags.update === true,
-            onProgress: (m) => log(`  ${m}`),
-            ...(resolveRepo === undefined ? {} : { resolveRepo }),
-          });
-          log(source.cloned ? `Cloned to ${source.dir}` : `Using existing clone at ${source.dir}`);
-          if (!source.hasFork && !source.cloned) log(`  ${NO_FORK_NOTE}`);
-        } else {
-          log(`Clone already present at ${vortexSourceDir()}`);
+        const checkout = checkoutFlag(flags);
+        if (flags.where === true) {
+          log(checkout);
+          return 0;
         }
-
-        if (typeof flags.branch === "string") {
-          const cut = await cutWorkBranch(vortexSourceDir(), flags.branch, {
-            onProgress: (m) => log(`  ${m}`),
-          });
-          log(`On ${cut.branch}, cut from ${cut.from}.`);
-        }
-
-        if (flags.build !== false && flags["no-build"] !== true) {
-          await buildVortexSource({ onProgress: (m) => log(`  ${m}`) });
-        }
-
+        const prepared = await prepareCheckout({
+          checkout,
+          addUpstream: flags["add-upstream"] === true,
+          exclude: flags.exclude === true,
+          update: flags.update === true,
+          ...(typeof flags.branch === "string" ? { branch: flags.branch } : {}),
+          build: flags.build !== false && flags["no-build"] !== true,
+          onProgress: (m) => log(`  ${m}`),
+          upToDate: sourceBuildIsCurrent,
+          runBuild: (dir) =>
+            buildCheckout({
+              checkout: dir,
+              production: false,
+              onProgress: (message) => log(`  [build] ${message}`),
+            }),
+        });
         log("");
-        log("Ready. `doodlebot up` will now drive this clone.");
-        return 0;
+        log(formatPrepared(prepared));
+        return prepared.build === "failed" ? 1 : 0;
       }
 
       case "collection": {
@@ -1148,6 +1232,13 @@ async function main(): Promise<number> {
             VORTEX_MCP_PORT: String(config.mcpPort),
             VORTEX_AI_CDP_PORT: String(config.cdpPort),
             VORTEX_MCP_TOKEN: config.mcpToken,
+            // The target this command chose is named explicitly, so the script's loadConfig()
+            // never re-resolves it from the caller's folder (an unbuilt worktree would refuse).
+            ...(config.target.kind === "dev" && config.target.sourceDir !== undefined
+              ? { [SUITE_CHECKOUT_ENV]: config.target.sourceDir }
+              : config.target.executable !== ""
+                ? { [TARGET_EXE_ENV]: config.target.executable }
+                : {}),
           },
         });
       }
@@ -1165,6 +1256,17 @@ async function main(): Promise<number> {
     }
   };
   return dispatch();
+}
+
+/** `--checkout`, else `--dev-dir`, else the session's checkout; refuses outside one. */
+function checkoutFlag(flags: ParsedArgs["flags"]): string {
+  const explicit =
+    typeof flags.checkout === "string"
+      ? flags.checkout
+      : typeof flags["dev-dir"] === "string"
+        ? flags["dev-dir"]
+        : undefined;
+  return requireCheckout(explicit, callerCwd());
 }
 
 function targetFrom(flags: ParsedArgs["flags"]): Record<string, unknown> {

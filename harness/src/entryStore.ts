@@ -93,6 +93,17 @@ export function renderEntry<F extends string>(entry: Entry<F>, labels: Labels<F>
   return lines.join("\n") + "\n";
 }
 
+/** An entry for `--json`: its fields at the top level (null when absent), no `fields` object. */
+export type FlatEntry<F extends string> = { id: string; title: string } & Record<
+  F,
+  string | null
+> & { notes: string[] };
+
+export function flatEntry<F extends string>(entry: Entry<F>, labels: Labels<F>): FlatEntry<F> {
+  const fields = Object.fromEntries(labels.map(([key]) => [key, entry.fields[key] ?? null]));
+  return { id: entry.id, title: entry.title, ...fields, notes: entry.notes } as FlatEntry<F>;
+}
+
 export function readEntries<F extends string>(file: string, labels: Labels<F>): Entry<F>[] {
   return fs.existsSync(file) ? parseEntries(fs.readFileSync(file, "utf8"), labels) : [];
 }

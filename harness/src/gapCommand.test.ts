@@ -186,4 +186,38 @@ describe("gap command", () => {
     ).toEqual([added.gap.id]);
     expect(() => gapCommand(["frob"], {}, d)).toThrow(/gap add\|list\|close\|share/);
   });
+
+  it("lists each gap's fields at the top level in JSON, with no fields object", () => {
+    const d = deps();
+    const added = addGap(gap, d).gap;
+    const [listed] = JSON.parse(gapCommand(["list"], { json: true }, d)) as Record<
+      string,
+      unknown
+    >[];
+    expect(listed).toEqual({
+      id: added.id,
+      title: gap.title,
+      command: "/doodlebot:try",
+      needed: "the queued downloads and their states",
+      happened: "only the finished archives were visible",
+      workaround: "vortex_query on state.persistent.downloads (bypasses the UI)",
+      blocked: "no",
+      kit: KIT,
+      seen: "2026-11-10",
+      count: "1",
+      status: "open",
+      closed: null,
+      by: null,
+      thirdParty: null,
+      issue: null,
+      notes: [],
+    });
+    expect(listed).not.toHaveProperty("fields");
+    gapCommand(["close", added.id], { by: "abc1234" }, d);
+    const [closed] = JSON.parse(gapCommand(["list"], { json: true }, d)) as Record<
+      string,
+      unknown
+    >[];
+    expect(closed).toMatchObject({ status: "closed", by: "abc1234", closed: "2026-11-10" });
+  });
 });

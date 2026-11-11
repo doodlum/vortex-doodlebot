@@ -29,8 +29,12 @@ source/tests when using another revision.
 
 - A ref counter that restarts at `e1` lets an old ref hit a new element. Refs carry a renderer
   lifetime and never reuse a counter within it. Test that old refs are rejected.
-- A dialog watcher can invalidate a foreground snapshot before its click. `withUiLock` serialises
-  snapshot/action transactions within one client; separate clients need their own coordination.
+- A dialog watcher's snapshot used to invalidate a foreground ref before its click (each
+  snapshot cleared the ref table). Refs now survive later snapshots while their element is
+  connected and keeps its role, accessible name and row (a `WeakMap` fingerprint in
+  `src/uiAutomation.ts`); a recycled row is refused with "now shows something else". The row
+  matters: a mod row's switch and "..." button have the same role and name in every row.
+  Evidence: the "ref lifecycle" tests in `src/uiAutomation.test.ts`.
 - An MCP Protocol object owns one transport. Overlapping HTTP requests sharing it send responses
   to the wrong client.
 - Plain-string UI name matching is exact and case-insensitive, and ambiguity is an error.
@@ -642,7 +646,8 @@ an earlier kit; close it, and the file is deleted on the next launch. Scope: eve
 - **Launches outside the kit's launchers.** A raw Playwright or Electron start writes no record,
   and the refusals cannot see it.
 - **Two commands at once.** Nothing serializes harness commands: two sessions driving the same
-  instance invalidate each other's UI refs, and a watcher reload mid-test does the same. Drive
+  instance change each other's screens (a held ref is refused once its element shows something
+  else), and a watcher reload mid-test invalidates every ref. Drive
   it from one session at a time.
 - **A copied OAuth login goes stale.** Nexus rotates the refresh token, so a copy that
   refreshes first spends the login the other copy holds, so nothing in the kit copies it. The

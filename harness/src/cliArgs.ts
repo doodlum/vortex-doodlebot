@@ -55,8 +55,10 @@ export const BOOLEAN_FLAGS = new Set([
   "print",
   "include-third-party",
   "wontfix",
-  "push",
   "allow-logout",
+  "stale-ok",
+  "add-upstream",
+  "exclude",
 ]);
 
 /**
@@ -84,6 +86,7 @@ export const PATH_FLAGS = new Set([
   "b",
   "to",
   "file",
+  "clone",
 ]);
 
 /** The positional arguments that are files the caller named, by command. */
@@ -193,6 +196,15 @@ export function parseArgs(argv: string[], cwd: string = callerCwd()): ParsedArgs
     } else {
       throw new ConfigError(`--${body} needs a value. Run help for supported flags.`);
     }
+  }
+  // An unquoted path with a space arrives as several words. Their first part can name a real
+  // file (C:\Users\Nexus beside C:\Users\Nexus Two), which Vortex then reports as a damaged
+  // archive, so stop here and name the path the caller most likely meant.
+  if (command === "install" && positional.length > 1) {
+    throw new ConfigError(
+      `install takes one archive but got ${positional.length} arguments. ` +
+        `Quote a path that has spaces: "${positional.join(" ")}".`,
+    );
   }
   for (const index of positionalPaths(command, positional)) {
     const value = positional[index];

@@ -50,13 +50,13 @@ save time", "Commands that block" and "The report procedure".
 **The build.** What the person named; otherwise the installed Vortex, or the newest registered
 release when none is installed.
 
-| The person says           | Flags                                                              |
-| ------------------------- | ------------------------------------------------------------------ |
-| a release, "2.8.0"        | `--release 2.8.0` (first `doodlebot release get 2.8.0` if missing) |
-| the installed Vortex      | `--installed`                                                      |
-| an executable             | `--exe <path to Vortex.exe>`                                       |
-| my build, the source      | `--dev-dir <workspace>/.vortex-src` (or their checkout)            |
-| as users see it (timings) | add `--production` to a source build built with `--production`     |
+| The person says           | Flags                                                                 |
+| ------------------------- | --------------------------------------------------------------------- |
+| a release, "2.8.0"        | `--release 2.8.0` (first `doodlebot release get 2.8.0` if missing)    |
+| the installed Vortex      | `--installed`                                                         |
+| an executable             | `--exe <path to Vortex.exe>`                                          |
+| my build, the source      | no flag in the session's Vortex checkout, else `--dev-dir <checkout>` |
+| as users see it (timings) | add `--production` to a source build built with `--production`        |
 
 `doodlebot release get <version>` downloads only official releases, checks the published
 SHA-256 and never runs the installer. A release without a published digest is **blocked**.
@@ -84,11 +84,14 @@ over the choice, recorded as their choice.
 Only one test Vortex runs on the machine. It uses its own profile.
 
 1. `doodlebot status` with the chosen flags.
-2. If MCP is `answering`, run `doodlebot call automation_status`. **Reuse** it only when its
-   `userDataDir` lies under this cache (`VORTEX_AI_CACHE_DIR`, by default
-   `<workspace>/harness/.cache`) and it is the build you chose. Otherwise it belongs to another
-   session or build: never run `doodlebot down` on an instance another session started from
-   another checkout. Wait, or tell the person, and stop.
+2. If MCP is `answering`, run `doodlebot call automation_status` and read the instance record
+   `~/.doodlebot/instance.json` (`pid`, `cacheDir`, `startedAt`, and `sourceDir` for a source
+   build or `exe` for a release). **Reuse** it only when its `userDataDir` lies under this cache
+   (`VORTEX_AI_CACHE_DIR`, by default `<workspace>/harness/.cache`), its `sourceDir` or `exe`
+   is the build you chose, and its `startedAt` is after this session's own launch of it. An
+   instance of the same build that another session started earlier is not yours, even from the
+   same checkout. Otherwise it belongs to another session or build: never run `doodlebot down`
+   on it. Wait, or tell the person, and stop.
 3. Otherwise start it **in the background** ("Commands that block"):
    `doodlebot up <build flags> <game flags>`, adding `--fresh` when the person asked for a
    clean profile or the run must not inherit earlier state, and `--rebuild-snapshot` when they
@@ -96,7 +99,9 @@ Only one test Vortex runs on the machine. It uses its own profile.
    running from <checkout>" or "Your own Vortex is running" is reported as is: the kit never
    closes the person's Vortex, and neither do you.
 4. Read the `up` log's `target:` line: it must be the build you chose.
-5. **Stop** with `doodlebot down` when the run is done, if you started the instance. It prints
+5. **Stop** with `doodlebot down` when the run is done, only if you started the instance (the
+   ownership rule in step 2: the record's `sourceDir` or `exe` is your build and its `startedAt`
+   is after your launch). It prints
    which checkout it stops and restores a game copy's user folders. `Vortex exited cleanly.` or
    `Nothing is running.` is fine; an instance that did not exit is reported, never killed.
 
@@ -107,8 +112,9 @@ Only one test Vortex runs on the machine. It uses its own profile.
    `doodlebot press --key Escape`, or `doodlebot call <tool> --args-file <file>` (a JSON file
    avoids shell quoting). `doodlebot tools --json` lists every tool and its schema.
 3. Wait for the result (`doodlebot call ui_wait_for --args-file <file>`; check `matched`).
-4. Snapshot again. **Refs die on the next snapshot**: Vortex's tables recycle rows, so a reused
-   ref can act on the wrong mod.
+4. Snapshot again. A ref lasts while its element shows the same thing: Vortex's tables recycle
+   rows, and a recycled row's ref is refused ("now shows something else"), so take a new
+   snapshot then.
 
 ## Rules that save time
 
@@ -119,6 +125,8 @@ Only one test Vortex runs on the machine. It uses its own profile.
 - **Keys never reach an OS dialog.** Install archives with `doodlebot install <archive>`.
 - **No archive given?** `doodlebot fixture mod --out <run folder>/probe.zip` writes a one-file
   mod (`textures/automation-probe.txt`); in the sandbox it deploys to `<gamePath>/Data/textures/`.
+  `doodlebot fixture fomod --out <run folder>/probe-fomod.zip` writes a one-step FOMOD installer,
+  for a check that needs `install`'s dialog open.
 - **Deploy** with `doodlebot deploy` and the instance's flags (sandbox:
   `doodlebot deploy --installed --sandbox`); it refuses while an install runs.
 - **A Nexus collection** needs the `login` need. Run `doodlebot collection <url>` in the
@@ -160,8 +168,8 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
    port, so `doodlebot status` answering is only a liveness hint, never completion.
 3. For a command that may raise a dialog, poll `doodlebot call ui_active_dialogs` while it
    runs. When one appears, read its text, take a scoped `doodlebot snapshot` and answer with
-   `doodlebot click --ref <ref>` in the same shell call (an install's own watchers make refs
-   stale; on `Stale or unknown ref`, snapshot and click again). `install` gives up after 300
+   `doodlebot click --ref <ref>` in the same shell call (on `now shows something else` or
+   `Stale or unknown ref`, snapshot and click again). `install` gives up after 300
    seconds; a **Cancel** answer ends it with exit 1 and `McpError: canceled by user`, which is
    the expected end of a cancelled install.
 

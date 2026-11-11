@@ -15,6 +15,13 @@ describe("parseArgs", () => {
     expect(parse(["source", "--build"]).flags.build).toBe(true);
   });
 
+  it("refuses an install path split at a space, naming the quoted path", () => {
+    expect(() => parse(["install", "C:\\Users\\Nexus", "Two\\probe.zip"])).toThrow(
+      'install takes one archive but got 2 arguments. Quote a path that has spaces: "C:\\Users\\Nexus Two\\probe.zip".',
+    );
+    expect(parse(["install", "probe.zip"]).positional).toEqual([at("probe.zip")]);
+  });
+
   it("drops a separator forwarded before the command", () => {
     expect(parse(["--", "snapshot", "x"])).toMatchObject({
       command: "snapshot",
@@ -155,8 +162,17 @@ describe("path rules", () => {
         "b",
         "to",
         "file",
+        "clone",
       ].sort(),
     );
+  });
+
+  it("resolves source --clone against the caller's directory, and takes the new booleans", () => {
+    const parsed = parse(["source", "--clone", "vortex", "--add-upstream", "--stale-ok"]);
+    expect(parsed.flags.clone).toBe(at("vortex"));
+    expect(parsed.flags["add-upstream"]).toBe(true);
+    expect(parsed.flags["stale-ok"]).toBe(true);
+    expect(parsed.positional).toEqual([]);
   });
 
   it("keeps a bare --ffmpeg command name for the PATH lookup", () => {
@@ -264,7 +280,7 @@ describe("path rules", () => {
     expect(BOOLEAN_FLAGS.has("json")).toBe(true);
   });
 
-  it("reads the share, gap and pr-branch switches without taking the next word", () => {
+  it("reads the share and gap switches without taking the next word", () => {
     expect(parse(["gap", "share", "--print", "g-1"])).toMatchObject({
       positional: ["share", "g-1"],
       flags: { print: true },
@@ -274,7 +290,17 @@ describe("path rules", () => {
       yes: true,
     });
     expect(parse(["gap", "close", "--wontfix", "g-1"]).positional).toEqual(["close", "g-1"]);
-    expect(parse(["pr-branch", "--push", "zoom"]).positional).toEqual(["zoom"]);
+  });
+
+  it("resolves design-branch's --file against the caller's folder", () => {
+    expect(
+      parse(["design-branch", "zoom", "--file", ".doodlebot/egm/design_draft.md"]),
+    ).toMatchObject({
+      positional: ["zoom"],
+      flags: { file: at(".doodlebot/egm/design_draft.md") },
+    });
+    // pr-branch's --push is gone with it: a word after it is the flag's value now.
+    expect(BOOLEAN_FLAGS.has("push")).toBe(false);
   });
 
   it("defaults to the caller's directory from INIT_CWD", () => {

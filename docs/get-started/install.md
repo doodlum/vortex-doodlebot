@@ -65,12 +65,18 @@ describes the model.
 
 ### EGM in Claude Code
 
-1. Add the EGM marketplace and install the plugin:
+1. Add the EGM marketplace and install the plugin **at user scope** (the default, or pick "user"
+   when `/plugin` asks), so it is there in every Vortex checkout and worktree you open Claude in.
+   The doodlebot workspace's `.claude/settings.json` enables EGM for that folder only, which a
+   Vortex session never reads; `doodlebot check` reports EGM as missing until it is installed at
+   user scope:
 
    ```text
    /plugin marketplace add google/elephant-goldfish-model
    /plugin install egm@egm
    ```
+
+   From a terminal the same is `claude plugin install egm@egm --scope user`.
 
 2. Run `/plugin` and check that `egm` version `0.1.1` is enabled. Check the version number, not
    only the name.

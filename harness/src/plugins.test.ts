@@ -28,12 +28,14 @@ const PLUGINS: Record<string, PluginSpec> = {
   doodlebot: {
     displayName: "Doodlebot",
     description:
-      "The agent companion for Vortex: try things in a test Vortex, investigate and fix bugs, QA pull requests and releases, and measure builds.",
-    // The eight commands of designs/companion-simplified.md 4.1, one per use case.
-    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr"],
+      "The agent companion for Vortex: try things in a test Vortex, prototype ideas, investigate and fix bugs, QA pull requests and releases, and measure builds.",
+    // The eight commands of designs/companion-simplified.md 4.1, one per use case, and the
+    // ninth, prototype (designs/vortex-checkout.md 4.7).
+    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr", "prototype"],
     shortDescription: "The agent companion for Vortex",
     capabilities: [
       "Try things in a test Vortex",
+      "Prototype Vortex ideas",
       "Investigate and fix Vortex bugs",
       "QA pull requests and releases",
       "Measure Vortex builds",
@@ -89,7 +91,7 @@ const BENCHMARK_REPORT_SECTIONS = [
   "Learned",
 ];
 /** The skills whose report is a markdown template; each must hold a `## Learned` heading. */
-const REPORT_TEMPLATES = new Set(["try", "investigate", "qa", "measure"]);
+const REPORT_TEMPLATES = new Set(["try", "investigate", "qa", "measure", "prototype"]);
 const RUN_SEQUENCE = [
   "doodlebot up",
   "doodlebot call automation_status",
@@ -155,10 +157,12 @@ function commandUses(markdown: string): { text: string; command: string; word?: 
     .map(({ text, match }) => ({ text, command: match[1]!, word: match[3] }));
 }
 
-const REPO_SEGMENT = /(^|\/)(harness|designs)\/|(^|\/)\.vortex-src(\/|$)/;
+const REPO_SEGMENT = /(^|\/)(harness|designs)\//;
+/** Vortex branch names that look like a repository path: a design's sibling branch. */
+const BRANCH_NAME = /^designs\/(?:<topic>|\*)$/;
 
 /**
- * Code tokens holding a repository path (a `harness/`, `designs/` or `.vortex-src` segment)
+ * Code tokens holding a repository path (a `harness/` or `designs/` segment)
  * that do not start with `<workspace>/` or `${CLAUDE_PLUGIN_ROOT}/`. Tokens are split on
  * whitespace with quotes stripped; `--x=value` checks its value; the arguments after
  * `doodlebot test <suite>` are the suite's own and exempt.
@@ -180,6 +184,7 @@ function pathTokenViolations(markdown: string): string[] {
       token = token.replace(/\\/g, "/");
       if (
         REPO_SEGMENT.test(token) &&
+        !BRANCH_NAME.test(token) &&
         !token.startsWith("<workspace>/") &&
         !token.startsWith("${CLAUDE_PLUGIN_ROOT}/")
       )
@@ -455,7 +460,7 @@ describe("skills", () => {
     }
   });
 
-  it("qa and investigate put .vortex-src back, and qa fetches upstream before the merge-base", () => {
+  it("qa and investigate put the checkout back, and qa fetches upstream before the merge-base", () => {
     const qa = read(skillFile("doodlebot", "qa")).replace(/\s+/g, " ");
     expect(qa.indexOf("git -C <checkout> fetch upstream`")).toBeGreaterThan(-1);
     expect(qa.indexOf("git -C <checkout> fetch upstream`")).toBeLessThan(
@@ -463,9 +468,7 @@ describe("skills", () => {
     );
     expect(qa).toContain("**Put the checkout back.**");
     const investigate = read(skillFile("doodlebot", "investigate")).replace(/\s+/g, " ");
-    expect(investigate).toContain(
-      "put it back: `git -C <workspace>/.vortex-src switch <that branch>`",
-    );
+    expect(investigate).toContain("put it back: `git -C <checkout> switch <that branch>`");
   });
 
   it("investigate changes no code and never calls a different version not reproduced", () => {
@@ -502,11 +505,91 @@ describe("skills", () => {
       expect(text).toContain(phrase);
   });
 
-  it("pr pushes only through pr-branch's fork check and keeps the design out", () => {
-    const uses = commandUses(read(skillFile("doodlebot", "pr"))).map((use) => use.text);
-    expect(uses).toContain("doodlebot pr-branch <topic> --checkout <checkout> --push");
-    expect(uses).toContain("doodlebot pr-checks <number>");
-    expect(read(skillFile("doodlebot", "pr"))).toContain("Design approved by <owner> on <date>");
+  it("pr opens the PR from the session's branch, pushed through the fork check", () => {
+    const text = read(skillFile("doodlebot", "pr"));
+    const uses = commandUses(text).map((use) => use.text);
+    expect(uses).toContain("doodlebot push-branch --checkout <checkout>");
+    // U8: the preflight's default merge-base is right; no hard-coded --base.
+    expect(uses).toContain(
+      "doodlebot pr-preflight --checkout <checkout> --test <test> --revert <file>",
+    );
+    expect(text).not.toContain("--base upstream/master");
+    expect(uses.some((use) => use.startsWith("doodlebot pr-checks <number>"))).toBe(true);
+    const flat = text.replace(/\s+/g, " ");
+    // pr-from-session-branch: the PR's head is the session's branch, a draft by default, in
+    // the fork or Nexus-Mods/Vortex as the person says, bound on Claude desktop.
+    expect(flat).toContain("--head <fork owner>:<branch> --draft");
+    // U1: the PR's base is the upstream default branch name, in the fork too, never the fork's.
+    expect(flat).toContain("--base <upstream default>");
+    expect(flat).toContain("Never use the fork's own default branch");
+    expect(flat).toContain("refs/remotes/upstream/HEAD");
+    expect(flat).toContain(
+      "Open the pull request in your fork (<fork>), or against Nexus-Mods/Vortex?",
+    );
+    expect(flat).toContain("`bind_pr`");
+    // The design is linked at its approved commit on designs/<topic>, never carried.
+    expect(flat).toContain("Design approved by <owner> on <date>");
+    expect(flat).toContain("<fork>/blob/<sha>/docs/designs/<topic>.md");
+    expect(flat).toContain("**A `proto/*` branch is refused**");
+    expect(text).not.toMatch(/pr-branch|(?<!\/)pr\/<topic>|design\/<topic>/);
+  });
+
+  it("prototype starts clean on a new proto/* branch, loops build-run-ask, and is never shipped", () => {
+    const text = read(skillFile("doodlebot", "prototype"));
+    const flat = text.replace(/\s+/g, " ");
+    const at = (phrase: string): number => {
+      const index = flat.indexOf(phrase);
+      expect(index, phrase).toBeGreaterThan(-1);
+      return index;
+    };
+    // prototype-clean-tree (U2): refused only in the main checkout or a dirty tree; in a clean
+    // worktree any branch is fine and proto/<idea> is cut from the computed upstream default.
+    const worktree = at("In the main checkout, refuse");
+    const clean = at("must print nothing. If it prints anything, refuse");
+    const upstreamDefault = at("refs/remotes/upstream/HEAD");
+    const branch = at("In a clean worktree any current branch is fine");
+    expect(worktree).toBeLessThan(clean);
+    expect(clean).toBeLessThan(upstreamDefault);
+    expect(upstreamDefault).toBeLessThan(branch);
+    at("It always cuts from `upstream/<default>`");
+    at("never changes the branch of the person's own checkout");
+    expect(text).not.toContain("upstream/master");
+    // U3: setup's ownership rule before every down.
+    at("Before every `doodlebot down`");
+    at("its `startedAt` is after this session's own `up`");
+    const uses = commandUses(text).map((use) => use.text);
+    expect(uses).toContain("doodlebot source --no-build --branch proto/<idea>");
+    // prototype-loop: change, build, a try-style run with screenshots at testing.md's sizes, ask.
+    const loop = flat.slice(flat.indexOf("## The loop"), flat.indexOf("## Finish"));
+    const order = [
+      "**Change**",
+      "doodlebot build --checkout <checkout>",
+      "doodlebot up --dev-dir <checkout>",
+      'doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"',
+      "doodlebot down",
+      "**Show and ask.**",
+    ];
+    let from = 0;
+    for (const step of order) {
+      const index = loop.indexOf(step, from);
+      expect(index, step).toBeGreaterThanOrEqual(from);
+      from = index + step.length;
+    }
+    expect(read("plugins/doodlebot/resources/testing.md")).toContain(
+      '--viewports "1024x720,1280x720,1280x1000,1920x1080"',
+    );
+    // The finish: the shared summary, the brainstorm lines, then "never shipped".
+    const finish = flat.slice(flat.indexOf("## Finish"));
+    const summary = finish.indexOf("`<workspace>/harness/.artifacts/prototypes/<idea>/summary.md`");
+    const brainstorm = finish.indexOf(
+      "/egm:egm-brainstorm <the idea> EGM artifact directory: .doodlebot/egm Start from <workspace>/harness/.artifacts/prototypes/<idea>/summary.md",
+    );
+    const never = finish.indexOf("**Never shipped.**");
+    expect(summary).toBeGreaterThan(-1);
+    expect(brainstorm).toBeGreaterThan(summary);
+    expect(never).toBeGreaterThan(brainstorm);
+    expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/resources/egm.md");
+    expect(text).toContain("[run report](<path to the round's report.md>)");
   });
 
   it("defines the benchmark report in measure, with a Verdict only for two builds", () => {
@@ -646,8 +729,8 @@ describe("workspace paths in plugin skills and agents", () => {
     ],
     [
       "a --x=value token",
-      "`doodlebot up --dev-dir=<workspace>/.vortex-src`",
-      "`doodlebot up --dev-dir=.vortex-src`",
+      "`doodlebot up --dev-dir=<workspace>/harness/x`",
+      "`doodlebot up --dev-dir=harness/x`",
     ],
     [
       "a plugin resource",
@@ -663,6 +746,9 @@ describe("workspace paths in plugin skills and agents", () => {
     expect(pathTokenViolations("`doodlebot test core harness/src/tests/a.spec.ts`")).toEqual([]);
     expect(pathTokenViolations("`doodlebot up harness/src/tests/a.spec.ts`")).toHaveLength(1);
     expect(pathTokenViolations("See harness/AGENTS.md in prose.")).toEqual([]);
+    // A design's sibling branch is a Vortex branch name, not a doodlebot path.
+    expect(pathTokenViolations("`designs/<topic>` and `designs/*`")).toEqual([]);
+    expect(pathTokenViolations("`designs/x.md`")).toHaveLength(1);
   });
 
   it("names only plugin resources that exist", () => {

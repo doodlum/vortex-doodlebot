@@ -40,7 +40,22 @@ The plugin's version differs from the workspace's. Run `/doodlebot:setup --updat
 `doodlebot doctor` reports a failing `Vortex` check. Install a released Vortex, or tell the agent
 where its `Vortex.exe` is; it passes `--exe <path>`. If you named a source checkout, the message
 `--dev-dir <path> is not a built Vortex checkout` means it is not built: run `/doodlebot:source`
-or build it first.
+or build it first. In a session opened in a Vortex checkout, `This session's checkout <path> is
+not built` means the same for that checkout; to drive a release instead, name it with
+`--release <version>` or `--installed`.
+
+## The build is older than the checkout
+
+Starting a source build is refused when the checkout changed after its last build:
+
+```text
+The build is from 1a2b3c4d5e and the checkout has changed since (2 files, for example src/renderer/src/app.tsx). Run `doodlebot build --checkout C:\dev\Vortex`, or pass --stale-ok to launch it anyway.
+```
+
+Rebuild with the command it names (or `/doodlebot:source`), then start again. Doodlebot compares
+file contents, not times, so switching branches and back does not trigger it. To run the old
+build on purpose, add `--stale-ok`; the output then says the build is stale. A build made without
+`doodlebot build` has no record: it starts with a warning instead.
 
 If you extract a Vortex release inside the workspace's `harness` folder, put a `package.json`
 containing `{"type": "commonjs"}` beside `Vortex.exe`. The `harness` folder is an ES-module
@@ -54,7 +69,7 @@ change the checkout a running one uses, stops with a message like one of these:
 
 ```text
 A harness Vortex is running (pid 1234, cache C:\Users\you\doodlebot\harness\.cache); run `doodlebot down` before the core suite.
-A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
+A harness Vortex is running from C:\Users\you\src\Vortex (pid 1234); run `doodlebot down` before building it.
 ```
 
 Nothing was started or changed. If your session started that test Vortex, have the agent run
@@ -135,8 +150,12 @@ Current versions do not use them. Once no doodlebot Vortex is running, they can 
   `Legacy lease store`, and `/doodlebot:setup` offers to delete it;
 - `harness/.slots` in the workspace;
 - `.vortex-worktrees` in the workspace: commit or copy any work you still need from it, delete
-  the folder, then run `git -C <workspace>/.vortex-src worktree prune` so the Vortex clone
-  forgets the deleted checkouts. Their branches stay in `<workspace>/.vortex-src`.
+  the folder, then run `git worktree prune` in the old Vortex clone in the workspace so it
+  forgets the deleted checkouts. Their branches stay in that clone;
+- the Vortex clone older versions kept in the workspace. Current versions work in the Vortex
+  checkout your session is in, and that clone is one: `doodlebot check` lists it as "Your
+  Vortex clone from an older doodlebot (<path>, <n> worktrees): open Claude in it or one of its
+  worktrees". Doodlebot never deletes it, and `doodlebot clean` leaves it alone.
 
 ## What's next
 

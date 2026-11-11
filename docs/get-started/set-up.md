@@ -13,8 +13,8 @@ companion, without you typing a terminal command.
 
 Setup installs the doodlebot runtime into a **workspace**: a clone of the doodlebot repository,
 with its dependencies installed and its Vortex extension built. The default folder is
-`%USERPROFILE%\doodlebot`. Test profiles, reports and the Vortex source clone live inside the
-workspace. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
+`%USERPROFILE%\doodlebot`. Test profiles and reports live inside the workspace. Vortex's own
+source is not in it: work on Vortex's code happens in a Vortex checkout you open Claude in. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
 `%USERPROFILE%\.doodlebot`, so they survive updates and a new workspace.
 
 Setup also writes a small launcher, the **shim**, so that the `doodlebot` command works from any
@@ -85,7 +85,9 @@ ready, missing with the exact next step, or blocked with the reason:
 - the workspace and its version, and `doodlebot doctor` for the installed Vortex and the sandbox
   (Vortex, the extension, the sandbox baseline, 7-Zip, the login folder's privacy, a running
   test Vortex);
-- whether the EGM plugin is installed, and the Vortex source clone's remotes, branch and build;
+- whether the EGM plugin is installed, and the Vortex checkout the session is in: its remotes,
+  branch and build (a Vortex clone an older doodlebot kept in the workspace is listed with its
+  worktrees, as a checkout to open Claude in; doodlebot never deletes it);
 - `doodlebot inventory`: releases, game copies, snapshots, sandboxes and collections;
 - the Nexus login;
 - the folder game copies go in, and any pending restore of a game's user folders, with
@@ -136,7 +138,7 @@ keeps them ([What doodlebot learns](../concepts/knowledge.md)).
    (`codex plugin --help` lists them).
 
 3. Delete the workspace folder (by default `%USERPROFILE%\doodlebot`). This also deletes its test
-   profiles, saved Nexus logins, reports and any Vortex source clone in it, so copy anything you
+   profiles, saved Nexus logins and reports, so copy anything you
    want to keep first.
 4. Delete the shim: `doodlebot.cmd` and `doodlebot` in the folder that `link` wrote them to
    (`where.exe doodlebot` shows it).

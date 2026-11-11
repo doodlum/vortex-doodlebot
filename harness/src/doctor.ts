@@ -13,14 +13,21 @@ import os from "node:os";
 import path from "node:path";
 
 import { ANONYMOUS, markerFile, readMarker, snapshotDir, liveDir } from "./bootstrap";
-import { extensionRoot, findInstalledVortex, type HarnessConfig } from "./config";
+import {
+  NEEDS_CHECKOUT,
+  extensionRoot,
+  findInstalledVortex,
+  vortexCheckoutOf,
+  type HarnessConfig,
+} from "./config";
 import { KNOWN_GAMES, findGamePath, steamLibraryRoots } from "./gameSetup";
 import { VortexMcpClient } from "./mcpClient";
-import { hasVortexSource, vortexSourceDir } from "./source";
+import { callerCwd } from "./processRunner";
 import { authCacheFile } from "./instance";
 import { checkLoginAcl, loginState, usesSharedLogin } from "./login";
 import { SEVEN_ZIP_HINT, find7Zip } from "./releaseFetch";
 import { readContent } from "./content";
+import { pnpmOverrideProblem } from "./source";
 
 export interface Check {
   name: string;
@@ -45,6 +52,8 @@ export interface DoctorOptions {
   targetError?: string;
   /** The home folder holding the legacy lease store (default: the user's). */
   homeDir?: string;
+  /** This session's Vortex checkout (default: the one holding the caller's folder, if any). */
+  checkout?: string | undefined;
 }
 
 export async function runDoctor(
@@ -54,7 +63,9 @@ export async function runDoctor(
   const checks: Check[] = [];
 
   checks.push(checkApiKey(config));
-  checks.push(await checkSource());
+  checks.push(
+    checkoutCheck("checkout" in options ? options.checkout : vortexCheckoutOf(callerCwd())),
+  );
   checks.push(
     options.targetError === undefined ? checkVortex(config) : targetFailure(options.targetError),
   );
@@ -65,6 +76,8 @@ export async function runDoctor(
   checks.push(checkCapturedLogin(config));
   checks.push(checkLoginFolder(path.join(options.homeDir ?? os.homedir(), ".doodlebot", "login")));
   checks.push(checkSevenZip());
+  const pnpm = checkPnpmOverride();
+  if (pnpm !== undefined) checks.push(pnpm);
   const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
   if (lease !== undefined) checks.push(lease);
   checks.push(await checkRunning(config));
@@ -100,6 +113,27 @@ function checkSandboxBaseline(config: HarnessConfig, skipGame: boolean): Check {
     detail: present ? `present: ${markerFile(snapshot)}` : "missing",
     fix: `doodlebot up ${skipGame ? "--no-game" : "--sandbox"} (the first start builds it), then doodlebot down`,
   };
+}
+
+/**
+ * `VORTEX_AI_PNPM`, only when it is set: a path that names no file is a failing check with the
+ * fix, since `source` and `build` refuse it (otherwise only "The system cannot find the path
+ * specified" said so).
+ */
+export function checkPnpmOverride(
+  override: string | undefined = process.env.VORTEX_AI_PNPM,
+  exists?: (file: string) => boolean,
+): Check | undefined {
+  if (override === undefined || override.trim() === "") return undefined;
+  const problem = pnpmOverrideProblem(override, exists);
+  return problem === undefined
+    ? { name: "VORTEX_AI_PNPM", ok: true, detail: override.trim() }
+    : {
+        name: "VORTEX_AI_PNPM",
+        ok: false,
+        detail: problem,
+        fix: "Fix or remove the VORTEX_AI_PNPM line in harness/.env (or the environment)",
+      };
 }
 
 /** 7-Zip, which `release get` needs to extract a release without running its installer. */
@@ -202,23 +236,22 @@ function checkApiKey(config: HarnessConfig): Check {
  * falling back to something else would hide the thing worth knowing.
  */
 /**
- * The Vortex clone this repo manages.
+ * The Vortex checkout this session works in: the one holding the caller's folder.
  *
- * Advisory, not required: you can drive an installed Vortex without ever
- * cloning. But when the task is working ON Vortex, this is the first thing that
- * has to exist, so it is reported before the target.
+ * Advisory, not required: you can drive an installed Vortex or a release from anywhere. But when
+ * the task is working ON Vortex, this is the first thing that has to exist, so it is reported
+ * before the target.
  */
-async function checkSource(): Promise<Check> {
-  const dir = vortexSourceDir();
-  if (hasVortexSource(dir)) {
-    return { name: "Vortex source", ok: true, advisory: true, detail: dir };
+export function checkoutCheck(checkout: string | undefined): Check {
+  if (checkout !== undefined) {
+    return { name: "This checkout", ok: true, advisory: true, detail: checkout };
   }
   return {
-    name: "Vortex source",
+    name: "This checkout",
     ok: false,
     advisory: true,
-    detail: "not cloned; optional unless developing Vortex itself",
-    fix: "doodlebot source",
+    detail: "not in a Vortex checkout; optional unless developing Vortex itself",
+    fix: NEEDS_CHECKOUT,
   };
 }
 
@@ -239,7 +272,8 @@ export function missingVortexCheck(releases: string[]): Check {
     detail: "no installed Vortex found",
     fix:
       "doodlebot release get <version>   (an official release, never installed), or install " +
-      "Vortex from https://www.nexusmods.com/about/vortex/, or set VORTEX_AI_EXE / VORTEX_AI_DEV_DIR.",
+      "Vortex from https://www.nexusmods.com/about/vortex/, or name one with --exe <path> " +
+      "(VORTEX_AI_EXE), or open Claude in a built Vortex checkout.",
   };
 }
 

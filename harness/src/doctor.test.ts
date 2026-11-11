@@ -7,7 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ANONYMOUS, markerFile, snapshotDir } from "./bootstrap";
 import { loadConfig, type HarnessConfig } from "./config";
-import { formatDoctorReport, missingVortexCheck, runDoctor } from "./doctor";
+import {
+  checkPnpmOverride,
+  checkoutCheck,
+  formatDoctorReport,
+  missingVortexCheck,
+  runDoctor,
+} from "./doctor";
 
 let temp: string;
 let home: string;
@@ -121,6 +127,25 @@ describe("doctor with an unresolvable target", () => {
   });
 });
 
+describe("doctor's This checkout row", () => {
+  it("names the session's checkout, or the step that makes one, without failing", async () => {
+    expect(checkoutCheck("C:/dev/Vortex")).toEqual({
+      name: "This checkout",
+      ok: true,
+      advisory: true,
+      detail: "C:/dev/Vortex",
+    });
+    const report = await runDoctor(config, { skipGame: true, homeDir: home, checkout: undefined });
+    expect(check(report, "This checkout")).toMatchObject({
+      ok: false,
+      advisory: true,
+      fix: "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
+    });
+    expect(check(report, "Vortex source")).toBeUndefined();
+    expect(report.ok).toBe(true);
+  });
+});
+
 describe("the Vortex check without an installed Vortex", () => {
   it("accepts a registered official release and names it", () => {
     const check = missingVortexCheck(["2.8.0"]);
@@ -132,5 +157,20 @@ describe("the Vortex check without an installed Vortex", () => {
     const check = missingVortexCheck([]);
     expect(check.ok).toBe(false);
     expect(check.fix).toMatch(/^doodlebot release get <version>/);
+  });
+});
+
+describe("live-C: VORTEX_AI_PNPM", () => {
+  it("is checked only when set, and fails with the fix when it names no file", () => {
+    expect(checkPnpmOverride(undefined)).toBeUndefined();
+    expect(checkPnpmOverride(" ")).toBeUndefined();
+    const missing = path.join(os.tmpdir(), "no-such-folder", "pnpm.cmd");
+    expect(checkPnpmOverride(missing, () => false)).toEqual({
+      name: "VORTEX_AI_PNPM",
+      ok: false,
+      detail: expect.stringContaining(`VORTEX_AI_PNPM names ${missing}, which does not exist.`),
+      fix: "Fix or remove the VORTEX_AI_PNPM line in harness/.env (or the environment)",
+    });
+    expect(checkPnpmOverride("C:/tools/pnpm.cmd", () => true)).toMatchObject({ ok: true });
   });
 });

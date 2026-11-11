@@ -30,7 +30,11 @@ agent:
   point: whoever implements the design later will not have the conversation either.
 
 You start each EGM step yourself: EGM's commands can only be typed by a person, so the agent
-tells you which one comes next.
+gives you the line to paste. You design a Vortex change in your Vortex session, which reads
+Vortex's own instructions, not doodlebot's, so the line carries what EGM needs from doodlebot:
+`EGM artifact directory: .doodlebot/egm` on a line of its own, where EGM keeps its briefs,
+drafts and reports. `.doodlebot/` is kept out of every commit, and nothing about EGM is written
+into Vortex.
 
 ## The runtime review
 
@@ -61,19 +65,29 @@ You take part at four points:
 The agent never approves a design for you, and never writes an approval you have not given. A
 design revised after approval needs a new approval.
 
-## Designs live on the Vortex branch
+## Designs live on a sibling branch
 
-A Vortex design is `docs/designs/<topic>.md` in the Vortex checkout, committed on the feature
-branch as `docs(design): <topic>` and pushed to your fork with the work, so it travels with the
-branch.
+A Vortex design is `docs/designs/<topic>.md` on its own branch, `designs/<topic>`, in your
+fork. `doodlebot design-branch` commits each revision there as `docs(design): <topic>`, from a
+temporary worktree, so your checkout never switches branch, and prints a link to the design at
+that commit. The revision you approve is that commit.
 
-The pull request never contains it. `/doodlebot:pr` builds `pr/<topic>` from the feature branch
-without the `docs(design)` commits, and tags the approved design commit `design/<topic>` on
-your fork. The pull request's description quotes the design's Overview and acceptance criteria
-and links the design at that tag, so the link keeps working after the branch is rebased or
-deleted. The preflight fails if a design file is still in the pull request's branch.
+The feature branch never carries the design, and the pull request is opened from the feature
+branch itself. Its description quotes the design's Overview and acceptance criteria and links
+the design at the approved commit, so the link keeps working after any later revision. The
+preflight fails if a `docs/designs/` file is in the pull request's diff.
 
-Doodlebot's own designs are in the doodlebot repository's `designs/` folder, listed in `designs/SITEMAP.md`. The current one is `designs/companion-simplified.md`, the design this version of doodlebot implements.
+Doodlebot's own designs are in the doodlebot repository's `designs/` folder, listed in
+`designs/SITEMAP.md`. This version of doodlebot implements `designs/companion-simplified.md`
+and `designs/vortex-checkout.md`: doodlebot runs in your Vortex checkout or a worktree of it,
+designs go on a sibling branch, and `/doodlebot:prototype` tries an idea before it is designed.
+
+## Prototype first, if you like
+
+`/doodlebot:prototype <idea>` changes Vortex's code on a `proto/<idea>` branch, builds it and
+shows you screenshots, round after round, until you say it is enough. It approves nothing and is
+never shipped: `/doodlebot:pr` refuses a `proto/*` branch. It ends with a summary and the
+`/egm:egm-brainstorm` lines that start the design from what the prototype taught.
 
 ## What's next
 

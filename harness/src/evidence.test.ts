@@ -6,10 +6,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import {
   captureCheckoutIdentity,
   collectCommandEvidence,
+  fileArtifact,
   hashBytes,
   resolveEvidenceCommand,
   runEvidenceProcess,
   sameIdentity,
+  withDevDir,
 } from "./evidence";
 import { processAlive } from "./processes";
 import { runPreflight } from "./prPreflight";
@@ -241,6 +243,43 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     expect(processAlive(pid!)).toBe(false);
     expect(fs.readFileSync(path.join(repo, "value.ts"), "utf8")).toBe(before);
   });
+  it("gives a source runtime's checkout to a child only through --dev-dir, never the environment", async () => {
+    const elsewhere = path.join(root, "elsewhere");
+    vi.stubEnv("VORTEX_AI_DEV_DIR", elsewhere);
+    vi.stubEnv("INIT_CWD", elsewhere);
+    try {
+      const runtime = {
+        kind: "source" as const,
+        label: "test",
+        mode: "development" as const,
+        files: [fileArtifact(path.join(repo, "package.json"))],
+        source: captureCheckoutIdentity(repo, base),
+      };
+      const out = path.join(root, "runtime.json");
+      const result = await collectCommandEvidence({
+        checkout: repo,
+        base,
+        cwd: repo,
+        command: [
+          "node",
+          "-e",
+          "console.log(JSON.stringify({init:process.env.INIT_CWD,dev:process.env.VORTEX_AI_DEV_DIR??null}))",
+        ],
+        out,
+        runtime,
+      });
+      expect(result.code).toBe(0);
+      const seen = JSON.parse(fs.readFileSync(`${out}.log`, "utf8").trim()) as {
+        init: string;
+        dev: string | null;
+      };
+      // S2: INIT_CWD is no longer rewritten (one mechanism, --dev-dir); the leftover variable passes
+      // through untouched, and nothing reads it any more.
+      expect(seen).toEqual({ init: elsewhere, dev: elsewhere });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("records source changes during a successful command instead of claiming stable evidence", async () => {
     const result = await collectCommandEvidence({
       checkout: repo,
@@ -251,5 +290,30 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     });
     expect(result.code).toBe(0);
     expect(sameIdentity(result.before, result.after)).toBe(false);
+  });
+});
+
+describe("a doodlebot child of a source-runtime evidence run", () => {
+  const checkout = path.resolve("/vortex/wt");
+  it("gets --dev-dir <checkout> after its command", () => {
+    expect(withDevDir({ executable: "doodlebot", args: ["up", "--sandbox"] }, checkout)).toEqual({
+      executable: "doodlebot",
+      args: ["up", "--dev-dir", checkout, "--sandbox"],
+    });
+    const cjs = path.join(REPO_ROOT, "bin", "doodlebot.cjs");
+    expect(
+      withDevDir({ executable: process.execPath, args: [cjs, "test", "core"] }, checkout),
+    ).toEqual({
+      executable: process.execPath,
+      args: [cjs, "test", "--dev-dir", checkout, "core"],
+    });
+  });
+  it("keeps a target the command names, and leaves other commands alone", () => {
+    const named = { executable: "doodlebot", args: ["up", "--dev-dir=C:/other"] };
+    expect(withDevDir(named, checkout)).toBe(named);
+    const release = { executable: "doodlebot", args: ["up", "--release", "2.8.0"] };
+    expect(withDevDir(release, checkout)).toBe(release);
+    const other = { executable: process.execPath, args: ["-e", "1"] };
+    expect(withDevDir(other, checkout)).toBe(other);
   });
 });

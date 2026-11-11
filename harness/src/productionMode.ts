@@ -18,6 +18,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { ConfigError } from "./config";
+import { hashBytes, worktreeChanges } from "./evidence";
+import { gitText } from "./gitText";
+import { missingBuildOutputs } from "./source";
 
 export interface ProductionStatus {
   nodeEnv?: string | null;
@@ -81,6 +84,209 @@ export function bundleModeOf(sourceDir: string): BundleMode {
 export function bundleModeFromText(text: string): BundleMode {
   if (/"development"\s*[!=]==?\s*"development"/.test(text)) return "development";
   return text.length > 0 ? "production" : "unknown";
+}
+
+// ---------------------------------------------------------------------------
+// The build record: a stale build never runs silently (design 4.6)
+// ---------------------------------------------------------------------------
+
+/** The record's file name, in the worktree's own git folder (`git rev-parse --git-dir`). */
+export const BUILD_RECORD_NAME = "doodlebot-build.json";
+
+/**
+ * What `doodlebot build` built: the checkout's identity at build time. `changes` maps each file
+ * whose content differed from `head` (tracked or untracked, not ignored) to its hash, so the
+ * built tree is `head` plus `changes`. `bundleSha256` is the renderer bundle it produced, so a
+ * later build made some other way is not mistaken for this one.
+ */
+export interface BuildRecord {
+  schemaVersion: 1;
+  builtAt: string;
+  head: string;
+  changesSha256: string;
+  changes: Record<string, string>;
+  mode: "production" | "development";
+  bundleSha256?: string;
+}
+
+/** Where a checkout's build record lives, or undefined when it is not a git checkout. */
+export function buildRecordFile(checkout: string): string | undefined {
+  const gitDir = gitText(checkout, ["rev-parse", "--absolute-git-dir"]);
+  return gitDir === undefined || gitDir === "" ? undefined : path.join(gitDir, BUILD_RECORD_NAME);
+}
+
+function bundleHash(checkout: string): string | undefined {
+  try {
+    return hashBytes(fs.readFileSync(path.join(checkout, "src", "main", "build", "renderer.js")));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The checkout's identity now, or undefined when it is not a git checkout. */
+export function checkoutBuildIdentity(
+  checkout: string,
+): Pick<BuildRecord, "head" | "changes" | "changesSha256"> | undefined {
+  const root = gitText(checkout, ["rev-parse", "--show-toplevel"]);
+  const head = gitText(checkout, ["rev-parse", "HEAD"]);
+  if (root === undefined || head === undefined) return undefined;
+  const changes = worktreeChanges(path.resolve(root), head);
+  return { head, changes, changesSha256: hashBytes(JSON.stringify(changes)) };
+}
+
+/** Write the record for an identity taken before the build; returns its file. */
+export function writeBuildRecord(
+  checkout: string,
+  identity: Pick<BuildRecord, "head" | "changes" | "changesSha256">,
+  mode: BuildRecord["mode"],
+): string | undefined {
+  const file = buildRecordFile(checkout);
+  if (file === undefined) return undefined;
+  const bundle = bundleHash(checkout);
+  const record: BuildRecord = {
+    schemaVersion: 1,
+    builtAt: new Date().toISOString(),
+    ...identity,
+    mode,
+    ...(bundle === undefined ? {} : { bundleSha256: bundle }),
+  };
+  fs.writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  return file;
+}
+
+/** Remove the record: before a build starts, and after one fails. */
+export function clearBuildRecord(checkout: string): void {
+  const file = buildRecordFile(checkout);
+  if (file !== undefined) fs.rmSync(file, { force: true });
+}
+
+export function readBuildRecord(checkout: string): BuildRecord | undefined {
+  const file = buildRecordFile(checkout);
+  if (file === undefined) return undefined;
+  try {
+    const record = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<BuildRecord>;
+    return record.schemaVersion === 1 &&
+      typeof record.head === "string" &&
+      typeof record.changes === "object" &&
+      record.changes !== null
+      ? (record as BuildRecord)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type BuildRecordCheck =
+  | { status: "match"; record: BuildRecord }
+  | { status: "none"; message: string }
+  | { status: "stale"; files: string[]; message: string };
+
+/**
+ * Compare the checkout with its build record. The built tree is the record's HEAD plus its
+ * changes; the checkout now is its working tree. Files that differ between the two, compared by
+ * content, make the build stale, whatever HEAD says: a `git switch` that changes files is stale,
+ * committing the very changes that were built is not.
+ */
+export function checkBuildRecord(checkout: string, mode?: BuildRecord["mode"]): BuildRecordCheck {
+  const build = `\`doodlebot build --checkout ${checkout}${mode === "production" ? " --production" : ""}\``;
+  const record = readBuildRecord(checkout);
+  if (record === undefined)
+    return {
+      status: "none",
+      message:
+        `${checkout} has no doodlebot build record (it was not built with doodlebot build), so ` +
+        `whether its build matches the checkout is unknown. ${build} records one.`,
+    };
+  const bundle = bundleHash(checkout);
+  if (record.bundleSha256 !== undefined && bundle !== record.bundleSha256)
+    return {
+      status: "none",
+      message:
+        `${checkout}'s renderer bundle was rebuilt outside doodlebot build since its build ` +
+        `record, so whether it matches the checkout is unknown. ${build} records one.`,
+    };
+  const short = record.head.slice(0, 10);
+  const stale = (files: string[], why: string): BuildRecordCheck => ({
+    status: "stale",
+    files,
+    message:
+      `The build is from ${short} and the checkout has changed since (${why}). Run ${build}, ` +
+      "or pass --stale-ok to launch it anyway.",
+  });
+  if (gitText(checkout, ["cat-file", "-e", `${record.head}^{commit}`]) === undefined)
+    return stale([], `the commit ${short} is no longer in it`);
+  const root = gitText(checkout, ["rev-parse", "--show-toplevel"]);
+  if (root === undefined) return stale([], "it is no longer a git checkout");
+  const now = worktreeChanges(path.resolve(root), record.head);
+  const files = [...new Set([...Object.keys(now), ...Object.keys(record.changes)])]
+    .filter((file) => (record.changes[file] ?? "head") !== (now[file] ?? "head"))
+    .sort();
+  if (files.length > 0)
+    return stale(
+      files,
+      `${String(files.length)} file${files.length === 1 ? "" : "s"}, for example ${files[0]!}`,
+    );
+  // The same tree built in the other mode is another build: NODE_ENV is inlined at build time.
+  if (mode !== undefined && record.mode !== mode)
+    return {
+      status: "stale",
+      files: [],
+      message:
+        `The build of ${short} is a ${record.mode} build, and a ${mode} one is wanted. Run ${build}, ` +
+        "or pass --stale-ok to launch it anyway.",
+    };
+  return { status: "match", record };
+}
+
+/**
+ * `doodlebot test <suite> --stale-ok` sets this for the suite, so a bootstrap inside it launches
+ * the stale build `test` already accepted.
+ */
+export const STALE_OK_ENV = "DOODLEBOT_STALE_OK";
+
+/** The mode a launch wants its source build in: `--production` (VORTEX_AI_PRODUCTION) or not. */
+export const launchMode = (production: boolean | undefined): BuildRecord["mode"] =>
+  production === true ? "production" : "development";
+
+/**
+ * Refuse a source build that cannot be launched as asked: outputs missing from src/main/build, or
+ * a build record that no longer matches the checkout (or the mode). `staleOk` launches a stale one
+ * anyway, saying so through `report`; no record at all is a warning. `up`, `bootstrap` and
+ * `doodlebot test` all go through this.
+ */
+export function checkSourceBuild(
+  checkout: string,
+  options: {
+    staleOk?: boolean;
+    mode?: BuildRecord["mode"];
+    report?: (message: string) => void;
+  } = {},
+): void {
+  const report = options.report ?? ((): void => undefined);
+  const missing = missingBuildOutputs(checkout);
+  if (missing.length > 0)
+    throw new ConfigError(
+      `${checkout} is not fully built: src/main/build lacks ${missing.join(", ")}. Vortex would ` +
+        `start and then fail at the first install. Build it: \`doodlebot build --checkout ${checkout}\`` +
+        ` (or \`node build.mjs\` in its src/main).`,
+    );
+  // A stale build never runs silently (design 4.6): the checkout must still be what was built.
+  const record = checkBuildRecord(checkout, options.mode);
+  if (record.status === "stale") {
+    if (options.staleOk !== true) throw new ConfigError(record.message);
+    report(`warning: launching a stale build (--stale-ok): ${record.message}`);
+  } else if (record.status === "none") report(`warning: ${record.message}`);
+}
+
+/**
+ * Whether `source` can skip install and build: every output is there and the build record
+ * matches the checkout as a development build, the kind `source` makes.
+ */
+export function sourceBuildIsCurrent(checkout: string): boolean {
+  return (
+    missingBuildOutputs(checkout).length === 0 &&
+    checkBuildRecord(checkout, "development").status === "match"
+  );
 }
 
 export function devBundleWarning(sourceDir: string): string {

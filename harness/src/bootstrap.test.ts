@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +25,7 @@ import { authCacheFile, launchVortex, stopStaleInstance } from "./instance";
 import { ensureGameManaged, waitForGameStartup } from "./gameSetup";
 import { USER_STATE_DIR } from "./paths";
 import { INSTANCE_RECORD, readInstanceRecord, writeInstanceRecord } from "./runningVortex";
+import { checkoutBuildIdentity, clearBuildRecord, writeBuildRecord } from "./productionMode";
 
 // The one instance record lives in ~/.doodlebot; keep it in a temporary folder, and let this
 // process stand in for a running Vortex.
@@ -228,6 +230,86 @@ describe("one harness Vortex per machine", () => {
   });
 });
 
+describe("a stale source build (stale-build-refused)", { timeout: 60_000 }, () => {
+  /** A built git checkout of Vortex whose build record matches it. */
+  function builtCheckout(): string {
+    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), "bootstrap-checkout-"));
+    roots.push(checkout);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", windowsHide: true });
+    git("init", "-q", "-b", "master");
+    git("config", "core.autocrlf", "false");
+    fs.writeFileSync(path.join(checkout, ".gitignore"), "src/main/build/\n");
+    fs.mkdirSync(path.join(checkout, "src", "main", "build"), { recursive: true });
+    fs.writeFileSync(path.join(checkout, "src", "main", "index.ts"), "export {};\n");
+    git("add", "-A");
+    git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qm", "base");
+    const identity = checkoutBuildIdentity(checkout)!;
+    for (const name of ["main.cjs", "renderer.js"])
+      fs.writeFileSync(path.join(checkout, "src", "main", "build", name), "built\n");
+    writeBuildRecord(checkout, identity, "development");
+    return checkout;
+  }
+  function devConfig(checkout: string): HarnessConfig {
+    const config = fakeConfig();
+    config.target = {
+      kind: "dev",
+      executable: "electron.exe",
+      args: [path.join(checkout, "src", "main")],
+      appName: "@vortex/main",
+      sourceDir: checkout,
+    };
+    return config;
+  }
+
+  it("launches a build whose record matches, without a warning", async () => {
+    const progress: string[] = [];
+    const result = await bootstrap(devConfig(builtCheckout()), {
+      fresh: true,
+      onProgress: (m) => progress.push(m),
+    });
+    expect(progress.filter((m) => /build record|stale/.test(m))).toEqual([]);
+    await result.instance.stop();
+  });
+
+  it("refuses an edit after the build, naming the file, before launching anything", async () => {
+    const checkout = builtCheckout();
+    fs.writeFileSync(path.join(checkout, "src", "main", "index.ts"), "export const x = 1;\n");
+    await expect(bootstrap(devConfig(checkout), { fresh: true })).rejects.toThrow(
+      /the checkout has changed since \(1 file, for example src\/main\/index\.ts\)\. Run `doodlebot build --checkout /,
+    );
+    expect(launchVortex).not.toHaveBeenCalled();
+  });
+
+  it("launches it with --stale-ok and says so", async () => {
+    const checkout = builtCheckout();
+    fs.writeFileSync(path.join(checkout, "src", "main", "index.ts"), "export const x = 1;\n");
+    const progress: string[] = [];
+    const result = await bootstrap(devConfig(checkout), {
+      fresh: true,
+      staleOk: true,
+      onProgress: (m) => progress.push(m),
+    });
+    expect(progress).toContainEqual(
+      expect.stringMatching(/^warning: launching a stale build \(--stale-ok\): The build is from/),
+    );
+    expect(launchVortex).toHaveBeenCalled();
+    await result.instance.stop();
+  });
+
+  it("warns, and launches, when there is no build record", async () => {
+    const checkout = builtCheckout();
+    clearBuildRecord(checkout);
+    const progress: string[] = [];
+    const result = await bootstrap(devConfig(checkout), {
+      fresh: true,
+      onProgress: (m) => progress.push(m),
+    });
+    expect(progress).toContainEqual(expect.stringContaining("has no doodlebot build record"));
+    expect(launchVortex).toHaveBeenCalled();
+    await result.instance.stop();
+  });
+});
 describe("cold game management", () => {
   beforeEach(() => {
     vi.mocked(waitForGameStartup).mockResolvedValue(true);
@@ -402,6 +484,30 @@ describe("real copied game preservation", () => {
         );
     },
   );
+});
+
+describe("live-A: a cold bootstrap's disposable game", () => {
+  it("is emptied before the baseline is built, not only after", async () => {
+    const config = fakeConfig();
+    config.gamePath = path.join(config.cacheDir, "game");
+    const deployed = path.join(config.gamePath, "Data", "from-an-earlier-profile.esp");
+    fs.mkdirSync(path.dirname(deployed), { recursive: true });
+    fs.writeFileSync(deployed, "deployed by a profile this baseline never knew");
+    fs.writeFileSync(authCacheFile(config), "null");
+    const seenAtColdLaunch: boolean[] = [];
+    const normalLaunch = vi.mocked(launchVortex).getMockImplementation()!;
+    vi.mocked(launchVortex).mockImplementationOnce(async (options) => {
+      seenAtColdLaunch.push(fs.existsSync(deployed));
+      return normalLaunch(options);
+    });
+    const progress: string[] = [];
+    const result = await bootstrap(config, { fresh: true, onProgress: (m) => progress.push(m) });
+    expect(seenAtColdLaunch).toEqual([false]);
+    expect(progress).toContain(
+      "cleared the disposable game's deployed files before building the baseline",
+    );
+    await result.instance.stop();
+  });
 });
 
 describe("captureLogin", () => {

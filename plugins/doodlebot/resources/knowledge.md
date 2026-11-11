@@ -85,6 +85,8 @@ reports as missing (that is the inventory's `next` command).
    doodlebot gap list --json
    ```
 
+   Each gap's `title`, `command` and `status` are at the top level of its JSON object.
+
 3. **Record it:**
 
    ```powershell
@@ -147,3 +149,6 @@ or a gap matters to others, offer to share it as a GitHub issue on doodlebot's r
 
 4. Without `gh`, `doodlebot knowledge share <id> --print` gives the text to paste into a new
    issue by hand.
+5. When the repository has issues disabled, the share prints the text with "Issues are disabled
+   on doodlum/vortex-doodlebot; the owner can enable them, or share this text another way",
+   creates nothing and exits 2. Tell the person, and give them the text.

@@ -75,15 +75,46 @@ function win(): Window {
 // ---------------------------------------------------------------------------
 
 /**
- * Refs (`e12`) are handed out by `snapshot()` and consumed by the action tools.
- * They are scoped to a *generation*: every snapshot bumps the counter and clears
- * the table, so a ref from two snapshots ago fails loudly ("stale ref") instead
- * of silently resolving to whatever element now happens to hold that index.
+ * Refs (`e12-<session>`) are handed out by `snapshot()` and consumed by the action
+ * tools. A ref stays valid while its element is connected and unchanged, across
+ * later snapshots: `install`'s dialog watchers snapshot concurrently, and a ref
+ * the agent holds must survive them.
  *
- * This matters more in Vortex than in a typical web app: most of its lists are
- * virtualised, so the element behind a given row index is genuinely recycled as
- * the user scrolls. A silently-reused ref would click the wrong mod.
+ * "Unchanged" is a fingerprint taken when the ref was issued: the role, the
+ * accessible name, and the row the element sits in (the closest `[role=row]` or
+ * `<tr>`: its accessible name, else a short hash of its text). This matters in
+ * Vortex: most of its lists are virtualised, so the element behind a row is
+ * recycled in place as the user scrolls, and a row's controls (its enable switch,
+ * its "..." button) have the same role and name in every row. Resolving a ref
+ * whose element now shows something else, or sits in a row showing another mod,
+ * is refused, never silently redirected. A snapshot that finds a recycled element
+ * gives it a new ref; ref strings are never reused.
  */
+interface RefFingerprint {
+  ref: string;
+  role: string;
+  name: string;
+  row: string;
+}
+
+/** FNV-1a, as 8 hex digits: enough to tell two rows' texts apart. */
+function shortHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** The row context of an element: its row's accessible name, else a hash of the row's text. */
+export function rowContext(el: Element): string {
+  const row = el.closest('[role="row"], tr');
+  if (row === null) return "";
+  const name = accessibleName(row);
+  return name !== "" ? `name:${name}` : `text:${shortHash(textOf(row))}`;
+}
+const fingerprints = new WeakMap<Element, RefFingerprint>();
 const refTable = new Map<string, Element>();
 let refGeneration = 0;
 let refCounter = 0;
@@ -91,19 +122,28 @@ const refSession = randomUUID().slice(0, 8);
 
 function beginRefGeneration(): void {
   refGeneration += 1;
-  // Never reuse a ref string. Resetting this counter lets an earlier snapshot's
-  // e1 resolve to an unrelated element in the new generation.
-  refTable.clear();
+  // Forget refs whose element has left the DOM, so the table stays bounded.
+  for (const [ref, el] of refTable) {
+    if (!el.isConnected) refTable.delete(ref);
+  }
 }
 
-function assignRef(el: Element): string {
+function assignRef(el: Element, role: string, name: string): string {
+  const known = fingerprints.get(el);
+  const row = rowContext(el);
+  if (known !== undefined && known.role === role && known.name === name && known.row === row) {
+    refTable.set(known.ref, el);
+    return known.ref;
+  }
+  if (known !== undefined) refTable.delete(known.ref);
   refCounter += 1;
   const ref = `e${String(refCounter)}-${refSession}`;
+  fingerprints.set(el, { ref, role, name, row });
   refTable.set(ref, el);
   return ref;
 }
 
-/** Resolve a `ref` from the most recent snapshot, or a CSS selector, to a live element. */
+/** Resolve a `ref` from a snapshot, or a CSS selector, to a live, unchanged element. */
 export function resolveTarget(target: { ref?: string; selector?: string }): Element {
   if (target.ref !== undefined) {
     if (refGeneration === 0) {
@@ -112,14 +152,26 @@ export function resolveTarget(target: { ref?: string; selector?: string }): Elem
     const el = refTable.get(target.ref);
     if (el === undefined) {
       throw new Error(
-        `Stale or unknown ref "${target.ref}". Refs are only valid until the next ui_snapshot ` +
-          `(current generation ${String(refGeneration)}); take a fresh snapshot and use the new ref.`,
+        `Stale or unknown ref "${target.ref}": its element has left the page or now shows ` +
+          `something else. Take a new ui_snapshot and use the new ref.`,
       );
     }
     if (!el.isConnected) {
       throw new Error(
         `Ref "${target.ref}" points at an element that has since been removed from the DOM ` +
           `(Vortex re-rendered). Take a fresh ui_snapshot.`,
+      );
+    }
+    const known = fingerprints.get(el);
+    if (
+      known === undefined ||
+      known.ref !== target.ref ||
+      known.role !== roleOf(el) ||
+      known.name !== accessibleName(el) ||
+      known.row !== rowContext(el)
+    ) {
+      throw new Error(
+        `The element for ref ${target.ref} now shows something else; take a new snapshot.`,
       );
     }
     return el;
@@ -506,7 +558,7 @@ export function snapshot(options: SnapshotOptions = {}): SnapshotResult {
     if (!interesting) return children;
 
     emitted += 1;
-    const node: SnapshotNode = { ref: assignRef(el), role };
+    const node: SnapshotNode = { ref: assignRef(el, role, name), role };
     if (name !== "") node.name = name;
     if (ownText !== "" && ownText !== name) node.text = truncate(ownText, 200);
 
@@ -1065,10 +1117,67 @@ export interface Viewport {
   height: number;
 }
 
+/** The members of Electron's renderer `webFrame` this module uses. */
+export interface WebFrameLike {
+  getZoomFactor: () => number;
+  setZoomFactor: (factor: number) => void;
+}
+
+let webFrameOverride: WebFrameLike | null | undefined;
+
+/**
+ * Tests only: substitute Electron's `webFrame` (null means unavailable, undefined restores).
+ * The kept zoom on `window` is left alone, as a hot reload leaves it.
+ */
+export function setWebFrameForTests(frame: WebFrameLike | null | undefined): void {
+  webFrameOverride = frame;
+}
+
+/**
+ * Electron's renderer `webFrame`, or undefined when this Vortex doesn't expose it.
+ * Reachable with `require('electron')` from the renderer on released 2.8.0; a later
+ * Vortex that hides it makes narrow widths report `emulated: false`, never throw.
+ */
+function webFrame(): WebFrameLike | undefined {
+  if (webFrameOverride !== undefined) return webFrameOverride ?? undefined;
+  try {
+    // electron is external to the bundle: Vortex's renderer provides it.
+    const electron = require("electron") as { webFrame?: WebFrameLike };
+    return typeof electron.webFrame?.setZoomFactor === "function" ? electron.webFrame : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The person's own zoom factor, kept while a narrow width is emulated by zoom. Read
+ * once, when no narrow zoom is active, so a second narrow call can't keep the
+ * emulated factor as the person's. It lives on `window`, not in this module: an
+ * extension hot reload (`doodlebot watch`) loads a fresh module into the same
+ * renderer, whose zoom is still the emulated one, and must still restore the
+ * person's factor.
+ */
+const KEPT_ZOOM = "__doodlebotKeptZoom";
+type KeptZoomWindow = { [KEPT_ZOOM]?: unknown };
+
+function keptZoom(): number | undefined {
+  const value = (globalThis as { window?: KeptZoomWindow }).window?.[KEPT_ZOOM];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function setKeptZoom(factor: number | undefined): void {
+  const w = (globalThis as { window?: KeptZoomWindow }).window;
+  if (w === undefined) return;
+  if (factor === undefined) delete w[KEPT_ZOOM];
+  else w[KEPT_ZOOM] = factor;
+}
+
 export async function getViewport(): Promise<{
   window: Viewport;
   inner: Viewport;
   devicePixelRatio: number;
+  zoomFactor: number | null;
+  keptZoomFactor: number | null;
 }> {
   const api = preloadWindowApi();
   const [width, height] = await api.getSize(await api.getId());
@@ -1076,8 +1185,24 @@ export async function getViewport(): Promise<{
     window: { width, height },
     inner: { width: win().innerWidth, height: win().innerHeight },
     devicePixelRatio: win().devicePixelRatio,
+    zoomFactor: webFrame()?.getZoomFactor() ?? null,
+    keptZoomFactor: keptZoom() ?? null,
   };
 }
+
+export interface SetViewportResult {
+  requested: Viewport;
+  actual: Viewport;
+  /** The renderer's zoom factor after the call, or null when webFrame is unavailable. */
+  zoomFactor: number | null;
+  /** The renderer's CSS width (`innerWidth`) after the call. */
+  cssWidth: number;
+  /** True when the requested width is below the window's minimum and zoom reached it. */
+  emulated: boolean;
+  reason?: string;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Resize the real Electron BrowserWindow.
@@ -1085,12 +1210,29 @@ export async function getViewport(): Promise<{
  * Unmaximises first: `setSize` on a maximised window is silently ignored on
  * Windows, which otherwise makes every viewport in a responsive sweep report the
  * same (maximised) size and produce identical, meaningless results.
+ *
+ * A width below the window's minimum (Vortex's is 1024 px) is reached the way users
+ * reach it, with the renderer's zoom: the window stays at its minimum and the zoom
+ * factor becomes `kept × innerWidth at the kept factor / requested width`, so the CSS
+ * viewport is the requested width. The person's own zoom is kept and restored by any
+ * later call at or above the minimum, and by `reset`.
  */
 export async function setViewport(
   viewport: Viewport,
-): Promise<{ requested: Viewport; actual: Viewport }> {
+  options: { reset?: boolean; settleMs?: number } = {},
+): Promise<SetViewportResult> {
+  const settleMs = options.settleMs ?? 250;
   const api = preloadWindowApi();
   const windowId = await api.getId();
+  const frame = webFrame();
+
+  const restoreZoom = async (): Promise<void> => {
+    const kept = keptZoom();
+    if (kept === undefined) return;
+    frame?.setZoomFactor(kept);
+    setKeptZoom(undefined);
+    await sleep(settleMs);
+  };
 
   if (await api.isMaximized(windowId)) {
     await api.unmaximize(windowId);
@@ -1099,10 +1241,46 @@ export async function setViewport(
 
   // Let the resize land and React re-render before reporting back; without this
   // the immediately-following read still reports the pre-resize size.
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await sleep(settleMs);
 
   const [actualWidth, actualHeight] = await api.getSize(windowId);
-  return { requested: viewport, actual: { width: actualWidth, height: actualHeight } };
+  const actual = { width: actualWidth, height: actualHeight };
+  const clamped = actualWidth > Math.round(viewport.width) + 1;
+  const result = (emulated: boolean, reason?: string): SetViewportResult => ({
+    requested: viewport,
+    actual,
+    zoomFactor: frame?.getZoomFactor() ?? null,
+    cssWidth: win().innerWidth,
+    emulated,
+    ...(reason === undefined ? {} : { reason }),
+  });
+
+  if (!clamped || options.reset === true) {
+    await restoreZoom();
+    return result(false);
+  }
+  if (frame === undefined) {
+    return result(
+      false,
+      `The window's minimum width is ${String(actualWidth)} px and this Vortex doesn't expose ` +
+        `Electron's webFrame, so ${String(viewport.width)} px can't be emulated by zoom; report ` +
+        `that width as not tested.`,
+    );
+  }
+
+  // Measure at the person's own factor: the factor comes from the measured width, since
+  // fractional scaling rounds (1023 px at 1.6 gave 639, not 640).
+  const active = keptZoom();
+  const kept = active ?? frame.getZoomFactor();
+  if (active !== undefined) {
+    frame.setZoomFactor(kept);
+    await sleep(settleMs);
+  }
+  const innerAtKept = win().innerWidth;
+  frame.setZoomFactor((kept * innerAtKept) / viewport.width);
+  setKeptZoom(kept);
+  await sleep(settleMs);
+  return result(true);
 }
 
 export interface LayoutIssue {
@@ -1254,7 +1432,7 @@ export const DEFAULT_SWEEP_VIEWPORTS: Viewport[] = [
 
 /**
  * Resize through a list of viewports, collecting layout diagnostics at each, then
- * restore the original size.
+ * restore the original size and the person's zoom.
  *
  * The restore is in a `finally` so a mid-sweep failure doesn't leave the user's
  * real Vortex window stuck at 1024x720.
@@ -1288,7 +1466,8 @@ export async function responsiveSweep(
       results.push(result);
     }
   } finally {
-    await setViewport(original).catch(() => undefined);
+    // Restores the person's zoom as well as the size, in case a width was emulated.
+    await setViewport(original, { reset: true }).catch(() => undefined);
   }
 
   return { restored: original, results };

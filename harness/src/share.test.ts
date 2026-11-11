@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { gapCommand } from "./gapCommand";
 import { knowledgeCommand, parseLessons } from "./knowledgeCommand";
-import { type GhResult, type RedactionContext, SHARE_REPO, redact } from "./share";
+import {
+  type GhResult,
+  IssuesDisabledError,
+  type RedactionContext,
+  SHARE_REPO,
+  redact,
+} from "./share";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -37,10 +43,13 @@ function fakeGh(answers: Record<string, GhResult>) {
       ...(bodyAt === -1 ? {} : { body: fs.readFileSync(args[bodyAt + 1]!, "utf8") }),
     });
     const key = `${args[0]} ${args[1]}`;
-    return answers[key] ?? { code: 0, stdout: "", stderr: "" };
+    return answers[key] ?? (key === "repo view" ? ISSUES_ON : { code: 0, stdout: "", stderr: "" });
   };
   return { gh, calls };
 }
+
+const ISSUES_ON: GhResult = { code: 0, stdout: '{"hasIssuesEnabled":true}', stderr: "" };
+const ISSUES_OFF: GhResult = { code: 0, stdout: '{"hasIssuesEnabled":false}', stderr: "" };
 
 const noGh = (): GhResult => {
   throw new Error("gh must not run");
@@ -134,8 +143,8 @@ describe("share", () => {
       expect(text.toLowerCase()).not.toContain(secret.toLowerCase());
     expect(notices.join("\n")).toContain("Third-party data was left out");
     expect(notices.join("\n")).toContain(`doodlebot knowledge share ${id} --yes`);
-    // A declined confirmation creates nothing: only the read-only search ran.
-    expect(calls.map((c) => c.args.slice(0, 2).join(" "))).toEqual(["issue list"]);
+    // A declined confirmation creates nothing: only the read-only checks ran.
+    expect(calls.map((c) => c.args.slice(0, 2).join(" "))).toEqual(["repo view", "issue list"]);
     expect(parseLessons(fs.readFileSync(local, "utf8"))[0]?.fields.issue).toBeUndefined();
   });
 
@@ -222,10 +231,11 @@ describe("share", () => {
     const out = gapCommand(["share", added.gap.id], { yes: true }, { ...deps, gh });
     expect(out).toContain("Commented on https://x/issues/3");
     expect(calls.map((c) => c.args.slice(0, 3).join(" "))).toEqual([
+      `repo view ${SHARE_REPO}`,
       "issue list --repo",
       "issue comment 3",
     ]);
-    expect(calls[1]!.body).toContain("- **Command:** doodlebot inventory");
+    expect(calls[2]!.body).toContain("- **Command:** doodlebot inventory");
     expect(gapCommand(["list"], { json: true }, deps)).toContain('"issue": "https://x/issues/3"');
   });
 
@@ -242,6 +252,64 @@ describe("share", () => {
     expect(() => knowledgeCommand(["share", id], { print: true }, { local }, { ctx })).toThrow(
       /credential/,
     );
+  });
+
+  it("checks that issues are enabled before any search or create, and stops with exit 2 when not", () => {
+    for (const flags of [{}, { yes: true }] as Record<string, boolean>[]) {
+      const { local, id } = store();
+      const printed = knowledgeCommand(["share", id], { print: true }, { local }, { ctx });
+      const { gh, calls } = fakeGh({ "repo view": ISSUES_OFF });
+      let thrown: unknown;
+      try {
+        knowledgeCommand(["share", id], flags, { local }, { gh, ctx, notice: () => {} });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(IssuesDisabledError);
+      const refused = thrown as IssuesDisabledError;
+      expect(refused.exitCode).toBe(2);
+      expect(refused.output).toBe(
+        `${printed}\nIssues are disabled on ${SHARE_REPO}; the owner can enable them, or share this text another way.`,
+      );
+      // Only the read-only check ran: no search, no create, nothing recorded.
+      expect(calls.map((c) => c.args.slice(0, 2).join(" "))).toEqual(["repo view"]);
+      expect(calls[0]!.args).toEqual(["repo", "view", SHARE_REPO, "--json", "hasIssuesEnabled"]);
+      expect(parseLessons(fs.readFileSync(local, "utf8"))[0]?.fields.issue).toBeUndefined();
+    }
+  });
+
+  it("stops gap share the same way when issues are disabled", () => {
+    const file = path.join(tempDir(), "gaps.md");
+    const deps = { file, kit: () => "a".repeat(40), isAncestor: () => false, ctx };
+    const added = JSON.parse(
+      gapCommand(
+        ["add"],
+        {
+          title: "Inventory missed a GOG game",
+          command: "doodlebot inventory",
+          needed: "the GOG copy",
+          happened: "only Steam manifests were read",
+          blocked: "no",
+          json: true,
+        },
+        deps,
+      ),
+    ) as { gap: { id: string } };
+    const { gh, calls } = fakeGh({ "repo view": ISSUES_OFF });
+    expect(() =>
+      gapCommand(["share", added.gap.id], { yes: true }, { ...deps, gh, notice: () => {} }),
+    ).toThrow(IssuesDisabledError);
+    expect(calls).toHaveLength(1);
+    expect(gapCommand(["list"], { json: true }, deps)).toContain('"issue": null');
+  });
+
+  it("refuses to publish when gh can't say whether issues are enabled", () => {
+    const { local, id } = store();
+    const { gh, calls } = fakeGh({ "repo view": { code: 1, stdout: "", stderr: "HTTP 401" } });
+    expect(() =>
+      knowledgeCommand(["share", id], { yes: true }, { local }, { gh, ctx, notice: () => {} }),
+    ).toThrow(/gh could not read whether .* takes issues \(exit 1\): HTTP 401/);
+    expect(calls).toHaveLength(1);
   });
 
   it("explains how to share by hand when gh is missing", () => {

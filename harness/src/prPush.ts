@@ -1,18 +1,16 @@
 /**
- * `doodlebot pr-branch <topic>`: the branch a Vortex pull request is opened from, and the only
- * place the kit pushes Vortex work.
+ * Pushing Vortex work, and `doodlebot design-branch <topic> --file <draft>`.
  *
- * - **pr/<topic>** is built from the merge-base with upstream by cherry-picking every commit of
- *   the work branch except its `docs(design)` commits, so the design never reaches the PR. A
- *   non-design commit that touches `docs/designs/` is refused: split it first.
- * - **design/<topic>** is a tag on the approved `docs(design)` commit (`--design-commit`), so the
- *   PR description can link the design at its commit on the person's fork. An unapproved
- *   revision is never tagged.
  * - **Pushes go only to the person's own fork.** Before any push, `gh api repos/<origin>` must show
  *   that `origin` is a fork of Nexus-Mods/Vortex owned by the person's GitHub login, or the
  *   repository `VORTEX_AI_VORTEX_REPO` names when it is such a fork the person can push to. An
  *   absent `origin`, Nexus-Mods/Vortex itself, or someone else's fork is refused, whatever rights
- *   the person has upstream.
+ *   the person has upstream. `doodlebot push-branch` pushes the session's branch, the one
+ *   `/doodlebot:pr` opens the pull request from, after this check; it refuses a `proto/*` branch.
+ * - **designs/<topic>** is the sibling branch a Vortex design lives on, never the feature branch.
+ *   `design-branch` commits the draft there as `docs/designs/<topic>.md` in a temporary worktree,
+ *   so the session's checkout never switches branch and its files never change, pushes it to the
+ *   fork and prints the design's link at that commit, the revision the person approves.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -41,9 +39,7 @@ export const defaultGit: GitRunner = (dir, args) => {
   return { code: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 };
 
-/** A commit whose subject marks it as the design: `docs(design): ...` (or `docs(design)!:`). */
-export const isDesignSubject = (subject: string): boolean => /^docs\(design\)!?:/.test(subject);
-
+/** Where Vortex keeps designs; a pull request's diff never holds a file here (pr-preflight). */
 export const DESIGNS_DIR = "docs/designs/";
 
 /** `owner/repo` of a GitHub remote URL (https, ssh or scp form), or undefined. */
@@ -158,19 +154,6 @@ function run(git: GitRunner, dir: string, args: string[], what: string): string 
   return result.stdout.trim();
 }
 
-export interface PrBranchResult {
-  branch: string;
-  head: string;
-  mergeBase: string;
-  picked: string[];
-  skipped: string[];
-  /**
-   * `design/<topic>` and the approved design commit it marks; `archived` names the tag that now
-   * keeps the earlier approval when this run moved it.
-   */
-  tag?: { name: string; commit: string; archived?: string };
-}
-
 /** `upstream/<its default branch>`, the base work branches start from. */
 export function defaultBase(dir: string, git: GitRunner = defaultGit): string {
   const head = git(dir, ["symbolic-ref", "--short", "refs/remotes/upstream/HEAD"]);
@@ -178,193 +161,215 @@ export function defaultBase(dir: string, git: GitRunner = defaultGit): string {
 }
 
 /**
- * Build `pr/<topic>` from the merge-base of HEAD and `base` with every non-design commit, and tag
- * the last design commit `design/<topic>`. Works in a temporary worktree, so the checkout's own
- * files never change.
+ * Runs `work` in a temporary detached worktree of `dir` at `start`, and removes the worktree
+ * afterwards whatever happens. The checkout's own branch and files never change.
  */
-export function buildPrBranch(
+export function withTempWorktree<T>(
+  git: GitRunner,
   dir: string,
-  topic: string,
-  options: {
-    base?: string;
-    /** The approved design commit, to tag `design/<topic>` (tagApprovedDesign). */
-    designCommit?: string;
-    git?: GitRunner;
-    onProgress?: (message: string) => void;
-  } = {},
-): PrBranchResult {
-  const git = options.git ?? defaultGit;
-  const report = options.onProgress ?? ((): void => undefined);
-  if (!/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(topic) || topic.includes(".."))
-    throw new ConfigError(
-      `${topic} is not a usable topic; use letters, digits, ".", "_", "-" and "/".`,
-    );
-  const branch = `pr/${topic}`;
-  const current = git(dir, ["symbolic-ref", "--short", "HEAD"]).stdout.trim();
-  if (current === branch)
-    throw new ConfigError(
-      `${branch} is checked out; switch to the work branch and run this again.`,
-    );
-  const base = options.base ?? defaultBase(dir, git);
-  const mergeBase = run(
-    git,
-    dir,
-    ["merge-base", base, "HEAD"],
-    `Finding the merge-base with ${base}`,
-  );
-  if (run(git, dir, ["rev-list", "--merges", `${mergeBase}..HEAD`], "Listing merges") !== "")
-    throw new ConfigError(
-      `The branch has merge commits since ${base}; rebase it onto ${base} first.`,
-    );
-  const commits = run(git, dir, ["rev-list", "--reverse", `${mergeBase}..HEAD`], "Listing commits")
-    .split("\n")
-    .filter(Boolean);
-  const picked: string[] = [];
-  const skipped: string[] = [];
-  for (const commit of commits) {
-    const subject = run(git, dir, ["log", "-1", "--format=%s", commit], "Reading a commit");
-    const files = run(
-      git,
-      dir,
-      ["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit],
-      "Reading a commit's files",
-    )
-      .split("\n")
-      .filter(Boolean);
-    if (isDesignSubject(subject)) {
-      skipped.push(commit);
-      continue;
-    }
-    const design = files.filter((file) => file.startsWith(DESIGNS_DIR));
-    if (design.length > 0)
-      throw new ConfigError(
-        `${commit.slice(0, 7)} "${subject}" is not a docs(design) commit but changes ${design.join(", ")}. ` +
-          "Move the design change into a docs(design) commit, so it stays out of the PR.",
-      );
-    picked.push(commit);
-  }
-  if (picked.length === 0)
-    throw new ConfigError(`The branch has no commits besides its design since ${base}.`);
-  const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-pr-"));
-  let head: string;
+  start: string,
+  work: (worktree: string) => T,
+): T {
+  const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "doodlebot-worktree-"));
   try {
-    run(git, dir, ["worktree", "add", "--detach", worktree, mergeBase], "Creating a worktree");
-    report(`cherry-picking ${String(picked.length)} commit(s) onto ${mergeBase.slice(0, 7)}`);
-    const pick = git(worktree, ["cherry-pick", "--allow-empty", ...picked]);
-    if (pick.code !== 0) {
-      git(worktree, ["cherry-pick", "--abort"]);
-      throw new ConfigError(
-        `A commit did not apply without the design commits: ${pick.stderr.trim().split("\n")[0] ?? ""}. ` +
-          "Keep code and design in separate commits.",
-      );
-    }
-    head = run(git, worktree, ["rev-parse", "HEAD"], "Reading the new head");
+    run(git, dir, ["worktree", "add", "--detach", worktree, start], "Creating a worktree");
+    return work(worktree);
   } finally {
     git(dir, ["worktree", "remove", "--force", worktree]);
     fs.rmSync(worktree, { recursive: true, force: true });
-    git(dir, ["worktree", "prune"]);
   }
-  run(git, dir, ["branch", "-f", branch, head], `Setting ${branch}`);
-  const result: PrBranchResult = { branch, head, mergeBase, picked, skipped };
-  const tag = tagApprovedDesign(dir, topic, skipped, options.designCommit, git);
-  if (tag !== undefined) result.tag = tag;
-  return result;
 }
 
-const tagged = (git: GitRunner, dir: string, name: string): string | undefined => {
-  const found = git(dir, ["rev-parse", "--verify", "--quiet", `refs/tags/${name}^{commit}`]);
+/** The worktree of `dir`'s repository that has `branch` checked out, if any. */
+function worktreeHolding(git: GitRunner, dir: string, branch: string): string | undefined {
+  let worktree: string | undefined;
+  for (const line of git(dir, ["worktree", "list", "--porcelain"]).stdout.split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) worktree = line.slice("worktree ".length);
+    else if (line === `branch refs/heads/${branch}`) return worktree;
+  }
+  return undefined;
+}
+
+const TOPIC = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+
+function checkTopic(topic: string): void {
+  if (!TOPIC.test(topic) || topic.includes("..") || topic.endsWith(".lock"))
+    throw new ConfigError(
+      `${topic} is not a usable topic; use letters, digits, ".", "_", "-" and "/".`,
+    );
+}
+
+const resolved = (git: GitRunner, dir: string, ref: string): string | undefined => {
+  const found = git(dir, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
   return found.code === 0 && found.stdout.trim() !== "" ? found.stdout.trim() : undefined;
 };
 
 /**
- * `design/<topic>` marks the approved design commit, and only that: it is set from
- * `--design-commit`, which the person's approval names, never from the branch's last design
- * commit. A later approved revision moves it, and the commit it marked is kept as
- * `design/<topic>-v<n>` (git cannot hold both `design/<topic>` and `design/<topic>/v<n>`).
- * Without `--design-commit` an existing tag is left where it is.
+ * `doodlebot push-branch`: push the session's branch to the person's fork, the branch
+ * `/doodlebot:pr` opens the pull request from. Refuses a detached HEAD, a `proto/*` prototype
+ * (never shipped), a `designs/*` branch (`design-branch` pushes those) and the upstream default
+ * branch, then pushes only after checkPushRemote.
  */
-function tagApprovedDesign(
+export function pushSessionBranch(
+  dir: string,
+  deps: PushCheckDeps = {},
+): { branch: string; fork: string } {
+  const git = deps.git ?? defaultGit;
+  const branch = git(dir, ["symbolic-ref", "--short", "-q", "HEAD"]).stdout.trim();
+  if (branch === "")
+    throw new ConfigError("HEAD is detached; switch to the branch that holds the change.");
+  if (branch.startsWith("proto/"))
+    throw new ConfigError(
+      `${branch} is a prototype branch, and a prototype is never shipped. Start feat/<topic> from ` +
+        "upstream after an approved design, port the prototype's diff, and open the PR from it.",
+    );
+  if (branch.startsWith("designs/"))
+    throw new ConfigError(
+      `${branch} holds a design; \`doodlebot design-branch\` pushes it. Run push-branch on the work branch.`,
+    );
+  const defaultBranch = defaultBase(dir, git).replace(/^upstream\//, "");
+  if (branch === defaultBranch || branch === "master" || branch === "main")
+    throw new ConfigError(
+      `${branch} is the default branch; a pull request comes from a work branch cut from upstream.`,
+    );
+  const fork = checkPushRemote(dir, deps);
+  run(git, dir, ["push", "-u", "origin", branch], `Pushing ${branch}`);
+  return { branch, fork };
+}
+
+export interface DesignBranchResult {
+  branch: string;
+  /** The commit holding this revision of the design. */
+  commit: string;
+  /** What the branch started from: the existing branch, the fork's copy, or the upstream base. */
+  from: string;
+  /** False when the draft was identical to the branch's design, so no commit was made. */
+  committed: boolean;
+  fork: string;
+  /** `https://github.com/<fork>/blob/<commit>/docs/designs/<topic>.md`. */
+  link: string;
+}
+
+/**
+ * Commits `file` as `docs/designs/<topic>.md` on `designs/<topic>` and pushes the branch to the
+ * person's fork. It fetches the fork's copy first and continues from the newer of the local branch
+ * and `origin/designs/<topic>` (refusing when they have diverged), or else starts at the
+ * merge-base of the session's HEAD and `base` (default `upstream/<default branch>`). It refuses
+ * while another worktree has the branch checked out. The commit is made in a temporary worktree,
+ * so the session's branch and `git status` are unchanged, and the local branch moves only after
+ * the push succeeded.
+ */
+export function designBranch(
   dir: string,
   topic: string,
-  designCommits: string[],
-  designCommit: string | undefined,
-  git: GitRunner,
-): PrBranchResult["tag"] {
-  const name = `design/${topic}`;
-  const current = tagged(git, dir, name);
-  if (designCommit === undefined)
-    return current === undefined ? undefined : { name, commit: current };
-  const approved = run(
-    git,
-    dir,
-    ["rev-parse", "--verify", `${designCommit}^{commit}`],
-    `Reading ${designCommit}`,
-  );
-  if (!designCommits.includes(approved))
+  file: string,
+  options: PushCheckDeps & { base?: string; onProgress?: (message: string) => void } = {},
+): DesignBranchResult {
+  const git = options.git ?? defaultGit;
+  const report = options.onProgress ?? ((): void => undefined);
+  checkTopic(topic);
+  const branch = `designs/${topic}`;
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile())
+    throw new ConfigError(`${file} is not a file; --file names the design draft.`);
+  const current = git(dir, ["symbolic-ref", "--short", "-q", "HEAD"]).stdout.trim();
+  if (current === branch)
     throw new ConfigError(
-      `${designCommit} is not one of this branch's docs(design) commits; --design-commit names the approved design commit.`,
+      `${branch} is checked out here; run design-branch from the session's work branch.`,
     );
-  if (current === approved) return { name, commit: approved };
-  let archived: string | undefined;
-  if (current !== undefined) {
-    let n = 1;
-    while (tagged(git, dir, `${name}-v${String(n)}`) !== undefined) n++;
-    archived = `${name}-v${String(n)}`;
-    run(git, dir, ["tag", archived, current], `Keeping the earlier approval as ${archived}`);
+  // A worktree on the branch would be left behind its own branch: refuse rather than move it.
+  const holder = worktreeHolding(git, dir, branch);
+  if (holder !== undefined)
+    throw new ConfigError(
+      `${branch} is checked out in ${holder}. Switch that worktree to another branch (or remove ` +
+        "it), then run design-branch again.",
+    );
+  // The fork check comes first, so nothing is committed that could not be pushed.
+  const fork = checkPushRemote(dir, options);
+  // Build on the newest revision: another session may have pushed one.
+  const fetched = git(dir, [
+    "fetch",
+    "origin",
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+  ]);
+  if (fetched.code !== 0 && !/couldn't find remote ref/i.test(fetched.stderr))
+    throw new ConfigError(
+      `Fetching ${branch} from origin failed, so the newest revision is unknown and nothing was ` +
+        `committed: ${fetched.stderr.trim().split("\n")[0] ?? ""}`,
+    );
+  const local = resolved(git, dir, `refs/heads/${branch}`);
+  const remote = resolved(git, dir, `refs/remotes/origin/${branch}`);
+  const isAncestor = (a: string, b: string): boolean =>
+    git(dir, ["merge-base", "--is-ancestor", a, b]).code === 0;
+  let start: string;
+  let from: string;
+  if (local !== undefined && remote !== undefined && !isAncestor(remote, local)) {
+    if (!isAncestor(local, remote))
+      throw new ConfigError(
+        `${branch} and origin/${branch} have diverged. Reconcile them (keep the revision the ` +
+          "person approved), then run design-branch again.",
+      );
+    start = remote;
+    from = `origin/${branch}`;
+  } else if (local !== undefined) {
+    start = local;
+    from = branch;
+  } else if (remote !== undefined) {
+    start = remote;
+    from = `origin/${branch}`;
+  } else {
+    const base = options.base ?? defaultBase(dir, git);
+    start = run(git, dir, ["merge-base", base, "HEAD"], `Finding the merge-base with ${base}`);
+    from = `${base} (merge-base ${start.slice(0, 7)})`;
   }
-  run(git, dir, ["tag", "-f", name, approved], `Tagging ${name}`);
-  return { name, commit: approved, ...(archived === undefined ? {} : { archived }) };
+  const target = `${DESIGNS_DIR}${topic}.md`;
+  report(`committing ${target} on ${branch} from ${from}`);
+  const { commit, committed } = withTempWorktree(git, dir, start, (worktree) => {
+    const dest = path.join(worktree, ...target.split("/"));
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(file, dest);
+    run(git, worktree, ["add", "--", target], `Staging ${target}`);
+    const unchanged = git(worktree, ["diff", "--cached", "--quiet"]).code === 0;
+    if (!unchanged)
+      run(git, worktree, ["commit", "-q", "-m", `docs(design): ${topic}`], "Committing the design");
+    return {
+      commit: run(git, worktree, ["rev-parse", "HEAD"], "Reading the design commit"),
+      committed: !unchanged,
+    };
+  });
+  // Push the commit first and move the local branch only once the push succeeded, so the branch
+  // is never left moved but not pushed.
+  report(`pushing ${branch} to ${fork}`);
+  run(git, dir, ["push", "origin", `${commit}:refs/heads/${branch}`], `Pushing ${branch}`);
+  run(git, dir, ["branch", "-f", branch, commit], `Setting ${branch}`);
+  return {
+    branch,
+    commit,
+    from,
+    committed,
+    fork,
+    link: `https://github.com/${fork}/blob/${commit}/${target}`,
+  };
 }
 
-/** Push `pr/<topic>` (and its design tag) to origin, after checkPushRemote. */
-export function pushPrBranch(dir: string, built: PrBranchResult, deps: PushCheckDeps = {}): string {
-  const git = deps.git ?? defaultGit;
-  const fork = checkPushRemote(dir, deps);
-  run(git, dir, ["push", "--force-with-lease", "origin", built.branch], `Pushing ${built.branch}`);
-  if (built.tag?.archived !== undefined)
-    run(
-      git,
-      dir,
-      ["push", "origin", `refs/tags/${built.tag.archived}`],
-      `Pushing ${built.tag.archived}`,
-    );
-  if (built.tag !== undefined)
-    run(
-      git,
-      dir,
-      ["push", "--force", "origin", `refs/tags/${built.tag.name}`],
-      `Pushing ${built.tag.name}`,
-    );
-  return fork;
-}
-
-export function prBranchCommand(
+export function designBranchCommand(
   positional: string[],
   flags: Record<string, string | boolean>,
   deps: PushCheckDeps & { checkout: string; onProgress?: (message: string) => void },
 ): string {
   const topic = positional[0];
-  if (topic === undefined)
-    throw new ConfigError("pr-branch needs a topic: doodlebot pr-branch <topic> [--push].");
-  const built = buildPrBranch(deps.checkout, topic, {
-    base: typeof flags.base === "string" ? flags.base : undefined,
-    ...(typeof flags["design-commit"] === "string" ? { designCommit: flags["design-commit"] } : {}),
-    git: deps.git,
-    onProgress: deps.onProgress,
+  const file = typeof flags.file === "string" ? flags.file : undefined;
+  if (topic === undefined || file === undefined)
+    throw new ConfigError(
+      "design-branch needs a topic and the draft: doodlebot design-branch <topic> --file <draft>.",
+    );
+  const result = designBranch(deps.checkout, topic, file, {
+    ...deps,
+    ...(typeof flags.base === "string" ? { base: flags.base } : {}),
   });
-  const lines = [
-    `${built.branch} at ${built.head.slice(0, 7)}: ${String(built.picked.length)} commit(s) from ${built.mergeBase.slice(0, 7)}, ` +
-      `${String(built.skipped.length)} docs(design) commit(s) left out`,
-    built.tag === undefined
-      ? "no design tag (--design-commit <approved design commit> sets one)"
-      : `${built.tag.name} -> ${built.tag.commit.slice(0, 7)}` +
-        (built.tag.archived === undefined
-          ? ""
-          : `; the earlier approval is kept as ${built.tag.archived}`),
-  ];
-  if (flags.push === true) {
-    const fork = pushPrBranch(deps.checkout, built, deps);
-    lines.push(`pushed to ${fork}`);
-  } else lines.push("not pushed (add --push to push to your fork)");
-  return lines.join("\n");
+  return [
+    `${result.branch} at ${result.commit.slice(0, 7)} (from ${result.from})` +
+      (result.committed ? "" : "; the draft matches this commit, nothing new to commit"),
+    `pushed to ${result.fork}`,
+    `design: ${result.link}`,
+  ].join("\n");
 }

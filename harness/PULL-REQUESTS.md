@@ -6,12 +6,12 @@ issue and report platform and checks. Its approximate 400-line/10-file guidance 
 substitute for assessing blast radius; discuss large or multi-extension work with maintainers
 before implementing it. The person submitting must understand every line.
 
-A feature or refactor PR implements an approved EGM design. The design lives on the Vortex
-branch as `docs/designs/<topic>.md`, committed as `docs(design): <topic>`; `doodlebot pr-branch`
-leaves those commits out of `pr/<topic>` and, given `--design-commit <sha>`, tags the approved
-design commit `design/<topic>` (an earlier approval stays as `design/<topic>-v<n>`; an
-unapproved revision is never tagged), so the description links the design without the PR
-carrying it.
+A feature or refactor PR implements an approved EGM design. The design lives on the sibling
+branch `designs/<topic>` in the person's fork, as `docs/designs/<topic>.md` committed
+`docs(design): <topic>` by `doodlebot design-branch`, never on the feature branch. The PR is
+opened from the session's own branch (`doodlebot push-branch`, then `gh pr create`), and its
+description links the design at the commit the person approved, so the PR never carries it.
+`pr-preflight` FAILs on a docs/designs file in the diff and on a `proto/*` branch.
 
 ## Never publish an untested change
 
@@ -66,7 +66,7 @@ The resulting behavior and the relevant implementation decisions.
 
 Design: the design's Overview and acceptance criteria, verbatim, then
 "Design approved by <owner> on <date>; design at
-<fork>/blob/design/<topic>/docs/designs/<topic>.md". Or "None" for a bug fix, documentation
+<fork>/blob/<approved designs/<topic> commit>/docs/designs/<topic>.md". Or "None" for a bug fix, documentation
 or test-only change without a design.
 
 ## Behaviour changes
@@ -144,7 +144,7 @@ issue, criteria, scope, exact revision and primary sources before the author's d
 
 ```text
 Review <neutral issue> at head <sha>, base <sha>.
-Design: <docs/designs/<topic>.md at the design/<topic> tag>, or none.
+Design: <docs/designs/<topic>.md at its approved designs/<topic> commit>, or none.
 You did not author it. Allowed: read, scoped checks, and <authorized test Vortex actions>.
 No production edits or publication. Constraints: <scope, including any read-only checkout>.
 
@@ -162,7 +162,7 @@ excluded. Include cleanup (`doodlebot down`) and candidate lessons or kit gaps.
 ```
 
 Useful commands for a review of the author's branch, checked out at the identified head in
-`.vortex-src` or a `--dev-dir` checkout. The reviewer stops its own test Vortex before checks
+the session's Vortex checkout (a worktree of it) or a `--dev-dir` checkout. The reviewer stops its own test Vortex before checks
 that rewrite output or record evidence in that checkout:
 
 ```powershell

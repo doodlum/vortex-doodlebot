@@ -14,8 +14,8 @@ lists the live tools and their schemas. See [README.md](README.md) for usage.
                              v
           node <workspace>/bin/doodlebot.cjs  ->  tsx harness/src/cli.ts
                              v
-   workspace (clone of this repo): harness, built extension, caches, .vortex-src
-                             v
+   workspace (clone of this repo): harness, built extension, caches, releases
+                             v         (Vortex source: the session's Vortex checkout)
        one isolated test Vortex per machine (record: ~/.doodlebot/instance.json)
 ```
 
@@ -147,10 +147,15 @@ Nexus ever ships a search endpoint, the fix is the same shape as
 
 Each HTTP request has its own MCP server/transport; state listeners and UI refs
 remain shared within the renderer. Refs include a renderer-lifetime identifier
-and are invalidated by the next snapshot. Harness snapshot/action transactions
-are serialized with dialog watchers so they cannot invalidate each other's refs.
-That serialization is per client: two processes driving the instance at once can still
-invalidate each other's refs, so drive it from one session at a time.
+and stay valid across snapshots while their element is connected and keeps the
+role, accessible name and row (the closest `[role=row]` or `<tr>`: its name, or a
+hash of its text) it had when the ref was issued (a `WeakMap` fingerprint in
+`uiAutomation.ts`); a recycled row is refused, never redirected. The person's own
+zoom, kept while a narrow width is emulated, is stored on `window`, so it survives
+an extension hot reload. Harness
+snapshot/action transactions are still serialized with dialog watchers, and
+nothing serializes two processes driving the instance at once, so drive it from
+one session at a time.
 
 The harness uses isolated userData/appData and a dedicated sandbox game for
 account-free tests. In harness mode only, `authCache.ts` restores the current
@@ -195,8 +200,9 @@ read one file rather than coordinate processes.
   to run `doodlebot down` first.
 - `processes.ts` holds the platform checks the record relies on: `processAlive` (EPERM counts
   as alive) and `processImageName`.
-- Vortex source work happens on a branch of `.vortex-src` or in a checkout given with
-  `--dev-dir`. Independent QA runs after the author's `down` and starts with `up --fresh`.
+- Vortex source work happens in the session's Vortex checkout (the git top level of the
+  folder doodlebot runs in, a worktree included) or in one given with `--dev-dir`; the kit
+  keeps no clone of its own, and `source --clone <dir>` makes one outside the workspace. Independent QA runs after the author's `down` and starts with `up --fresh`.
 
 ## File map
 

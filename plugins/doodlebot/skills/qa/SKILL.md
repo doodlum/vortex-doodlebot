@@ -83,7 +83,7 @@ Put each returned id in the QA report's Learned section, with the outcome the ga
 3. **Go-ahead.** Building a PR runs its code (`pnpm install`, build scripts). Before the first
    build of a PR from anyone but the person, ask: "Building PR <n> runs its code on this
    machine. Go ahead?" Stop on a no.
-4. **Checkout.** `<workspace>/.vortex-src` (or `--dev-dir <checkout>`) must be clean:
+4. **Checkout.** The session's Vortex checkout, `<checkout>` (or `--dev-dir <checkout>`), must be clean:
    `git -C <checkout> status --porcelain` prints nothing, or QA refuses. Note the branch it is
    on (`git -C <checkout> symbolic-ref --short HEAD`, or the commit from
    `git -C <checkout> rev-parse HEAD` when detached): QA puts it back at the end. Fetch the PR to

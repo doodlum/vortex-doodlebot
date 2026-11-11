@@ -84,6 +84,51 @@ describe("EGM resources", () => {
       expect(line).toContain(argument);
   });
 
+  it("gives a Vortex session the EGM walk in the plugin, with the artifact folder on its own line", () => {
+    const egm = read("plugins/doodlebot/resources/egm.md").replace(/\r\n/g, "\n");
+    // The person types every /egm:* command; the agent only prints the filled-in line.
+    expect(egm).toContain("disable-model-invocation: true");
+    expect(egm.replace(/\s+/g, " ")).toContain("Never write an approval the person has not given.");
+    // The brainstorm line: the command, then the artifact folder on a line of its own.
+    const fences = [...egm.matchAll(/```text\n([\s\S]*?)\n\s*```/g)].map((m) =>
+      m[1]!.split("\n").map((line) => line.trim()),
+    );
+    const brainstorm = fences.find((lines) => lines[0]!.startsWith("/egm:egm-brainstorm"));
+    expect(brainstorm?.[1]).toBe("EGM artifact directory: .doodlebot/egm");
+    // Without the exclude, the folder is in the workspace, never in the Vortex tree.
+    expect(egm).toContain(
+      "EGM artifact directory: <workspace>/harness/.artifacts/egm/<checkout folder name>",
+    );
+    expect(egm).toContain("Start from <workspace>/harness/.artifacts/prototypes/<idea>/summary.md");
+    // The runtime review line, unchanged but for the target, with the folder line under it.
+    const review = fences.find((lines) => lines[0]!.startsWith("/egm:egm-review-loop "));
+    expect(review?.[1]).toBe("EGM artifact directory: .doodlebot/egm");
+    for (const argument of [
+      "TargetFile: <draft>",
+      "SemanticTarget: full file",
+      "Reviewers: [<workspace>/plugins/doodlebot/resources/vortex_runtime.md]",
+      '"<workspace>/plugins/doodlebot/resources/vortex-change-standard.md"',
+      "GoldfishContext: [<workspace>/ARCHITECTURE.md",
+      "Dispatch: Direct Dispatch with subagent type doodlebot:vortex-runtime-goldfish",
+    ])
+      expect(review?.[0]).toContain(argument);
+    // Designs live on designs/<topic>, never on the feature branch.
+    expect(egm).toContain("`designs/<topic>`");
+    expect(egm).toContain("`doodlebot design-branch <topic> --file <draft>`");
+    expect(egm).toContain("never commit it on the feature branch");
+  });
+
+  it("points doodlebot's own AGENTS.md and the fix, pr and prototype skills at the resource", () => {
+    const agents = read("AGENTS.md").replace(/\r\n/g, "\n");
+    expect(agents).toContain("plugins/doodlebot/resources/egm.md");
+    // doodlebot's own designs keep their artifact folder.
+    expect(agents).toMatch(/^EGM artifact directory: harness\/\.artifacts\/egm$/m);
+    for (const skill of ["fix", "pr", "prototype"])
+      expect(read(`plugins/doodlebot/skills/${skill}/SKILL.md`), skill).toContain(
+        "${CLAUDE_PLUGIN_ROOT}/resources/egm.md",
+      );
+  });
+
   it("documents EGM setup for each coding agent", () => {
     const guide = read("docs/get-started/install.md");
     for (const text of [

@@ -51,7 +51,7 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
    It checks types, lint, formatting, documentation, the QA catalogue (`doodlebot qa check`),
    unit tests and the extension build. It does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
    to its design: the manifests and icon, every skill's frontmatter, every plugin resource a
-   skill names, both agents running on Sonnet, exactly the eight commands with a Learned section
+   skill names, both agents running on Sonnet, exactly the nine commands with a Learned section
    in each report, and no text naming a removed command. Tests that would reach GitHub (sharing,
    pushing) use a stand-in for `gh`; none of them publishes anything.
 
@@ -81,7 +81,8 @@ invalidates UI refs mid-action.
 
 Use Vitest for logic that does not need Vortex: parsing, statistics, input validation and pure
 DOM helpers. Put harness tests next to the code in `harness/src/*.test.ts`, and DOM logic in
-`src/uiAutomation.test.ts`, which runs under jsdom.
+`src/uiAutomation.test.ts`, which runs under jsdom. A rule about the command line itself, such
+as `install` refusing an unquoted path with a space, belongs in `harness/src/cliArgs.test.ts`.
 
 ```powershell
 pnpm exec vitest run harness/src/perfSummary.test.ts

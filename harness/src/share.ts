@@ -11,6 +11,8 @@
  *   printed body.
  * - An open issue with the same title gets a comment instead of a new issue. The issue URL is
  *   recorded in the entry, and a second share of the same id is refused.
+ * - Before any search or create, `gh repo view --json hasIssuesEnabled` is read. When issues are
+ *   disabled the text is printed with the reason, nothing is created, and the command exits 2.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -268,6 +270,37 @@ export function publishDraft(
   }
 }
 
+/**
+ * `gh repo view <repo> --json hasIssuesEnabled`: whether the repository takes issues, or
+ * undefined (with gh's result) when gh could not say.
+ */
+export function issuesEnabled(
+  gh: GhRunner,
+  repo = SHARE_REPO,
+): { enabled: boolean | undefined; result: GhResult } {
+  const result = gh(["repo", "view", repo, "--json", "hasIssuesEnabled"]);
+  if (result.code !== 0) return { enabled: undefined, result };
+  try {
+    const value = (JSON.parse(result.stdout) as { hasIssuesEnabled?: unknown }).hasIssuesEnabled;
+    return { enabled: typeof value === "boolean" ? value : undefined, result };
+  } catch {
+    return { enabled: undefined, result };
+  }
+}
+
+export const ISSUES_DISABLED = `Issues are disabled on ${SHARE_REPO}; the owner can enable them, or share this text another way`;
+
+/**
+ * The share stopped because the repository takes no issues: `output` is the text for stdout (the
+ * Markdown and the reason) and the command exits 2. Nothing was searched or created.
+ */
+export class IssuesDisabledError extends ConfigError {
+  readonly exitCode = 2;
+  constructor(readonly output: string) {
+    super(ISSUES_DISABLED);
+  }
+}
+
 export interface ShareDeps {
   gh?: GhRunner;
   ctx?: RedactionContext;
@@ -305,6 +338,11 @@ export function shareEntry(
       "Third-party data was left out. Include it only if the person confirms that part separately " +
         "(--include-third-party).",
     );
+  // Before any search or create: a repository without issues takes none.
+  const issues = issuesEnabled(gh);
+  if (issues.enabled === false) throw new IssuesDisabledError(`${text}\n${ISSUES_DISABLED}.`);
+  if (issues.enabled === undefined && flags.yes === true)
+    throw ghFailure(`read whether ${SHARE_REPO} takes issues`, issues.result);
   if (flags.yes !== true) {
     let existing: IssueRef | undefined;
     let searched = true;

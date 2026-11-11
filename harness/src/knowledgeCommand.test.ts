@@ -167,6 +167,46 @@ describe("knowledge command", () => {
     expect(knowledgeCommand(["path"], {}, store)).toBe(store.local);
   });
 
+  it("gives each lesson's fields at the top level in list and search JSON, with no fields object", () => {
+    const store = files();
+    const added = addLesson(lesson, store.local, new Date("2026-11-10T12:00:00Z"));
+    noteLesson(added.id, "held on 2.8.1", store.local, new Date("2026-11-11T08:00:00Z"));
+    const expected = {
+      id: added.id,
+      title: "Install watchers make refs stale",
+      area: "install",
+      symptom: "Stale or unknown ref after a snapshot",
+      cause: "install's dialog watchers take their own snapshots",
+      remedy: "Snapshot and click in one call",
+      scope: "doodlebot install, any Vortex",
+      evidence: "harness/.artifacts/runs/20261110T123734Z-probe-reinstall/report.md",
+      vortex: "2.8.0",
+      seen: "2026-11-10",
+      thirdParty: null,
+      issue: null,
+      notes: ["2026-11-11: held on 2.8.1"],
+    };
+    const [listed] = JSON.parse(knowledgeCommand(["list"], { json: true }, store)) as Record<
+      string,
+      unknown
+    >[];
+    expect(listed).toEqual(expected);
+    expect(listed).not.toHaveProperty("fields");
+
+    const matches = JSON.parse(
+      knowledgeCommand(["search", "snapshot"], { json: true }, store),
+    ) as Record<string, unknown>[];
+    expect(matches[0]).toMatchObject({ source: "local", ...expected });
+    expect(matches[0]).not.toHaveProperty("fields");
+    expect(matches[0]?.text).toContain("- **Area:** install");
+    // A shared section has no fields of its own: its title and text.
+    expect(matches[1]).toEqual({
+      source: "shared",
+      title: "Snapshots go blank",
+      text: "## Snapshots go blank\n\nA modal overlay hides the tree.",
+    });
+  });
+
   it("notes a lesson through the CLI form", () => {
     const store = files();
     const added = addLesson(lesson, store.local);

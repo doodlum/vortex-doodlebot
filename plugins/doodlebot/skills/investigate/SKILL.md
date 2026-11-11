@@ -47,14 +47,15 @@ is `/doodlebot:fix`, which can start from this report.
      reproduced on the user's version**, never plain "not reproduced";
    - a need nothing meets (no copy of the game, no login): **not tested**, with the
      inventory's `next` command.
-5. **Narrow to the cause** in the source. `doodlebot source` (`/doodlebot:source`) gives
-   `<workspace>/.vortex-src`; check out the user's version's tag without building over another
-   session's work (`git -C <workspace>/.vortex-src status --porcelain` must be empty; note the
-   branch it is on, `git -C <workspace>/.vortex-src symbolic-ref --short HEAD`, or its commit
-   when detached; then `git -C <workspace>/.vortex-src fetch upstream --tags` and
-   `git -C <workspace>/.vortex-src switch --detach v<version>`). When you are done reading, put
-   it back: `git -C <workspace>/.vortex-src switch <that branch>` (or `--detach <commit>`), and
-   say so in the report. Read the code path from the
+5. **Narrow to the cause** in the source: the session's Vortex checkout, `<checkout>`
+   (`doodlebot source --where`; `/doodlebot:source` prepares it). Outside a checkout, ask the
+   person to open Claude in one, or to clone one with `doodlebot source --clone <dir>`. Check
+   out the user's version's tag without building over the session's work
+   (`git -C <checkout> status --porcelain` must be empty; note the branch it is on,
+   `git -C <checkout> symbolic-ref --short HEAD`, or its commit when detached; then
+   `git -C <checkout> fetch upstream --tags` and `git -C <checkout> switch --detach v<version>`).
+   When you are done reading, put it back: `git -C <checkout> switch <that branch>` (or
+   `--detach <commit>`), and say so in the report. Read the code path from the
    UI action or log line to the state change; use `doodlebot log`, `doodlebot call vortex_query`
    and the console from the run to confirm each step. A cause is **confirmed** only when an
    observation ties it to the symptom (a log line from that code, a state value, a run that
@@ -89,7 +90,7 @@ Reproduced on <version> | Not reproduced on <version> | Not reproduced on the us
 
 ## Cause
 
-- <file>:<line> in <workspace>/.vortex-src at <tag or head>: <what it does wrong>
+- <file>:<line> in <checkout> at <tag or head>: <what it does wrong>
 - Confidence: confirmed (<the observation>) | likely (<what would confirm it>) | unknown
 - Lessons used: <ids or sections, and whether they held>
 

@@ -101,6 +101,8 @@ the maintainer turns into a change.
 4. The issue link is saved, and the same entry is never shared twice.
 
 Without the GitHub CLI (`gh`), the agent gives you the text to paste into a new issue yourself.
+If the repository has issues turned off, nothing is created: the agent gives you the text and
+says so, and you can share it another way or ask the owner to turn issues on.
 Once the maintainer adds the lesson to `KNOWLEDGE.md`, you get it with `/doodlebot:setup --update`.
 
 ## What's next

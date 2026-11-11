@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { markerFile } from "./bootstrap";
 import { updateContent } from "./content";
-import { MB, cleanCommand, planClean, type CleanDeps } from "./diskUse";
+import { MB, applyClean, cleanCommand, planClean, type CleanDeps } from "./diskUse";
 import type { InstanceRecord } from "./runningVortex";
 
 let root: string;
@@ -170,6 +170,23 @@ describe("clean", () => {
     ]);
   });
 
+  it("never deletes a Vortex clone: an old workspace clone is not listed, and a git folder is refused", () => {
+    // Before this fix, clean listed the old clone (passed as `oldClone`) and --yes deleted it.
+    const oldClone = path.join(root, "workspace", "old-clone");
+    const file = write(path.join(oldClone, "src", "main", "package.json"), 2048);
+    write(path.join(oldClone, ".git", "HEAD"), "ref: refs/heads/master\n");
+    const withClone = { ...deps, oldClone } as CleanDeps;
+    expect(planClean(0, withClone)).toEqual([]);
+    expect(cleanCommand({ yes: true }, withClone).text).toBe(
+      "Nothing to clean (older than 30 days).",
+    );
+    expect(fs.existsSync(file)).toBe(true);
+    // Even a planned item that is a checkout is refused at delete time.
+    expect(() =>
+      applyClean([{ path: oldClone, kind: "release", bytes: 0, reason: "x" }], deps),
+    ).toThrow(/a git checkout/);
+    expect(fs.existsSync(file)).toBe(true);
+  });
   it("refuses a bad --older-than and reports nothing to clean", () => {
     expect(() => cleanCommand({ "older-than": "soon" }, deps)).toThrow(/--older-than/);
     expect(cleanCommand({ "older-than": "7" }, deps).text).toBe(

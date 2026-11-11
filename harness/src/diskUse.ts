@@ -9,7 +9,8 @@
  * - releases in `~/.doodlebot/releases` that `content.json` no longer names.
  *
  * It never touches a registered game copy, any `oauth-*.json` or `login-*` folder, a pending
- * restore's backup, or the cache of the running harness Vortex.
+ * restore's backup, the cache of the running harness Vortex, or a Vortex clone: not the old
+ * workspace clone, and no folder holding a `.git` entry.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -22,6 +23,7 @@ import {
   CONTENT_FILE,
   DEFAULT_ARTIFACT_DIR,
   DEFAULT_CACHE_DIR,
+  OLD_CLONE_DIR,
   RELEASES_DIR,
   normalizedPath,
 } from "./paths";
@@ -87,6 +89,7 @@ function protectedPaths(deps: CleanDeps): { paths: string[]; why: string }[] {
   const content = readContent(deps.contentFile ?? CONTENT_FILE);
   const running = (deps.running ?? runningVortex)();
   return [
+    { paths: [OLD_CLONE_DIR], why: "a Vortex clone" },
     ...content.games.map((copy) => ({ paths: [copy.path], why: "a registered game copy" })),
     ...content.pendingRestores.map((pending) => ({
       paths: [pending.backupDir],
@@ -94,9 +97,21 @@ function protectedPaths(deps: CleanDeps): { paths: string[]; why: string }[] {
     })),
     ...(running === undefined
       ? []
-      : [{ paths: [running.cacheDir, running.userDataDir], why: "the running instance's cache" }]),
+      : [
+          {
+            paths: [
+              running.cacheDir,
+              running.userDataDir,
+              ...(running.sourceDir === undefined ? [] : [running.sourceDir]),
+            ],
+            why: "the running instance's cache or checkout",
+          },
+        ]),
   ];
 }
+
+/** A folder that is a git checkout or worktree (a `.git` folder or file inside it). */
+const holdsGit = (target: string): boolean => fs.existsSync(path.join(target, ".git"));
 
 const isLogin = (file: string): boolean =>
   /^(?:oauth-.*\.json|login-.*)$/i.test(path.basename(file));
@@ -247,9 +262,11 @@ export function applyClean(items: CleanItem[], deps: CleanDeps = {}): void {
   const guards = protectedPaths(deps);
   for (const item of items) {
     for (const target of item.files ?? [item.path]) {
-      const why = protection(target, guards);
-      if (why !== undefined || isLogin(target))
-        throw new ConfigError(`Refusing to delete ${target}: ${why ?? "a login"}.`);
+      const why =
+        protection(target, guards) ??
+        (isLogin(target) ? "a login" : undefined) ??
+        (holdsGit(target) ? "a git checkout" : undefined);
+      if (why !== undefined) throw new ConfigError(`Refusing to delete ${target}: ${why}.`);
       fs.rmSync(target, { recursive: true, force: true });
     }
   }

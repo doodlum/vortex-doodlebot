@@ -1,9 +1,11 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { buildRecordFile, checkBuildRecord, readBuildRecord } from "./productionMode";
 import { clearInstanceRecord, INSTANCE_RECORD, writeInstanceRecord } from "./runningVortex";
 import { buildCheckout, buildEnvironment, restoreChanged, saveFiles } from "./vortexBuild";
 
@@ -162,6 +164,42 @@ describe("building a checkout", () => {
     writeInstanceRecord(record);
     await buildCheckout({ checkout, production: true, installedPnpm: "11.10.0", runner });
     expect(runs).toEqual(["pnpm", "pnpm"]);
+  });
+
+  it("writes the build record after a successful build of a git checkout, and none after a failure", async () => {
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", windowsHide: true });
+    git("init", "-q", "-b", "master");
+    git("config", "core.autocrlf", "false");
+    fs.writeFileSync(path.join(checkout, ".gitignore"), "src/main/build/\n");
+    git("add", "-A");
+    git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qm", "base");
+    const builds = (code: number) => async (): Promise<number> => {
+      for (const name of ["main.cjs", "renderer.js"])
+        fs.writeFileSync(path.join(checkout, "src", "main", "build", name), "bundle\n");
+      // The build rewrites a generated file; it is put back before anything is recorded.
+      fs.writeFileSync(path.join(checkout, "etc", "vortex.api.md"), "rewritten\n");
+      return code;
+    };
+    const report = await buildCheckout({
+      checkout,
+      production: true,
+      installedPnpm: "11.10.0",
+      runner: builds(0),
+    });
+    expect(report.record).toBe(buildRecordFile(checkout));
+    expect(readBuildRecord(checkout)).toMatchObject({ mode: "production", changes: {} });
+    expect(checkBuildRecord(checkout).status).toBe("match");
+    expect(git("status", "--porcelain")).toBe("");
+
+    const failed = await buildCheckout({
+      checkout,
+      production: false,
+      installedPnpm: "11.10.0",
+      runner: builds(1),
+    });
+    expect(failed.record).toBeUndefined();
+    expect(readBuildRecord(checkout)).toBeUndefined();
   });
 
   it("refuses a directory that is not a Vortex checkout", async () => {

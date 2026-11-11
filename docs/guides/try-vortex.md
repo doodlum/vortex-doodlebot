@@ -76,7 +76,21 @@ process has exited and its log shows the success line, such as `Vortex is up in`
 only shows that Vortex is alive, not that the start has finished. While a command that can raise
 a dialog runs, it polls `doodlebot call ui_active_dialogs` and answers the dialog with
 `doodlebot snapshot` and `doodlebot click --ref <ref>`. `install` gives up after 300 seconds, so
-the dialog must be answered before then.
+the dialog must be answered before then. A ref stays valid while its element shows the same
+thing, even when `install`'s own dialog watchers take snapshots; if a list reuses the element
+for something else (another row, or another mod in the same row), the click is refused and the
+agent takes a new snapshot. To try this without a real mod, `doodlebot fixture fomod --out <zip>`
+writes a small installer. `doodlebot install` steps through an installer with its defaults; to
+keep the installer dialog open until it is answered, the agent starts the install with Vortex's
+own `start-install` action (`doodlebot call vortex_dispatch`) instead.
+
+### Narrow windows
+
+Vortex's window can't be narrower than 1024 px, but people reach narrower layouts with Vortex's
+UI zoom or Windows display scaling. A responsive check at a smaller width (for example
+`doodlebot responsive --viewports "640x720,800x720"`) keeps the window at its minimum and uses
+the renderer's zoom to reach that width, then restores your own zoom when it finishes. If a
+Vortex build doesn't allow it, the report says that width was not tested.
 
 ## Install a Nexus collection
 

@@ -7,25 +7,24 @@ hard-won knowledge. Nothing here requires a patched or self-built Vortex.
 
 ## What's here
 
-| Path                              | What it is                                                                                                           |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `src/`                            | The Vortex extension: an MCP server exposing Vortex's state **and** its UI                                           |
-| `harness/`                        | The `doodlebot` CLI and Playwright suite: launch, cache, drive, verify                                               |
-| `bin/doodlebot.cjs`               | The CLI entry point; `bin/update.cjs` is `doodlebot update`; `bin/nodeVersion.cjs` checks Node first                 |
-| `plugins/`                        | The `doodlebot` plugin: skills, agents, EGM resources and its icon                                                   |
-| `.claude-plugin/marketplace.json` | The `doodlebot` marketplace for Claude Code; `.agents/plugins/marketplace.json` is Codex's                           |
-| `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard and the runtime Goldfish persona                                           |
-| `plugins/doodlebot/agents/`       | Claude Code subagents: `vortex-runtime-goldfish`, `vortex-driver`                                                    |
-| `harness/AGENTS.md`               | **The agent manual**: CLI, tools, traps and the working rules every skill shares                                     |
-| `harness/PULL-REQUESTS.md`        | Vortex PR titles, description template, review brief, review lessons                                                 |
-| `harness/TESTING.md`              | Kit gates, the core suite and opt-in checks                                                                          |
-| `designs/`                        | Approved doodlebot designs, indexed in `designs/SITEMAP.md`                                                          |
-| `harness/qa/catalog.json`         | The QA catalogue: checks Vortex's own e2e suite lacks, with the Vortex files each guards                             |
-| `KNOWLEDGE.md`                    | Confirmed diagnostic traps; search the relevant area                                                                 |
-| `ARCHITECTURE.md`                 | Why the extension reflects Vortex's API instead of wrapping it; the one-instance model                               |
-| `docs/`                           | The documentation site for people: installing and using the companion, task by task                                  |
-| `.claude/settings.json`           | Registers the EGM marketplace (pinned to `v0.1.1`) and this folder's marketplace; enables `egm` and `doodlebot`      |
-| `.vortex-src/`                    | The Vortex clone this kit manages (gitignored, created by `doodlebot source`); Vortex work happens on a branch of it |
+| Path                              | What it is                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/`                            | The Vortex extension: an MCP server exposing Vortex's state **and** its UI                                      |
+| `harness/`                        | The `doodlebot` CLI and Playwright suite: launch, cache, drive, verify                                          |
+| `bin/doodlebot.cjs`               | The CLI entry point; `bin/update.cjs` is `doodlebot update`; `bin/nodeVersion.cjs` checks Node first            |
+| `plugins/`                        | The `doodlebot` plugin: skills, agents, EGM resources and its icon                                              |
+| `.claude-plugin/marketplace.json` | The `doodlebot` marketplace for Claude Code; `.agents/plugins/marketplace.json` is Codex's                      |
+| `plugins/doodlebot/resources/`    | EGM resources: the Vortex change standard, the runtime Goldfish persona and the EGM walk for a Vortex session   |
+| `plugins/doodlebot/agents/`       | Claude Code subagents: `vortex-runtime-goldfish`, `vortex-driver`                                               |
+| `harness/AGENTS.md`               | **The agent manual**: CLI, tools, traps and the working rules every skill shares                                |
+| `harness/PULL-REQUESTS.md`        | Vortex PR titles, description template, review brief, review lessons                                            |
+| `harness/TESTING.md`              | Kit gates, the core suite and opt-in checks                                                                     |
+| `designs/`                        | Approved doodlebot designs, indexed in `designs/SITEMAP.md`                                                     |
+| `harness/qa/catalog.json`         | The QA catalogue: checks Vortex's own e2e suite lacks, with the Vortex files each guards                        |
+| `KNOWLEDGE.md`                    | Confirmed diagnostic traps; search the relevant area                                                            |
+| `ARCHITECTURE.md`                 | Why the extension reflects Vortex's API instead of wrapping it; the one-instance model                          |
+| `docs/`                           | The documentation site for people: installing and using the companion, task by task                             |
+| `.claude/settings.json`           | Registers the EGM marketplace (pinned to `v0.1.1`) and this folder's marketplace; enables `egm` and `doodlebot` |
 
 ## Getting to a driveable Vortex
 
@@ -53,12 +52,15 @@ longer belongs to Vortex or Electron is cleared as stale. The older record
 `harness/.cache/instance.json` is deleted when found, unless it names a running Vortex
 ("A harness Vortex from an older doodlebot is running (pid N); stop it before starting Vortex.").
 
-To work on Vortex's own code: `doodlebot source` (`/doodlebot:source`) finds **your** GitHub
-fork, clones it into `.vortex-src` (as `origin`, beside Nexus-Mods/Vortex as `upstream`) and
-builds it; without a fork it clones upstream alone, which is enough to build and test. Make a
-branch from `upstream` for each piece of work (`doodlebot source --branch <name>`), or pass a
-checkout of your own with `--dev-dir <dir>`. The kit pushes only to your own fork
-(`doodlebot pr-branch <topic> --push`). The kit never searches the filesystem
+To work on Vortex's own code, open the session in a Vortex checkout or one of its worktrees:
+doodlebot uses the session's Vortex checkout (the git top level of the folder it runs in), or one
+named with `--dev-dir <dir>`. `/doodlebot:source` prepares it (the `upstream` remote, the
+`.doodlebot/` exclude, install and build). Without a checkout, `doodlebot source --clone <dir>`
+clones **your** GitHub fork into `<dir>` (as `origin`, beside Nexus-Mods/Vortex as `upstream`);
+without a fork it clones upstream alone, which is enough to build and test. Make a branch from
+`upstream` for each piece of work (`doodlebot source --branch <name>`). The kit pushes only to your own fork
+(`doodlebot push-branch` for the session's branch, which `/doodlebot:pr` opens the PR from, and
+`doodlebot design-branch <topic> --file <draft>` for a design). The kit never searches the filesystem
 for a Vortex checkout. Building, installing, patching, reverting or recording evidence in the
 checkout a running harness Vortex was launched from refuses with
 "A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before <action>."
@@ -79,14 +81,17 @@ reviewer that checks every acceptance criterion can be proved on a real Vortex.
 to type next (with the line below for the runtime review, filled in) and carries on when the
 person has run it.
 
-1. `/egm:egm-brainstorm`, then `/egm:egm-draft`. At the draft's save step choose `designs/` for
-   a doodlebot change (it is listed in `designs/SITEMAP.md`), or `docs/designs/` in the Vortex
-   checkout for a Vortex change. A Vortex design is committed on the feature branch as
-   `docs(design): <topic>`; `/doodlebot:pr` leaves those commits out of the PR branch.
+**A Vortex change is designed in its Vortex session**, not here: a session opened in a Vortex
+checkout reads Vortex's instructions, not this file. The walk, the artifact folder
+(`.doodlebot/egm`) and the lines to paste for it are in `plugins/doodlebot/resources/egm.md`.
+This section is for doodlebot's own designs.
+
+1. `/egm:egm-brainstorm`, then `/egm:egm-draft`. At the draft's save step choose `designs/` (it
+   is listed in `designs/SITEMAP.md`).
 2. `/egm:egm-review <design>`. Give `GoldfishContext` the files the design names.
 3. `/egm:egm-review-loop` for the runtime review, with exactly these arguments (paths are under
    this workspace, `<workspace>`):
-   - **TargetFile:** `<workspace>/<design path>` (or the Vortex checkout's design path)
+   - **TargetFile:** `<workspace>/<design path>`
    - **SemanticTarget:** `full file`
    - **Reviewers:** `<workspace>/plugins/doodlebot/resources/vortex_runtime.md`
    - **Standards:** `{"<workspace>/plugins/doodlebot/resources/vortex_runtime.md": "<workspace>/plugins/doodlebot/resources/vortex-change-standard.md"}`

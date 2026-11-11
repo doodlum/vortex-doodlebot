@@ -20,6 +20,8 @@ section (U11).
 | U9  | "Ship it"                                     | `/doodlebot:pr`                             |
 | U10 | "Improve doodlebot itself"                    | Edits in the workspace, `pnpm run ci`       |
 | U11 | "The kit couldn't do that" / "That was wrong" | The Learned section of every report         |
+| U12 | "Work on Vortex in this checkout"             | Open the agent there, `/doodlebot:source`   |
+| U13 | "Prototype this idea"                         | `/doodlebot:prototype <idea>`               |
 
 ## U0: Set up doodlebot, or see what you can test
 
@@ -29,7 +31,7 @@ section (U11).
 
 You get a status table: each item is ready, missing with the exact command that fixes it, or
 blocked with the reason. It covers the workspace, Vortex builds, game copies, sandboxes, the
-Nexus login, EGM, the Vortex source, pending restores, open kit gaps and disk use. See
+Nexus login, EGM, the Vortex checkout you are in, pending restores, open kit gaps and disk use. See
 [Set up doodlebot](../get-started/set-up.md).
 
 ## U1: Try something in Vortex
@@ -66,17 +68,19 @@ needed unless you ask for one. See [Fix a Vortex bug](fix-a-bug.md).
 
 ## U4: Build a feature
 
-Open the agent in the doodlebot workspace. You type the EGM commands; the agent tells you which
-comes next.
+Open the agent in your Vortex checkout (U12). You type the EGM commands; the agent gives you
+each line to paste, with `EGM artifact directory: .doodlebot/egm` on its own line.
 
-1. `/doodlebot:setup --check`, then `/doodlebot:source --branch feat/<topic>`.
-2. `/egm:egm-brainstorm <the idea>`, then `/egm:egm-draft`. Save the design in the Vortex
-   checkout's `docs/designs/`; it is committed on the branch as `docs(design): <topic>`.
-3. `/egm:egm-review <design>`, then the `/egm:egm-review-loop` line the agent gives you, with
+1. `/doodlebot:setup --check`, then `/doodlebot:source`.
+2. `/egm:egm-brainstorm <the idea>`, then `/egm:egm-draft`. The draft stays in `.doodlebot/egm`;
+   the agent commits each revision to the sibling branch `designs/<topic>` in your fork with
+   `doodlebot design-branch`, never to the feature branch.
+3. `/egm:egm-review <draft>`, then the `/egm:egm-review-loop` line the agent gives you, with
    doodlebot's runtime reviewer.
-4. You approve the design.
-5. The agent implements it and writes its tests in the branch; `/doodlebot:try` shows it working.
-6. `/doodlebot:qa --design <design>` checks every acceptance criterion with its negative control.
+4. You approve the design: the approved revision is its `designs/<topic>` commit.
+5. `/doodlebot:source --branch feat/<topic>`. The agent implements it and writes its tests in
+   the branch; `/doodlebot:try` shows it working.
+6. `/doodlebot:qa --design <draft>` checks every acceptance criterion with its negative control.
 7. `/doodlebot:pr` (U9).
 
 You get an EGM design with its review reports, then a branch checked from a fresh profile. See
@@ -122,11 +126,14 @@ previous result".
 
 ## U9: Ship it
 
-1. After U3 or U4, run `/doodlebot:pr <topic>`.
-2. The agent runs the preflight, builds `pr/<topic>` without the design commits, and writes the
-   description from the run reports and the design, ending with the doodlebot footer.
-3. On your go-ahead it pushes to your own fork only, and opens a draft pull request unless you
-   say otherwise. It reads CI and says why it is red.
+1. After U3 or U4, run `/doodlebot:pr` in the session on the work branch.
+2. The agent runs the preflight and writes the description from the run reports and the design
+   (linked at its approved commit), ending with the doodlebot footer. A `proto/*` branch is
+   refused.
+3. On your go-ahead it pushes the session's branch to your own fork only, asks whether the pull
+   request goes to your fork or to Nexus-Mods/Vortex, and opens it from that branch, a draft
+   unless you say otherwise. In the Claude desktop app it binds the pull request to the session.
+   It reads CI and says why it is red.
 
 A pull request is opened only after your real scenario passed on the change. See
 [Open a pull request](pull-requests.md).
@@ -151,3 +158,28 @@ Nothing to type: it happens during every other use case. Each report ends with *
 - a proposed QA catalogue entry for an area nothing tests.
 
 You decide what becomes a change for everyone. See [What doodlebot learns](../concepts/knowledge.md).
+
+## U12: Work on Vortex in this checkout
+
+1. Open Claude in your Vortex checkout, or in a worktree of it (a Claude desktop worktree session
+   works). With no checkout yet, ask for one: the agent runs `doodlebot source --clone <dir>` into
+   a folder you name, and you open Claude there.
+2. Run `/doodlebot:source`. It installs and builds that checkout.
+
+Every command that builds or changes Vortex then uses the session's checkout, and
+`doodlebot up` runs its build. Outside a checkout those commands refuse and say how to get one.
+See [Work on Vortex source](source-development.md).
+
+## U13: Prototype an idea
+
+1. In the Claude desktop app, start a new worktree session of your checkout on a new branch
+   `proto/<idea>` (or on the upstream default), then run `/doodlebot:prototype <idea>` there.
+2. The agent refuses a tree with changes in it, or a branch other than a new `proto/*` branch or
+   the upstream default.
+3. Each round it changes the code, rebuilds, runs the build in a test Vortex, shows you
+   screenshots at several window sizes, and asks what to change. Nothing is reviewed or
+   approved.
+
+You get a summary of what was tried, with links to each round's run report, and the
+`/egm:egm-brainstorm` lines that start the design from it (U4). The prototype is never shipped:
+`/doodlebot:pr` refuses `proto/*`. See [Prototype an idea](prototype.md).

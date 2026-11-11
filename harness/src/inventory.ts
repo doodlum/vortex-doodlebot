@@ -5,7 +5,7 @@
  * Each item has an `id`, a `kind`, `ready` and, when not ready, `next`: the exact command that
  * makes it ready. Reading the inventory never launches Vortex and never writes: it reads
  * content.json, the default cache's snapshot markers and login files, Steam's manifests and the
- * managed source checkout.
+ * session's Vortex checkout (the one holding the caller's folder).
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -13,7 +13,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { SNAPSHOT_SCHEMA_VERSION, readMarker } from "./bootstrap";
-import { findInstalledVortex } from "./config";
+import { findInstalledVortex, vortexCheckoutOf } from "./config";
 import { readContent, type Content } from "./content";
 import { normalizeVersionResource } from "./releaseFetch";
 import { ConfigError } from "./errors";
@@ -22,7 +22,7 @@ import { KNOWN_GAMES, USER_FOLDERS } from "./gameSetup";
 import { sharedLoginDir, usesSharedLogin } from "./login";
 import { CONTENT_FILE, DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { gitBranch } from "./runningVortex";
-import { hasVortexSource, missingBuildOutputs, vortexSourceDir } from "./source";
+import { missingBuildOutputs } from "./source";
 
 export const INVENTORY_KINDS = [
   "build",
@@ -84,16 +84,16 @@ export interface InventoryDeps {
    */
   sharedLoginDir?: string;
   installedVortex?: () => string | undefined;
-  /** The managed source checkout, or undefined when there is none. */
+  /** The session's Vortex checkout, or undefined outside one. */
   source?: () => { dir: string; info: SourceInfo } | undefined;
   /** The store install of a game. */
   storePath?: (gameId: string) => string | undefined;
   exists?: (file: string) => boolean;
 }
 
-function managedSource(): { dir: string; info: SourceInfo } | undefined {
-  const dir = vortexSourceDir();
-  if (!hasVortexSource(dir)) return undefined;
+function checkoutSource(): { dir: string; info: SourceInfo } | undefined {
+  const dir = vortexCheckoutOf();
+  if (dir === undefined) return undefined;
   let head: string | undefined;
   try {
     head = execFileSync("git", ["-C", dir, "rev-parse", "--short=10", "HEAD"], {
@@ -165,14 +165,14 @@ function buildItems(content: Content, deps: InventoryDeps): InventoryItem[] {
       path: installed,
       details: { flag: "--installed" },
     });
-  const source = (deps.source ?? managedSource)();
+  const source = (deps.source ?? checkoutSource)();
   if (source === undefined)
     items.push({
       id: "source",
       kind: "build",
       ready: false,
-      next: "doodlebot source",
-      label: "a Vortex source checkout (.vortex-src): not cloned",
+      next: "doodlebot source --clone <dir>, or open Claude in a Vortex checkout or worktree",
+      label: "a Vortex source checkout: this session is not in one",
     });
   else
     items.push({
@@ -181,7 +181,7 @@ function buildItems(content: Content, deps: InventoryDeps): InventoryItem[] {
       ready: source.info.built,
       ...(source.info.built ? {} : { next: `doodlebot build --checkout ${arg(source.dir)}` }),
       label: [
-        `Vortex source at ${source.dir}`,
+        `this session's Vortex checkout at ${source.dir}`,
         ...(source.info.branch === undefined ? [] : [`branch ${source.info.branch}`]),
         ...(source.info.head === undefined ? [] : [`head ${source.info.head}`]),
         ...(source.info.built ? [] : ["not built"]),

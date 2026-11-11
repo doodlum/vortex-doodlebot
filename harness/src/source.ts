@@ -1,12 +1,12 @@
 /**
- * Finding the operator's Vortex fork on GitHub, and keeping a clone of it here.
+ * Preparing the session's Vortex checkout, and cloning a new one where the person says.
  *
- * The suite has to work for someone who just cloned this repo, so it cannot
- * assume a Vortex checkout exists anywhere on the machine, and it must not go
- * hunting around the filesystem for one. Instead it asks GitHub who the operator
- * is, looks for their fork, and clones it **inside this repo** at
- * `.vortex-src/` (gitignored). Without a fork it clones Nexus-Mods/Vortex itself, as the remote
- * `upstream`: enough to read, build and test, though pushing needs a fork (prPush.ts).
+ * The person opens Claude in a Vortex checkout or one of its worktrees, and that is the checkout
+ * the kit works in (config.ts `vortexCheckoutOf`); the kit never goes hunting around the
+ * filesystem for one. `source --clone <dir>` makes one: it asks GitHub who the operator is,
+ * looks for their fork, and clones it into the folder the person named, outside the workspace.
+ * Without a fork it clones Nexus-Mods/Vortex itself, as the remote `upstream`: enough to read,
+ * build and test, though pushing needs a fork (prPush.ts).
  *
  * Everything here works unauthenticated. `gh` is used when it happens to be
  * logged in, but the fallback — GitHub's public REST API plus the identity git
@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { ConfigError } from "./errors";
 import { REPO_ROOT } from "./paths";
 import { abortOnSignals, runEvidenceProcess } from "./processRunner";
 import { assertNoVortexRunningFrom } from "./runningVortex";
@@ -27,19 +28,13 @@ const execFileAsync = promisify(execFile);
 export const UPSTREAM = "Nexus-Mods/Vortex";
 const UPSTREAM_URL = `https://github.com/${UPSTREAM}.git`;
 
-/** Where the Vortex clone lives — inside this repo, never outside it. */
-export function vortexSourceDir(): string {
-  return process.env.VORTEX_AI_SOURCE_DIR ?? path.join(REPO_ROOT, ".vortex-src");
-}
-
-export function hasVortexSource(dir = vortexSourceDir()): boolean {
-  return fs.existsSync(path.join(dir, "src", "main", "package.json"));
+/** `dir` is `root` or inside it. */
+function isInside(dir: string, root: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(dir));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 export class ForkError extends Error {}
-
-/** Only an ordinary nonzero command exit permits the Nx build fallback. */
-export class CommandExitError extends ForkError {}
 
 export interface PackageManagerCommand {
   cmd: string;
@@ -57,6 +52,30 @@ export function parsePnpmVersion(packageManager: string | undefined): string {
     );
   }
   return match[1];
+}
+
+/**
+ * Why `VORTEX_AI_PNPM` can't be used, or undefined: it is set but names no file. Without this
+ * check the install or build failed with only "The system cannot find the path specified".
+ */
+export function pnpmOverrideProblem(
+  override: string | undefined = process.env.VORTEX_AI_PNPM,
+  exists: (file: string) => boolean = fs.existsSync,
+): string | undefined {
+  const value = override?.trim() ?? "";
+  if (value === "" || exists(value)) return undefined;
+  return (
+    `VORTEX_AI_PNPM names ${value}, which does not exist. Point it at a pnpm of the checkout's ` +
+    "pinned version (in harness/.env or the environment), or remove it to use `pnpm dlx`."
+  );
+}
+
+/** Refuse before an install or build when `VORTEX_AI_PNPM` names a missing file. */
+export function assertPnpmOverride(
+  override: string | undefined = process.env.VORTEX_AI_PNPM,
+): void {
+  const problem = pnpmOverrideProblem(override);
+  if (problem !== undefined) throw new ConfigError(problem);
 }
 
 /**
@@ -108,9 +127,8 @@ export function childEnv(): NodeJS.ProcessEnv {
 
 /**
  * The environment for a command someone runs through the kit (`evidence run`, `script`), by where
- * it runs. Inside this repo, outside its Vortex checkout, it's the kit's own command: unchanged.
- * Anywhere else, such as `pnpm run verify` in a Vortex checkout, it's a Vortex command, and gets
- * what `childEnv`
+ * it runs. Inside this repo it's the kit's own command: unchanged. Anywhere else, such as
+ * `pnpm run verify` in a Vortex checkout, it's a Vortex command, and gets what `childEnv`
  * gives a nested run: no npm_/PNPM_ variables from the kit's pnpm 9, and a PATH whose first pnpm
  * is the checkout's. `CI` is left as the caller had it.
  */
@@ -119,13 +137,7 @@ export function commandEnv(
   base: NodeJS.ProcessEnv = process.env,
   repoRoot: string = REPO_ROOT,
 ): NodeJS.ProcessEnv {
-  const inside = (dir: string, root: string): boolean => {
-    const relative = path.relative(root, dir);
-    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-  };
-  const dir = path.resolve(cwd);
-  const vortex = inside(dir, path.join(repoRoot, ".vortex-src"));
-  if (inside(dir, repoRoot) && !vortex) return { ...base };
+  if (isInside(path.resolve(cwd), repoRoot)) return { ...base };
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(base)) {
     if (/^(npm_|PNPM_|COREPACK_)/i.test(key)) continue;
@@ -206,7 +218,7 @@ export async function runStreaming(
     if (result.code === null)
       throw new ForkError(`${options.label} ended without an exit code; child exit confirmed.`);
     if (result.code !== 0)
-      throw new CommandExitError(
+      throw new ForkError(
         `${options.label} failed (${cmd} ${args.join(" ")}) with ` +
           `${result.signal === null ? `exit code ${String(result.code)}` : `signal ${result.signal}`}. ` +
           `Its output is above.`,
@@ -312,7 +324,7 @@ export async function findFork(user: string): Promise<ForkInfo | undefined> {
 
 /** What `source` says when it clones upstream: reading and building need no fork; pushing does. */
 export const NO_FORK_NOTE =
-  `No fork of ${UPSTREAM} was found, so .vortex-src is a clone of ${UPSTREAM} (remote ` +
+  `No fork of ${UPSTREAM} was found, so the checkout is a clone of ${UPSTREAM} (remote ` +
   `\`upstream\`, no \`origin\`). Building, trying and QA need nothing more. Pushing a fix or ` +
   `opening a pull request needs your own fork: \`gh repo fork ${UPSTREAM} --remote\` adds it as ` +
   "`origin`. If your fork has another name, set VORTEX_AI_VORTEX_REPO=<owner>/<repo>; if your " +
@@ -352,19 +364,15 @@ export async function resolveVortexRepo(): Promise<ForkInfo | undefined> {
   return fork;
 }
 
-export interface EnsureSourceOptions {
-  /** Re-fetch and fast-forward an existing clone. */
-  update?: boolean;
-  /** The checkout to clone into or build, when not .vortex-src. */
-  dir?: string;
-  /** buildVortexSource: install dependencies only. */
-  installOnly?: boolean;
+export interface CloneOptions {
   /** Progress reporting. */
   onProgress?: (message: string) => void;
   /** Finds the person's fork (default resolveVortexRepo); undefined clones upstream alone. */
   resolveRepo?: () => Promise<ForkInfo | undefined>;
   /** The Nexus repository's clone URL (tests use a local one). */
   upstreamUrl?: string;
+  /** The doodlebot workspace, which a clone never goes inside (default this repository). */
+  workspace?: string;
 }
 
 export interface VortexSource {
@@ -373,7 +381,6 @@ export interface VortexSource {
   repo: string;
   /** Upstream's default branch, which work branches start from. */
   defaultBranch: string;
-  cloned: boolean;
   /** Whether `origin`, the person's fork, exists. Pushing needs it. */
   hasFork: boolean;
 }
@@ -396,42 +403,32 @@ export async function upstreamDefaultBranch(dir: string): Promise<string> {
 }
 
 /**
- * Ensure a Vortex clone exists at `.vortex-src`, cloning it if not.
+ * `source --clone <dir>`: clone Vortex into the folder the person named, never into the doodlebot
+ * workspace and never over an existing folder with something in it.
  *
  * The Nexus repository is always the remote `upstream`. With a fork, the fork is `origin` (where
  * changes are pushed) and upstream is added and fetched beside it. Without one, upstream is cloned
  * with `git clone -o upstream`, so there is no `origin` until `gh repo fork --remote` adds it;
  * reading and building need nothing more.
  */
-export async function ensureVortexSource(options: EnsureSourceOptions = {}): Promise<VortexSource> {
+export async function cloneVortex(
+  target: string,
+  options: CloneOptions = {},
+): Promise<VortexSource> {
   const report = options.onProgress ?? ((): void => undefined);
-  const dir = options.dir ?? vortexSourceDir();
+  const dir = path.resolve(target);
   const upstreamUrl = options.upstreamUrl ?? UPSTREAM_URL;
-
-  if (hasVortexSource(dir)) {
-    const origin = await remoteUrl(dir, "origin");
-    if (options.update === true) {
-      // An older clone had no upstream remote; branches start from it, so add it.
-      if ((await remoteUrl(dir, "upstream")) === undefined) {
-        report(`adding the upstream remote (${UPSTREAM})`);
-        await runStreaming("git", ["-C", dir, "remote", "add", "upstream", upstreamUrl], {
-          label: "Configuring Vortex upstream",
-        });
-      }
-      report(origin === undefined ? "fetching upstream" : "fetching origin and upstream");
-      await runStreaming("git", ["-C", dir, "fetch", "--all", "--prune"], {
-        label: "Fetching Vortex source",
-      });
-      await tryExec("git", ["-C", dir, "remote", "set-head", "upstream", "--auto"]);
-    }
-    return {
-      dir,
-      repo: origin ?? (await remoteUrl(dir, "upstream")) ?? "unknown",
-      defaultBranch: await upstreamDefaultBranch(dir),
-      cloned: false,
-      hasFork: origin !== undefined,
-    };
-  }
+  const workspace = options.workspace ?? REPO_ROOT;
+  if (isInside(dir, workspace) || isInside(workspace, dir))
+    throw new ConfigError(
+      `${dir} is in the doodlebot workspace (${workspace}). Clone Vortex into a folder of its own, ` +
+        "outside it.",
+    );
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length > 0)
+    throw new ConfigError(
+      `${dir} already exists and is not empty. Name a new folder, or open Claude in that ` +
+        "checkout and run `/doodlebot:source`.",
+    );
 
   const fork = await (options.resolveRepo ?? resolveVortexRepo)();
   fs.mkdirSync(path.dirname(dir), { recursive: true });
@@ -443,12 +440,10 @@ export async function ensureVortexSource(options: EnsureSourceOptions = {}): Pro
       label: `Cloning ${UPSTREAM}`,
     });
     report(`cloned; upstream=${UPSTREAM}, no origin`);
-    report(NO_FORK_NOTE);
     return {
       dir,
       repo: upstreamUrl,
       defaultBranch: await upstreamDefaultBranch(dir),
-      cloned: true,
       hasFork: false,
     };
   }
@@ -468,9 +463,234 @@ export async function ensureVortexSource(options: EnsureSourceOptions = {}): Pro
     dir,
     repo: fork.fullName,
     defaultBranch: await upstreamDefaultBranch(dir),
-    cloned: true,
     hasFork: true,
   };
+}
+
+/** `source --update`: fetch every remote of the checkout, and upstream's default branch. */
+export async function fetchRemotes(
+  dir: string,
+  onProgress: (message: string) => void = () => undefined,
+): Promise<void> {
+  onProgress("fetching every remote");
+  await runStreaming("git", ["-C", dir, "fetch", "--all", "--prune"], {
+    label: "Fetching Vortex source",
+  });
+  await tryExec("git", ["-C", dir, "remote", "set-head", "upstream", "--auto"]);
+}
+
+/** The checkout's remotes, by name (fetch URLs). */
+export async function remotesOf(dir: string): Promise<Record<string, string>> {
+  const remotes: Record<string, string> = {};
+  for (const line of ((await tryExec("git", ["-C", dir, "remote", "-v"])) ?? "").split(/\r?\n/)) {
+    const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim());
+    if (match) remotes[match[1]!] = match[2]!;
+  }
+  return remotes;
+}
+
+/** A URL that names Nexus-Mods/Vortex on GitHub (https or ssh, with or without `.git`). */
+export function isNexusUpstream(url: string, expected: string = UPSTREAM_URL): boolean {
+  return (
+    url === expected ||
+    /^(?:https?:\/\/|ssh:\/\/git@|git@)github\.com[/:]Nexus-Mods\/Vortex(?:\.git)?\/?$/i.test(url)
+  );
+}
+
+/** The folder doodlebot keeps per worktree, kept out of every commit by the exclude. */
+export const DOODLEBOT_FOLDER = ".doodlebot/";
+
+/**
+ * The exclude file every worktree of the checkout shares:
+ * `$(git rev-parse --git-common-dir)/info/exclude`.
+ */
+export async function sharedExcludeFile(dir: string): Promise<string> {
+  const common = await tryExec("git", ["-C", dir, "rev-parse", "--git-common-dir"]);
+  if (common === undefined) throw new ConfigError(`${dir} is not a git checkout.`);
+  return path.join(path.resolve(dir, common), "info", "exclude");
+}
+
+/** Whether the shared exclude already keeps `.doodlebot/` out. */
+export function excludes(file: string): boolean {
+  try {
+    return fs
+      .readFileSync(file, "utf8")
+      .split(/\r?\n/)
+      .some((line) =>
+        ["/.doodlebot/", ".doodlebot/", ".doodlebot", "/.doodlebot"].includes(line.trim()),
+      );
+  } catch {
+    return false;
+  }
+}
+
+/** What `source` did to the session's checkout, and what it found. */
+export interface PreparedCheckout {
+  checkout: string;
+  branch: string | undefined;
+  remotes: Record<string, string>;
+  /** `upstream`: present, added now (`--add-upstream`), or missing. */
+  upstream: "present" | "added" | "missing";
+  /** `origin`: the person's fork, Nexus-Mods/Vortex itself, or absent. */
+  origin: "fork" | "upstream" | "absent";
+  /** `.doodlebot/` in the shared exclude: already, added now (`--exclude`), or not. */
+  exclude: "present" | "added" | "missing";
+  /** `--branch`: the branch cut, and what from. */
+  cut?: { branch: string; from: string };
+  /**
+   * Whether install and build ran, were skipped (`--no-build`), were not needed (`current`: the
+   * build record matches the checkout), or failed.
+   */
+  build: "built" | "skipped" | "current" | "failed";
+  /** Notes for the person, one per line. */
+  notes: string[];
+}
+
+export interface PrepareOptions {
+  checkout: string;
+  /** `--add-upstream`: add Nexus-Mods/Vortex as `upstream` when it is missing. */
+  addUpstream?: boolean;
+  /** `--exclude`: add `.doodlebot/` to the exclude every worktree shares. */
+  exclude?: boolean;
+  /** `--update`: fetch every remote first. */
+  update?: boolean;
+  /** `--branch <name>`: cut a work branch from upstream. */
+  branch?: string;
+  /** Install and build (default true; `--no-build` turns it off). */
+  build?: boolean;
+  /** Installs the checkout's dependencies (default: its pinned pnpm, `--frozen-lockfile`). */
+  install?: (dir: string) => Promise<void>;
+  /** Builds the checkout (`doodlebot build --checkout <dir>`); resolves to its exit code. */
+  runBuild?: (dir: string) => Promise<{ exitCode: number }>;
+  /** Whether the checkout's build is current (its build record matches); then nothing is built. */
+  upToDate?: (dir: string) => boolean;
+  /** The Nexus repository's clone URL (tests use a local one). */
+  upstreamUrl?: string;
+  onProgress?: (message: string) => void;
+}
+
+/**
+ * `doodlebot source` in the session's checkout (design 4.2). It changes only what is missing and
+ * was asked for, and reports the rest:
+ *
+ * 1. `upstream` must be Nexus-Mods/Vortex. Pointing anywhere else, it refuses before changing
+ *    anything. Missing, it is added only with `--add-upstream` (the skill asks the person first).
+ * 2. `.doodlebot/` goes into the exclude every worktree shares only with `--exclude` (asked too).
+ * 3. `--update` fetches every remote, `--branch` cuts a branch from upstream.
+ * 4. Install with the checkout's pinned pnpm, then `doodlebot build --checkout <dir>`; skipped
+ *    when the build record matches the checkout (productionMode.ts `checkBuildRecord`).
+ */
+export async function prepareCheckout(options: PrepareOptions): Promise<PreparedCheckout> {
+  const report = options.onProgress ?? ((): void => undefined);
+  const dir = options.checkout;
+  const upstreamUrl = options.upstreamUrl ?? UPSTREAM_URL;
+  const notes: string[] = [];
+
+  const current = await remoteUrl(dir, "upstream");
+  if (current !== undefined && !isNexusUpstream(current, upstreamUrl))
+    throw new ConfigError(
+      `The remote upstream of ${dir} is ${current}, not ${UPSTREAM}. Doodlebot changed nothing. ` +
+        `Branches start from upstream, so point it at ${UPSTREAM_URL} yourself ` +
+        "(`git remote set-url upstream <url>`) or rename that remote, then run `doodlebot source` again.",
+    );
+  const excludeFile = await sharedExcludeFile(dir);
+
+  let upstream: PreparedCheckout["upstream"] = current === undefined ? "missing" : "present";
+  if (upstream === "missing" && options.addUpstream === true) {
+    assertNoVortexRunningFrom(dir, "changing its remotes");
+    report(`adding ${UPSTREAM} as upstream`);
+    await runStreaming("git", ["-C", dir, "remote", "add", "upstream", upstreamUrl], {
+      label: "Configuring Vortex upstream",
+    });
+    await runStreaming("git", ["-C", dir, "fetch", "upstream"], { label: "Fetching upstream" });
+    await tryExec("git", ["-C", dir, "remote", "set-head", "upstream", "--auto"]);
+    upstream = "added";
+  } else if (upstream === "missing")
+    notes.push(
+      `There is no upstream remote. With the person's yes, \`doodlebot source --add-upstream\` adds ${UPSTREAM}; branches start from it.`,
+    );
+
+  let exclude: PreparedCheckout["exclude"] = excludes(excludeFile) ? "present" : "missing";
+  if (exclude === "missing" && options.exclude === true) {
+    fs.mkdirSync(path.dirname(excludeFile), { recursive: true });
+    const before = fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, "utf8") : "";
+    const separator = before === "" || before.endsWith("\n") ? "" : "\n";
+    fs.appendFileSync(excludeFile, `${separator}${DOODLEBOT_FOLDER}\n`);
+    report(`added ${DOODLEBOT_FOLDER} to ${excludeFile} (every worktree of this checkout)`);
+    exclude = "added";
+  } else if (exclude === "missing")
+    notes.push(
+      `${DOODLEBOT_FOLDER} is not excluded. With the person's yes, \`doodlebot source --exclude\` adds it to ${excludeFile}, which every worktree shares.`,
+    );
+
+  if (options.update === true) await fetchRemotes(dir, report);
+  const remotes = await remotesOf(dir);
+  const origin: PreparedCheckout["origin"] =
+    remotes.origin === undefined
+      ? "absent"
+      : isNexusUpstream(remotes.origin, upstreamUrl)
+        ? "upstream"
+        : "fork";
+  if (origin !== "fork") notes.push(NO_FORK_NOTE);
+
+  let cut: PreparedCheckout["cut"];
+  if (options.branch !== undefined)
+    cut = await cutWorkBranch(dir, options.branch, { onProgress: report });
+
+  let build: PreparedCheckout["build"] = "skipped";
+  if (options.build !== false && options.upToDate?.(dir) === true) {
+    report("the build record matches the checkout: nothing to install or build");
+    build = "current";
+  } else if (options.build !== false) {
+    if (options.runBuild === undefined) throw new ForkError("prepareCheckout needs runBuild.");
+    await (options.install ?? ((at) => installVortexDeps(at, report)))(dir);
+    build = (await options.runBuild(dir)).exitCode === 0 ? "built" : "failed";
+  }
+  return {
+    checkout: dir,
+    branch: await tryExec("git", ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"]),
+    remotes,
+    upstream,
+    origin,
+    exclude,
+    ...(cut === undefined ? {} : { cut }),
+    build,
+    notes,
+  };
+}
+
+/** The report `source` prints: checkout, branch, remotes, built or not, and the next step. */
+export function formatPrepared(prepared: PreparedCheckout): string {
+  const remotes = Object.entries(prepared.remotes)
+    .map(([name, url]) => `${name} ${url}`)
+    .join(", ");
+  const origin = {
+    fork: "origin is your fork",
+    upstream: `origin is ${UPSTREAM} itself`,
+    absent: "no origin",
+  }[prepared.origin];
+  return [
+    `Checkout: ${prepared.checkout}`,
+    `Branch:   ${prepared.branch ?? "unknown"}${prepared.cut === undefined ? "" : ` (cut from ${prepared.cut.from})`}`,
+    `Remotes:  ${remotes === "" ? "none" : remotes} (upstream ${prepared.upstream}; ${origin})`,
+    `Exclude:  ${DOODLEBOT_FOLDER} ${prepared.exclude === "missing" ? "not excluded" : `excluded (${prepared.exclude})`}`,
+    `Build:    ${
+      prepared.build === "built"
+        ? "built"
+        : prepared.build === "current"
+          ? "already built (the build record matches the checkout)"
+          : prepared.build === "failed"
+            ? "FAILED (its output is above)"
+            : "not built (--no-build)"
+    }`,
+    ...prepared.notes.map((note) => `Note:     ${note}`),
+    "",
+    prepared.build === "failed"
+      ? `Next: fix the build, then \`doodlebot build --checkout ${prepared.checkout}\`.`
+      : prepared.build === "built" || prepared.build === "current"
+        ? "Next: `doodlebot up` from this checkout drives this build."
+        : `Next: \`doodlebot build --checkout ${prepared.checkout}\` before \`doodlebot up\`.`,
+  ].join("\n");
 }
 
 /**
@@ -488,7 +708,7 @@ export async function cutWorkBranch(
     throw new ForkError(`${name} is not a valid branch name.`);
   if ((await remoteUrl(dir, "upstream")) === undefined)
     throw new ForkError(
-      `${dir} has no upstream remote. Run \`doodlebot source --update\` to add ${UPSTREAM}.`,
+      `${dir} has no upstream remote. Run \`doodlebot source --add-upstream\` to add ${UPSTREAM}.`,
     );
   if (
     (await tryExec("git", [
@@ -515,86 +735,40 @@ export async function cutWorkBranch(
 }
 
 /**
- * Install dependencies and build the clone.
- *
- * Kept separate from cloning because it is by far the slower half and the one
- * most likely to need re-running on its own after a pull.
+ * `pnpm install --frozen-lockfile` in a checkout, with its pinned pnpm. The build itself is
+ * `doodlebot build` (vortexBuild.ts), which also writes the build record.
  */
-export async function buildVortexSource(options: EnsureSourceOptions = {}): Promise<void> {
-  const report = options.onProgress ?? ((): void => undefined);
-  const dir = options.dir ?? vortexSourceDir();
-  // A running Vortex holds the checkout's native modules open; reinstalling or rebuilding them
-  // underneath it fails or corrupts the build.
-  assertNoVortexRunningFrom(dir, options.installOnly === true ? "installing it" : "building it");
-  if (!hasVortexSource(dir)) {
-    throw new ForkError(`No Vortex clone at ${dir}. Run \`doodlebot source\` first.`);
-  }
-
-  report("installing dependencies (slow: native modules are rebuilt)");
+export async function installVortexDeps(
+  dir: string,
+  onProgress: (message: string) => void = () => undefined,
+): Promise<void> {
+  // A running Vortex holds the checkout's native modules open; reinstalling them underneath it
+  // fails or corrupts the install.
+  assertNoVortexRunningFrom(dir, "installing it");
+  if (!fs.existsSync(path.join(dir, "src", "main", "package.json")))
+    throw new ForkError(`${dir} is not a Vortex checkout (no src/main/package.json).`);
+  assertPnpmOverride();
+  onProgress("installing dependencies (slow: native modules are rebuilt)");
   const pnpm = await sourcePnpmCommand(dir);
-  report(
+  onProgress(
     pnpm.exact
       ? `using Vortex's pinned pnpm ${pnpm.version}`
       : `installed pnpm does not match; bootstrapping Vortex's pinned pnpm ${pnpm.version} with pnpm dlx`,
   );
   // Minutes, not seconds: an Electron binary download plus six native module
   // rebuilds. The output is streamed so that is visible rather than looking hung.
-  await runStreaming(pnpm.cmd, [...pnpm.args, "install"], {
+  await runStreaming(pnpm.cmd, [...pnpm.args, "install", "--frozen-lockfile"], {
     cwd: dir,
     label: "Installing Vortex's dependencies",
   });
-  if (options.installOnly === true) {
-    report("dependencies installed");
-    return;
-  }
-
-  assertNoVortexRunningFrom(dir, "building it");
-  report("building renderer and main");
-  try {
-    await runStreaming(pnpm.cmd, [...pnpm.args, "nx", "run", "@vortex/main:build"], {
-      cwd: dir,
-      label: "Building Vortex",
-    });
-  } catch (err) {
-    if (!(err instanceof CommandExitError)) throw err;
-    // Vortex's full build can exit non-zero on a bundled extension whose native
-    // dependency did not build, while still having produced the renderer and
-    // most other outputs. Fall back to building main's own bundle so one
-    // unrelated extension cannot block the whole suite — but only accept that
-    // if the artifacts the harness actually needs exist afterwards.
-    report("full build failed; building main's own bundle directly");
-    await runStreaming("node", ["./build.mjs"], {
-      cwd: path.join(dir, "src", "main"),
-      label: "Building main",
-    });
-    if (!buildArtifactsPresent(dir)) throw err;
-    report("main built — the earlier failure was in a bundled extension");
-  }
-
-  // An nx cache hit restores only the outputs a target declares, and @vortex/main's list has
-  // lagged its build script: hash-worker.cjs was missing from it, so a cached build ran until the
-  // first install and then failed to find it (KNOWLEDGE.md). Rebuild main directly when so.
-  const missing = missingBuildOutputs(dir);
-  if (missing.length > 0) {
-    report(`the build left out ${missing.join(", ")}; building main's own bundle directly`);
-    await runStreaming("node", ["./build.mjs"], {
-      cwd: path.join(dir, "src", "main"),
-      label: "Building main",
-    });
-    const still = missingBuildOutputs(dir);
-    if (still.length > 0)
-      throw new ForkError(`The build did not produce ${still.join(", ")} in src/main/build.`);
-  }
-
-  report("build complete");
+  onProgress("dependencies installed");
 }
-
 /**
  * What a source build must have produced for the harness to launch it and use it, that
  * src/main/build lacks: main.cjs, renderer.js, and every worker main's build script bundles
  * (`bundleWorker(…, "<name>")` in src/main/build.mjs).
  */
-export function missingBuildOutputs(dir = vortexSourceDir()): string[] {
+export function missingBuildOutputs(dir: string): string[] {
   const build = path.join(dir, "src", "main", "build");
   let script = "";
   try {
@@ -608,9 +782,4 @@ export function missingBuildOutputs(dir = vortexSourceDir()): string[] {
   return ["main.cjs", "renderer.js", ...workers].filter(
     (name) => !fs.existsSync(path.join(build, name)),
   );
-}
-
-/** The outputs the harness needs in order to launch a source build. */
-export function buildArtifactsPresent(dir = vortexSourceDir()): boolean {
-  return missingBuildOutputs(dir).length === 0;
 }
