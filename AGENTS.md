@@ -58,7 +58,8 @@ fork, clones it into `.vortex-src` (as `origin`, beside Nexus-Mods/Vortex as `up
 builds it; without a fork it clones upstream alone, which is enough to build and test. Make a
 branch from `upstream` for each piece of work (`doodlebot source --branch <name>`), or pass a
 checkout of your own with `--dev-dir <dir>`. The kit pushes only to your own fork
-(`doodlebot pr-branch <topic> --push`). The kit never searches the filesystem
+(`doodlebot push-branch` for the session's branch, which `/doodlebot:pr` opens the PR from, and
+`doodlebot design-branch <topic> --file <draft>` for a design). The kit never searches the filesystem
 for a Vortex checkout. Building, installing, patching, reverting or recording evidence in the
 checkout a running harness Vortex was launched from refuses with
 "A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before <action>."

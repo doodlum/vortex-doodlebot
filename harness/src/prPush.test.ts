@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runPreflight } from "./prPreflight";
 import {
   type GitRunner,
   type RunResult,
-  buildPrBranch,
   checkPushRemote,
+  designBranch,
+  designBranchCommand,
   parseGitHubRepo,
-  prBranchCommand,
+  pushSessionBranch,
 } from "./prPush";
 
 const ok = (stdout = ""): RunResult => ({ code: 0, stdout, stderr: "" });
@@ -130,7 +130,7 @@ describe("the push check", () => {
 });
 
 // ---------------------------------------------------------------------------
-// pr/<topic> and design/<topic> in a real temporary repository
+// designs/<topic> in a real temporary repository, from a worktree session
 // ---------------------------------------------------------------------------
 
 const dirs: string[] = [];
@@ -150,149 +150,167 @@ function commit(repo: string, message: string, files: Record<string, string>): s
   run(repo, "commit", "-q", "-m", message);
   return run(repo, "rev-parse", "HEAD");
 }
-function featureRepo(): string {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pr-branch-"));
-  dirs.push(repo);
-  run(repo, "init", "-q", "-b", "master");
-  run(repo, "config", "user.email", "t@example.test");
-  run(repo, "config", "user.name", "T");
-  run(repo, "config", "core.autocrlf", "false");
-  commit(repo, "base", { "src/a.ts": "export const a = 1;\n" });
-  run(repo, "checkout", "-q", "-b", "feat/zoom");
-  commit(repo, "docs(design): zoom", { "docs/designs/zoom.md": "# Zoom\n" });
-  commit(repo, "feat: zoom", { "src/a.ts": "export const a = 2;\n" });
-  commit(repo, "docs(design): zoom, approved", { "docs/designs/zoom.md": "# Zoom\n\nApproved\n" });
-  commit(repo, "test: zoom", { "src/a.test.ts": "a\n" });
-  return repo;
+const tempDir = (prefix: string): string => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  dirs.push(dir);
+  return dir;
+};
+
+/**
+ * A clone whose session is a worktree on `feat/zoom`, one commit past `master`, with an
+ * uncommitted edit and an untracked file, and a draft outside it.
+ */
+function worktreeSession(): { main: string; session: string; draft: string; base: string } {
+  const main = tempDir("design-branch-");
+  run(main, "init", "-q", "-b", "master");
+  run(main, "config", "user.email", "t@example.test");
+  run(main, "config", "user.name", "T");
+  run(main, "config", "core.autocrlf", "false");
+  const base = commit(main, "base", { "src/a.ts": "export const a = 1;\n" });
+  const session = path.join(tempDir("design-session-"), "wt");
+  run(main, "worktree", "add", "-q", "-b", "feat/zoom", session, "master");
+  commit(session, "feat: zoom", { "src/a.ts": "export const a = 2;\n" });
+  fs.writeFileSync(path.join(session, "src/a.ts"), "export const a = 3;\n");
+  fs.writeFileSync(path.join(session, "notes.txt"), "untracked\n");
+  const draft = path.join(tempDir("design-draft-"), "design_draft.md");
+  fs.writeFileSync(draft, "# Zoom\n\nDraft 1\n");
+  return { main, session, draft, base };
 }
 
-describe("pr-branch", { timeout: 60_000 }, () => {
-  it("cherry-picks every non-design commit onto the merge-base and tags the design", () => {
-    const repo = featureRepo();
-    const lastDesign = run(repo, "rev-parse", "HEAD~1");
-    const built = buildPrBranch(repo, "zoom", { base: "master", designCommit: lastDesign });
-    expect(built.branch).toBe("pr/zoom");
-    expect(built.picked).toHaveLength(2);
-    expect(built.skipped).toHaveLength(2);
-    expect(built.tag).toEqual({ name: "design/zoom", commit: lastDesign });
-    expect(run(repo, "rev-parse", "design/zoom")).toBe(lastDesign);
-    expect(run(repo, "log", "--format=%s", "master..pr/zoom").split("\n")).toEqual([
-      "test: zoom",
-      "feat: zoom",
-    ]);
-    expect(run(repo, "diff", "--name-only", "master", "pr/zoom").split("\n")).toEqual([
-      "src/a.test.ts",
-      "src/a.ts",
-    ]);
-    // The checkout itself was not touched, and no worktree is left behind.
-    expect(run(repo, "symbolic-ref", "--short", "HEAD")).toBe("feat/zoom");
-    expect(run(repo, "status", "--porcelain")).toBe("");
-    expect(run(repo, "worktree", "list").split("\n")).toHaveLength(1);
-  });
+/** Real git, except that pushes are recorded and origin is the person's fork. */
+function forkGit(pushes: string[][]): GitRunner {
+  return (dir, args) => {
+    if (args[0] === "push") {
+      pushes.push(args);
+      return ok();
+    }
+    if (args.join(" ") === "remote get-url origin")
+      return ok("https://github.com/doodlum/Vortex\n");
+    try {
+      return ok(execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" }));
+    } catch {
+      return { code: 1, stdout: "", stderr: "failed" };
+    }
+  };
+}
 
-  it("tags only the approved design commit, and keeps an earlier approval when it moves", () => {
-    const repo = featureRepo();
-    const first = run(repo, "rev-parse", "HEAD~3");
-    const approved = run(repo, "rev-parse", "HEAD~1");
-    // No approval named: no tag, even though the branch has design commits.
-    expect(buildPrBranch(repo, "zoom", { base: "master" }).tag).toBeUndefined();
-    expect(run(repo, "tag", "--list", "design/*")).toBe("");
-    expect(() =>
-      buildPrBranch(repo, "zoom", { base: "master", designCommit: run(repo, "rev-parse", "HEAD") }),
-    ).toThrow(/not one of this branch's docs\(design\) commits/);
-    expect(buildPrBranch(repo, "zoom", { base: "master", designCommit: first }).tag).toEqual({
-      name: "design/zoom",
-      commit: first,
-    });
-    // A later approved revision moves the tag; the first approval is kept.
-    expect(buildPrBranch(repo, "zoom", { base: "master", designCommit: approved }).tag).toEqual({
-      name: "design/zoom",
-      commit: approved,
-      archived: "design/zoom-v1",
-    });
-    expect(run(repo, "rev-parse", "design/zoom")).toBe(approved);
-    expect(run(repo, "rev-parse", "design/zoom-v1^{commit}")).toBe(first);
-    // Without a new approval the tag stays where it is.
-    expect(buildPrBranch(repo, "zoom", { base: "master" }).tag).toEqual({
-      name: "design/zoom",
-      commit: approved,
-    });
-  });
-
-  it("refuses a non-design commit that touches docs/designs/", () => {
-    const repo = featureRepo();
-    commit(repo, "fix: tweak", { "docs/designs/zoom.md": "# Zoom v2\n", "src/a.ts": "x\n" });
-    expect(() => buildPrBranch(repo, "zoom", { base: "master" })).toThrow(
-      /not a docs\(design\) commit but changes docs\/designs\/zoom.md/,
-    );
-    expect(() => run(repo, "rev-parse", "--verify", "--quiet", "pr/zoom")).toThrow();
-  });
-
-  it("does not push without --push, and pushes only after the fork check", () => {
-    const repo = featureRepo();
-    expect(prBranchCommand(["zoom"], { base: "master" }, { checkout: repo })).toContain(
-      "not pushed",
-    );
+describe("design-branch", { timeout: 60_000 }, () => {
+  it("commits the draft on designs/<topic> from the upstream base, without touching the session", () => {
+    const { main, session, draft, base } = worktreeSession();
+    const status = run(session, "status", "--porcelain");
+    const head = run(session, "rev-parse", "HEAD");
     const pushes: string[][] = [];
-    const real: GitRunner = (dir, args) => {
-      if (args[0] === "push") {
-        pushes.push(args);
-        return ok();
-      }
-      if (args.join(" ") === "remote get-url origin")
-        return ok("https://github.com/doodlum/Vortex\n");
-      try {
-        return ok(run(dir, ...args));
-      } catch {
-        return { code: 1, stdout: "", stderr: "failed" };
-      }
-    };
     const { gh } = ghFor(fork("doodlum"));
-    expect(
-      prBranchCommand(
-        ["zoom"],
-        { base: "master", push: true, "design-commit": run(repo, "rev-parse", "HEAD~1") },
-        { checkout: repo, git: real, gh },
-      ),
-    ).toContain("pushed to doodlum/Vortex");
-    expect(pushes).toEqual([
-      ["push", "--force-with-lease", "origin", "pr/zoom"],
-      ["push", "--force", "origin", "refs/tags/design/zoom"],
-    ]);
-    const someoneElse = ghFor(fork("someone"));
-    pushes.length = 0;
+    const result = designBranch(session, "zoom", draft, {
+      base: "master",
+      git: forkGit(pushes),
+      gh,
+    });
+
+    expect(result).toMatchObject({
+      branch: "designs/zoom",
+      committed: true,
+      fork: "doodlum/Vortex",
+    });
+    expect(result.link).toBe(
+      `https://github.com/doodlum/Vortex/blob/${result.commit}/docs/designs/zoom.md`,
+    );
+    expect(run(main, "show", "designs/zoom:docs/designs/zoom.md")).toBe("# Zoom\n\nDraft 1");
+    expect(run(main, "log", "-1", "--format=%s", "designs/zoom")).toBe("docs(design): zoom");
+    // Built on the session branch's upstream base, so it holds only the design.
+    expect(run(main, "rev-parse", "designs/zoom~1")).toBe(base);
+    expect(run(main, "diff", "--name-only", base, "designs/zoom")).toBe("docs/designs/zoom.md");
+    expect(pushes).toEqual([["push", "origin", "refs/heads/designs/zoom:refs/heads/designs/zoom"]]);
+
+    // The session's branch, head and status are unchanged, and no worktree is left behind.
+    expect(run(session, "symbolic-ref", "--short", "HEAD")).toBe("feat/zoom");
+    expect(run(session, "rev-parse", "HEAD")).toBe(head);
+    expect(run(session, "status", "--porcelain")).toBe(status);
+    expect(run(main, "worktree", "list").split("\n")).toHaveLength(2);
+    expect(run(main, "diff", "--name-only", "master", "feat/zoom")).toBe("src/a.ts");
+  });
+
+  it("adds each revision on top of the last, and commits nothing for an unchanged draft", () => {
+    const { main, session, draft } = worktreeSession();
+    const pushes: string[][] = [];
+    const deps = { base: "master", git: forkGit(pushes), gh: ghFor(fork("doodlum")).gh };
+    const first = designBranch(session, "zoom", draft, deps);
+    fs.writeFileSync(draft, "# Zoom\n\nDraft 2, approved\n");
+    const second = designBranch(session, "zoom", draft, deps);
+    expect(second).toMatchObject({ committed: true, from: "designs/zoom" });
+    expect(run(main, "rev-parse", "designs/zoom~1")).toBe(first.commit);
+    const again = designBranch(session, "zoom", draft, deps);
+    expect(again).toMatchObject({ committed: false, commit: second.commit });
+    // Each revision's link names its own commit, so the approved one stays readable.
+    expect(first.link).not.toBe(second.link);
+  });
+
+  it("refuses before committing anything when origin is not the person's fork", () => {
+    const { main, session, draft } = worktreeSession();
+    const pushes: string[][] = [];
     expect(() =>
-      prBranchCommand(
-        ["zoom"],
-        { base: "master", push: true },
-        { checkout: repo, git: real, gh: someoneElse.gh, configuredRepo: "" },
-      ),
+      designBranch(session, "zoom", draft, {
+        base: "master",
+        git: forkGit(pushes),
+        gh: ghFor(fork("someone")).gh,
+        configuredRepo: "",
+      }),
     ).toThrow(/not by doodlum/);
     expect(pushes).toEqual([]);
+    expect(() => run(main, "rev-parse", "--verify", "--quiet", "designs/zoom")).toThrow();
   });
 
-  it("pr-preflight FAILs on the design file in the diff or a commit, and passes on pr/<topic>", async () => {
-    const repo = featureRepo();
-    const onBranch = await runPreflight({ checkout: repo, base: "master", skipRevert: true });
-    const design = onBranch.checks.find((check) => check.id === "design")!;
-    expect(design.status).toBe("fail");
-    expect(design.details).toContain("in the diff: docs/designs/zoom.md");
-    expect(design.details.some((d) => d.includes("docs(design): zoom: docs/designs/zoom.md"))).toBe(
-      true,
+  it("refuses a missing draft, a bad topic, and running on designs/<topic> itself", () => {
+    const { main, session, draft } = worktreeSession();
+    const deps = { base: "master", git: forkGit([]), gh: ghFor(fork("doodlum")).gh };
+    expect(() => designBranch(session, "zoom", `${draft}.missing`, deps)).toThrow(/is not a file/);
+    expect(() => designBranch(session, "../zoom", draft, deps)).toThrow(/not a usable topic/);
+    run(main, "switch", "-q", "-c", "designs/zoom");
+    expect(() => designBranch(main, "zoom", draft, deps)).toThrow(/designs\/zoom is checked out/);
+    expect(() => designBranchCommand(["zoom"], {}, { checkout: session })).toThrow(
+      /--file <draft>/,
     );
-    expect(onBranch.passed).toBe(false);
+  });
 
-    buildPrBranch(repo, "zoom", { base: "master", designCommit: run(repo, "rev-parse", "HEAD~1") });
-    run(repo, "checkout", "-q", "pr/zoom");
-    const clean = await runPreflight({ checkout: repo, base: "master", skipRevert: true });
-    expect(clean.checks.find((check) => check.id === "design")?.status).toBe("pass");
-
-    // A later commit on pr/<topic> that brings the design back is caught through the tag.
-    commit(repo, "chore: oops", { "docs/designs/zoom.md": "# Zoom\n" });
-    const planted = await runPreflight({ checkout: repo, base: "master", skipRevert: true });
-    expect(planted.checks.find((check) => check.id === "design")).toMatchObject({
-      status: "fail",
-      details: expect.arrayContaining(["in the diff: docs/designs/zoom.md"]),
+  it("prints the branch, the fork and the link", () => {
+    const { session, draft } = worktreeSession();
+    const text = designBranchCommand(
+      ["zoom"],
+      { base: "master", file: draft },
+      { checkout: session, git: forkGit([]), gh: ghFor(fork("doodlum")).gh },
+    );
+    expect(text).toMatch(
+      /^designs\/zoom at [0-9a-f]{7} \(from master \(merge-base [0-9a-f]{7}\)\)$/m,
+    );
+    expect(text).toContain("pushed to doodlum/Vortex");
+    expect(text).toMatch(
+      /^design: https:\/\/github\.com\/doodlum\/Vortex\/blob\/[0-9a-f]{40}\/docs\/designs\/zoom\.md$/m,
+    );
+  });
+});
+describe("push-branch", { timeout: 60_000 }, () => {
+  it("pushes the session's branch after the fork check, and refuses what is never shipped", () => {
+    const { main, session } = worktreeSession();
+    const pushes: string[][] = [];
+    const deps = { git: forkGit(pushes), gh: ghFor(fork("doodlum")).gh };
+    expect(pushSessionBranch(session, deps)).toEqual({
+      branch: "feat/zoom",
+      fork: "doodlum/Vortex",
     });
+    expect(pushes).toEqual([["push", "-u", "origin", "feat/zoom"]]);
+
+    pushes.length = 0;
+    expect(() =>
+      pushSessionBranch(session, { ...deps, gh: ghFor(fork("someone")).gh, configuredRepo: "" }),
+    ).toThrow(/not by doodlum/);
+    run(session, "stash", "-q", "-u");
+    run(session, "switch", "-q", "-c", "proto/zoom");
+    expect(() => pushSessionBranch(session, deps)).toThrow(/prototype is never shipped/);
+    run(session, "switch", "-q", "-c", "designs/zoom");
+    expect(() => pushSessionBranch(session, deps)).toThrow(/design-branch/);
+    expect(() => pushSessionBranch(main, deps)).toThrow(/master is the default branch/);
+    run(session, "switch", "-q", "--detach");
+    expect(() => pushSessionBranch(session, deps)).toThrow(/HEAD is detached/);
+    expect(pushes).toEqual([]);
   });
 });

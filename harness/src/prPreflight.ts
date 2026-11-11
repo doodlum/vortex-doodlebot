@@ -34,7 +34,7 @@ import {
   type CheckoutIdentity,
 } from "./evidence";
 import { UPSTREAM, childEnv } from "./source";
-import { DESIGNS_DIR, isDesignSubject } from "./prPush";
+import { DESIGNS_DIR } from "./prPush";
 import { REPO_ROOT } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -42,7 +42,16 @@ const execFileAsync = promisify(execFile);
 export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "inconclusive";
 
 export interface CheckResult {
-  id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "design" | "description";
+  id:
+    | "size"
+    | "callers"
+    | "state"
+    | "dispatch"
+    | "revert"
+    | "comments"
+    | "design"
+    | "branch"
+    | "description";
   title: string;
   status: CheckStatus;
   summary: string;
@@ -2392,6 +2401,7 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
 
   checks.push(commentCheck(files));
   checks.push(await designCheck(dir, files, mergeBase, headSha));
+  checks.push(await branchCheck(dir, options.head));
 
   if (options.pr !== undefined) {
     const fetch = options.fetchPullRequest ?? fetchPullRequestText;
@@ -2458,9 +2468,9 @@ async function commitsIn(
 }
 
 /**
- * The design stays out of a Vortex PR: FAIL when a `docs/designs/` file of this branch's
- * `docs(design)` commits is in the diff or in any commit of the range. The design commits are the
- * range's own and those behind the local `design/<topic>` tags (`doodlebot pr-branch`).
+ * The design stays out of a Vortex PR: it lives on the sibling branch `designs/<topic>`
+ * (`doodlebot design-branch`). FAIL when any `docs/designs/` file is in the diff, or in a commit
+ * of the range (a commit that adds and later removes one still carries it into the PR).
  */
 export async function designCheck(
   dir: string,
@@ -2468,25 +2478,14 @@ export async function designCheck(
   mergeBase: string,
   headSha: string,
 ): Promise<CheckResult> {
-  const range = await commitsIn(dir, `${mergeBase}..${headSha}`);
-  const designCommits = range.filter((commit) => isDesignSubject(commit.subject));
-  const tags = (await git(dir, ["for-each-ref", "--format=%(objectname)", "refs/tags/design/"]))
-    .split("\n")
-    .filter(Boolean);
-  for (const tag of tags) {
-    if (!(await gitOk(dir, ["merge-base", "--is-ancestor", mergeBase, tag]))) continue;
-    designCommits.push(
-      ...(await commitsIn(dir, `${mergeBase}..${tag}`)).filter((c) => isDesignSubject(c.subject)),
-    );
-  }
-  const designFiles = new Set(
-    designCommits.flatMap((commit) => commit.files.filter((file) => file.startsWith(DESIGNS_DIR))),
-  );
+  const isDesign = (file: string | undefined): boolean =>
+    file !== undefined && file.startsWith(DESIGNS_DIR);
   const details: string[] = [];
   for (const file of files)
-    if (designFiles.has(file.path)) details.push(`in the diff: ${file.path}`);
-  for (const commit of range) {
-    const touched = commit.files.filter((file) => designFiles.has(file));
+    if (isDesign(file.newPath) || isDesign(file.oldPath))
+      details.push(`in the diff: ${file.newPath ?? file.oldPath ?? file.path}`);
+  for (const commit of await commitsIn(dir, `${mergeBase}..${headSha}`)) {
+    const touched = commit.files.filter(isDesign);
     if (touched.length > 0)
       details.push(`${commit.sha.slice(0, 7)} ${commit.subject}: ${touched.join(", ")}`);
   }
@@ -2496,11 +2495,49 @@ export async function designCheck(
     status: details.length > 0 ? "fail" : "pass",
     summary:
       details.length > 0
-        ? "the branch carries its design; push pr/<topic> from `doodlebot pr-branch <topic>` instead"
-        : designFiles.size > 0
-          ? "no design file in the diff or its commits"
-          : "no docs(design) commits",
+        ? `the branch changes ${DESIGNS_DIR}; a design goes on designs/<topic> ` +
+          "(`doodlebot design-branch <topic> --file <draft>`), never on the PR's branch"
+        : `no ${DESIGNS_DIR} file in the diff or its commits`,
     details,
+  };
+}
+
+/** The branch name `head` names (`proto/x`, `refs/heads/proto/x`, `origin/proto/x`), if any. */
+async function headBranch(dir: string, head: string | undefined): Promise<string | undefined> {
+  if (head === undefined) {
+    try {
+      return (await git(dir, ["symbolic-ref", "--short", "-q", "HEAD"])).trim() || undefined;
+    } catch {
+      return undefined; // detached
+    }
+  }
+  const name = head.replace(/^refs\/(?:heads|remotes)\//, "");
+  if (await gitOk(dir, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`])) return name;
+  const remote = /^[^/]+\/(.+)$/.exec(name)?.[1];
+  if (
+    remote !== undefined &&
+    (await gitOk(dir, ["show-ref", "--verify", "--quiet", `refs/remotes/${name}`]))
+  )
+    return remote;
+  return undefined;
+}
+
+/**
+ * A prototype is never shipped: FAIL when the head is a `proto/*` branch
+ * (`/doodlebot:prototype`). A feature starts as `feat/<topic>` from upstream with the
+ * prototype's diff ported, after an approved design.
+ */
+export async function branchCheck(dir: string, head: string | undefined): Promise<CheckResult> {
+  const branch = await headBranch(dir, head);
+  const prototype = branch?.startsWith("proto/") === true;
+  return {
+    id: "branch",
+    title: "Branch",
+    status: prototype ? "fail" : "pass",
+    summary: prototype
+      ? `${branch!} is a prototype branch, which is never shipped; cut feat/<topic> from upstream after an approved design and port the diff`
+      : `${branch ?? "detached HEAD"} is not a prototype branch`,
+    details: [],
   };
 }
 

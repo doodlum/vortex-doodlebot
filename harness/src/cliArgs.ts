@@ -55,7 +55,6 @@ export const BOOLEAN_FLAGS = new Set([
   "print",
   "include-third-party",
   "wontfix",
-  "push",
   "allow-logout",
   "stale-ok",
   "add-upstream",

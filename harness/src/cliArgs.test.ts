@@ -280,7 +280,7 @@ describe("path rules", () => {
     expect(BOOLEAN_FLAGS.has("json")).toBe(true);
   });
 
-  it("reads the share, gap and pr-branch switches without taking the next word", () => {
+  it("reads the share and gap switches without taking the next word", () => {
     expect(parse(["gap", "share", "--print", "g-1"])).toMatchObject({
       positional: ["share", "g-1"],
       flags: { print: true },
@@ -290,7 +290,17 @@ describe("path rules", () => {
       yes: true,
     });
     expect(parse(["gap", "close", "--wontfix", "g-1"]).positional).toEqual(["close", "g-1"]);
-    expect(parse(["pr-branch", "--push", "zoom"]).positional).toEqual(["zoom"]);
+  });
+
+  it("resolves design-branch's --file against the caller's folder", () => {
+    expect(
+      parse(["design-branch", "zoom", "--file", ".doodlebot/egm/design_draft.md"]),
+    ).toMatchObject({
+      positional: ["zoom"],
+      flags: { file: at(".doodlebot/egm/design_draft.md") },
+    });
+    // pr-branch's --push is gone with it: a word after it is the flag's value now.
+    expect(BOOLEAN_FLAGS.has("push")).toBe(false);
   });
 
   it("defaults to the caller's directory from INIT_CWD", () => {

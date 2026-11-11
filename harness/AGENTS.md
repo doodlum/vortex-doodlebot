@@ -49,7 +49,7 @@ Eight commands, one per use case (designs/companion-simplified.md, 4.1):
 |                                      | `investigate`                                      | U2. An issue report on the user's version; changes no code                                                        |
 |                                      | `fix`                                              | U3. End to end, the regression test in the Vortex branch (`resources/testing.md`); was fix, ui-test               |
 |                                      | `qa`                                               | U4, U5, U8. A PR or branch (base then PR builds), `--design <file>`, `--release <version>`                        |
-|                                      | `pr`                                               | U9. `pr-branch --push`, the description and footer, `pr-checks`                                                   |
+|                                      | `pr`                                               | U9. From the session's branch: `push-branch`, fork or upstream, `gh pr create`, the footer, `pr-checks`           |
 | Benchmark                            | `measure`                                          | U6. `--a <build> [--b <build>] --check <check>`; was measure, compare                                             |
 
 Agents: `plugins/doodlebot/agents/vortex-runtime-goldfish.md` and `vortex-driver.md`. The
@@ -872,7 +872,7 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   Vortex or a registered release. A target flag puts its build in front of the checkout. No
   environment variable names a checkout: `VORTEX_AI_DEV_DIR` and `VORTEX_AI_SOURCE_DIR` are gone,
   and a value left in a shell is ignored.
-  - `build`, `source` (except `--clone`), `pr-branch` and `pr-preflight` need a checkout
+  - `build`, `source` (except `--clone`), `design-branch`, `push-branch` and `pr-preflight` need a checkout
     (`--checkout`, `--dev-dir` or the session's); outside one they refuse with "Open Claude in a
     Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`)."
   - `up`, `bootstrap` and `setup` in an unbuilt checkout refuse with "This session's checkout
@@ -1004,10 +1004,12 @@ Doodlebot has no design command of its own.
   `designs/SITEMAP.md`; this version implements `designs/companion-simplified.md` and
   `designs/vortex-checkout.md`.
 
-- A Vortex design lives on the Vortex branch, in the checkout's docs/designs folder, committed
-  as `docs(design): <topic>`. `pr-branch` keeps it out of the PR, and with
-  `--design-commit <sha>` tags the approved design commit `design/<topic>` (never an
-  unapproved revision); `pr-preflight` FAILs when it is still in the PR's diff or commits.
+- A Vortex design lives on the sibling branch `designs/<topic>` in the person's fork, as
+  `docs/designs/<topic>.md` committed `docs(design): <topic>` by `doodlebot design-branch`
+  (below), never on the feature branch. The approved revision is the commit the person
+  approved, and the PR links it; `pr-preflight` FAILs when a docs/designs file is in the PR's
+  diff or commits. (The plural `designs/` avoids the `design/<topic>` tags earlier versions
+  pushed to forks; those are left alone.)
 - The tests that prove the change go in the same Vortex branch
   (`plugins/doodlebot/resources/testing.md`), and `/doodlebot:qa --design <file>` checks each
   acceptance criterion with its negative control from a fresh profile.
@@ -1071,22 +1073,27 @@ receipt cannot certify a later commit. Verify the actual final commit for public
 - `doodlebot pr-checks <number-or-url> [--repo <owner/name>] [--json]`: the PR head's checks
   via `gh`, failed jobs expanded to failed steps (a test failure vs. a failed upload). Nonzero while
   any check is pending or failed.
-- `doodlebot pr-branch <topic> [--checkout <dir>] [--base <ref>] [--design-commit <sha>] [--push]`
-  (`prPush.ts`) builds `pr/<topic>` in a temporary worktree from the merge-base of `HEAD` and
-  `--base` (default `upstream/<default branch>`), cherry-picking every commit except
-  `docs(design): ...` ones. It refuses merge commits, a branch of only design commits,
-  `pr/<topic>` being checked out, and a non-design commit that touches `docs/designs/`. The
-  checkout's own files never change.
-- **The design tag** (`tagApprovedDesign`): `--design-commit <sha>` names the approved design
-  commit, which must be one of the branch's `docs(design)` commits; it is tagged
-  `design/<topic>`, so the PR links the design at its commit. When the tag already marks an
-  earlier approval, that commit is kept as `design/<topic>-v<n>` (git cannot hold
-  `design/<topic>` beside `design/<topic>/v<n>`) and the tag moves. Without `--design-commit`
-  no tag is set or moved: an unapproved revision is never tagged.
-- `--push` pushes the branch (`--force-with-lease`), the tag and a `-v<n>` tag it just made to
-  `origin` only after the fork check above. The check reads every push URL
-  (`git remote get-url --push --all origin`, which `pushurl` and `pushInsteadOf` change) and
-  refuses unless each is the fork it verified: `origin fetches from <fork> but pushes to <url>`.
+- **The PR comes from the session's branch.** `/doodlebot:pr` opens it with
+  `gh pr create --head <fork owner>:<branch>` (a draft unless the person says otherwise), in the
+  fork or against Nexus-Mods/Vortex as the person chooses, and on Claude desktop binds it with
+  the app's PR tools when the PR bar did not pick it up. There is no separate PR branch.
+- `doodlebot push-branch [--checkout <dir>]` (`prPush.ts`, `pushSessionBranch`) pushes the
+  session's branch to `origin` with `-u`, only after the fork check (`checkPushRemote`). It
+  refuses a detached HEAD, a `proto/*` branch (a prototype is never shipped), a `designs/*`
+  branch and the default branch.
+- `doodlebot design-branch <topic> --file <draft> [--checkout <dir>] [--base <ref>]`
+  (`designBranch`) commits the draft as `docs/designs/<topic>.md` on `designs/<topic>`
+  (`docs(design): <topic>`) in a temporary worktree (`withTempWorktree`), so the session's
+  branch and `git status` never change. The branch continues from its local head, else
+  `origin/designs/<topic>`, else the merge-base of `HEAD` and `--base` (default
+  `upstream/<default branch>`); an unchanged draft makes no commit. The fork check runs before
+  anything is committed; then it pushes the branch and prints
+  `https://github.com/<fork>/blob/<sha>/docs/designs/<topic>.md`, the link the PR description
+  uses for the approved revision. It refuses a missing draft, a bad topic and running on
+  `designs/<topic>` itself.
+- **The fork check** reads every push URL (`git remote get-url --push --all origin`, which
+  `pushurl` and `pushInsteadOf` change) and refuses unless each is the fork it verified:
+  `origin fetches from <fork> but pushes to <url>`.
 - `doodlebot pr-preflight` (`/doodlebot:pr` runs it) before pushing; put its report in the PR. It diffs
   the committed `HEAD` of `--checkout` (default: the session's checkout) against its merge-base with `--base`
   (default `upstream/master`), prints PASS/WARN/FAIL/SKIP per check with file:line, exits 1 on any
@@ -1101,7 +1108,8 @@ receipt cannot certify a later commit. Verify the actual final commit for public
 | Dispatchers of reducers  | WARN: each changed reducer's action creator, its calls and type-string uses                                                                                              |
 | Revert check             | Branch failure or a reverted pass is FAIL; a reverted failure is INCONCLUSIVE until its intended assertion is inspected                                                  |
 | Measurements in comments | WARN for timing or size figures in added comments                                                                                                                        |
-| Design kept out          | FAIL when a `docs/designs/` file of the branch's `docs(design)` commits (in the range, or behind a local `design/<topic>` tag) is in the diff or in any commit           |
+| Design kept out          | FAIL when any `docs/designs/` file is in the diff or in a commit of the range (designs live on `designs/<topic>`)                                                        |
+| Branch                   | FAIL when the head is a `proto/*` branch, checked out or named with `--head`: a prototype is never shipped                                                               |
 | PR description           | With `--pr <n>`: FAIL on a non-Conventional or >72-char title, missing section, "Not run", no head sha                                                                   |
 
 - Test code (`*.test.*`, `*.spec.*`, `__tests__`, `__mocks__`, `__fixtures__`, `test-utils`) is

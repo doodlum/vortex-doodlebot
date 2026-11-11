@@ -66,17 +66,19 @@ needed unless you ask for one. See [Fix a Vortex bug](fix-a-bug.md).
 
 ## U4: Build a feature
 
-Open the agent in the doodlebot workspace. You type the EGM commands; the agent tells you which
-comes next.
+Open the agent in your Vortex checkout (U12). You type the EGM commands; the agent gives you
+each line to paste, with `EGM artifact directory: .doodlebot/egm` on its own line.
 
-1. `/doodlebot:setup --check`, then `/doodlebot:source --branch feat/<topic>`.
-2. `/egm:egm-brainstorm <the idea>`, then `/egm:egm-draft`. Save the design in the Vortex
-   checkout's `docs/designs/`; it is committed on the branch as `docs(design): <topic>`.
-3. `/egm:egm-review <design>`, then the `/egm:egm-review-loop` line the agent gives you, with
+1. `/doodlebot:setup --check`, then `/doodlebot:source`.
+2. `/egm:egm-brainstorm <the idea>`, then `/egm:egm-draft`. The draft stays in `.doodlebot/egm`;
+   the agent commits each revision to the sibling branch `designs/<topic>` in your fork with
+   `doodlebot design-branch`, never to the feature branch.
+3. `/egm:egm-review <draft>`, then the `/egm:egm-review-loop` line the agent gives you, with
    doodlebot's runtime reviewer.
-4. You approve the design.
-5. The agent implements it and writes its tests in the branch; `/doodlebot:try` shows it working.
-6. `/doodlebot:qa --design <design>` checks every acceptance criterion with its negative control.
+4. You approve the design: the approved revision is its `designs/<topic>` commit.
+5. `/doodlebot:source --branch feat/<topic>`. The agent implements it and writes its tests in
+   the branch; `/doodlebot:try` shows it working.
+6. `/doodlebot:qa --design <draft>` checks every acceptance criterion with its negative control.
 7. `/doodlebot:pr` (U9).
 
 You get an EGM design with its review reports, then a branch checked from a fresh profile. See
@@ -122,11 +124,14 @@ previous result".
 
 ## U9: Ship it
 
-1. After U3 or U4, run `/doodlebot:pr <topic>`.
-2. The agent runs the preflight, builds `pr/<topic>` without the design commits, and writes the
-   description from the run reports and the design, ending with the doodlebot footer.
-3. On your go-ahead it pushes to your own fork only, and opens a draft pull request unless you
-   say otherwise. It reads CI and says why it is red.
+1. After U3 or U4, run `/doodlebot:pr` in the session on the work branch.
+2. The agent runs the preflight and writes the description from the run reports and the design
+   (linked at its approved commit), ending with the doodlebot footer. A `proto/*` branch is
+   refused.
+3. On your go-ahead it pushes the session's branch to your own fork only, asks whether the pull
+   request goes to your fork or to Nexus-Mods/Vortex, and opens it from that branch, a draft
+   unless you say otherwise. In the Claude desktop app it binds the pull request to the session.
+   It reads CI and says why it is red.
 
 A pull request is opened only after your real scenario passed on the change. See
 [Open a pull request](pull-requests.md).

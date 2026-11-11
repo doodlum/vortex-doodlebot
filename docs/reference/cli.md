@@ -16,6 +16,7 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `click`
 - `collection`
 - `deploy`
+- `design-branch`
 - `doctor`
 - `down`
 - `e2e`
@@ -32,11 +33,11 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `link`
 - `log`
 - `perf-summary`
-- `pr-branch`
 - `pr-checks`
 - `pr-preflight`
 - `press`
 - `purge`
+- `push-branch`
 - `qa`
 - `record`
 - `release`

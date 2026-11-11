@@ -46,8 +46,8 @@ is not built fails with `This session's checkout <path> is not built: ...`, nami
 `doodlebot build --checkout <path>`. `doodlebot doctor` reports either as a failing `Vortex`
 check, and its `This checkout` line names the session's checkout.
 
-`build`, `source` (except `source --clone <dir>`), `pr-branch` and `pr-preflight` need a
-checkout. Outside one they refuse with
+`build`, `source` (except `source --clone <dir>`), `design-branch`, `push-branch` and
+`pr-preflight` need a checkout. Outside one they refuse with
 `Open Claude in a Vortex checkout or worktree (or clone one with doodlebot source --clone <dir>).`
 
 `doodlebot doctor` reports the baseline for the flags you give it. With `--no-game` its
@@ -75,7 +75,7 @@ cache you choose, the running test Vortex is recorded in `~/.doodlebot/instance.
 | `VORTEX_AI_INSTALLED`                       | Prefer installed Vortex when true                                                     |
 | `VORTEX_AI_EXE`                             | Explicit released executable                                                          |
 | `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source --clone` clones                       |
-| `VORTEX_AI_VORTEX_REPO`                     | Your fork as `owner/name` (also a pushable organisation fork for `pr-branch --push`)  |
+| `VORTEX_AI_VORTEX_REPO`                     | Your fork as `owner/name` (also a pushable organisation fork for `push-branch`)       |
 | `VORTEX_AI_NEXUS_USER`                      | Your Nexus user name, replaced with `<nexus user>` when you share a lesson or gap     |
 | `VORTEX_AI_PNPM`                            | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`            |
 | `VORTEX_MCP_TOKEN`                          | Bearer token for the MCP server; doodlebot creates a private one if unset             |
@@ -111,20 +111,20 @@ Both ports must be distinct integers between 1 and 65535.
 Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands. A few belong
 to one command:
 
-| Flag                          | Command                | Effect                                                                     |
-| ----------------------------- | ---------------------- | -------------------------------------------------------------------------- |
-| `--new`                       | `game copy`            | Make another copy even when one of the same version exists                 |
-| `--older-than <days>`         | `clean`                | What counts as old; default 30 days                                        |
-| `--dry-run`, `--yes`          | `clean`                | List only; delete what is listed (without `--yes` it only lists)           |
-| `--touching <paths...>`       | `qa list`              | Vortex files a change touches, relative to the Vortex root                 |
-| `--allow-logout`              | `qa list`              | Also select entries that log out of the account (only after you agree)     |
-| `--need <need>`               | `inventory`            | The content chosen for these needs (repeatable), instead of every item     |
-| `--json`                      | `inventory`, `qa list` | Print JSON                                                                 |
-| `--clone <dir>`               | `source`               | Clone Vortex into that new folder, outside the workspace                   |
-| `--release <version>`         | `test <suite>`         | Run the suite on that registered release; not passed on to the suite       |
-| `--stale-ok`                  | `up`, `bootstrap`      | Start a source build even though its checkout changed since the build      |
-| `--add-upstream`, `--exclude` | `source`               | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` out of Git         |
-| `--design-commit <sha>`       | `pr-branch`            | Tag that approved design commit `design/<topic>`; without it, no tag moves |
+| Flag                          | Command                | Effect                                                                       |
+| ----------------------------- | ---------------------- | ---------------------------------------------------------------------------- |
+| `--new`                       | `game copy`            | Make another copy even when one of the same version exists                   |
+| `--older-than <days>`         | `clean`                | What counts as old; default 30 days                                          |
+| `--dry-run`, `--yes`          | `clean`                | List only; delete what is listed (without `--yes` it only lists)             |
+| `--touching <paths...>`       | `qa list`              | Vortex files a change touches, relative to the Vortex root                   |
+| `--allow-logout`              | `qa list`              | Also select entries that log out of the account (only after you agree)       |
+| `--need <need>`               | `inventory`            | The content chosen for these needs (repeatable), instead of every item       |
+| `--json`                      | `inventory`, `qa list` | Print JSON                                                                   |
+| `--clone <dir>`               | `source`               | Clone Vortex into that new folder, outside the workspace                     |
+| `--release <version>`         | `test <suite>`         | Run the suite on that registered release; not passed on to the suite         |
+| `--stale-ok`                  | `up`, `bootstrap`      | Start a source build even though its checkout changed since the build        |
+| `--add-upstream`, `--exclude` | `source`               | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` out of Git           |
+| `--file <draft>`              | `design-branch`        | The design draft to commit as `docs/designs/<topic>.md` on `designs/<topic>` |
 
 A path argument is one word to the shell, so quote a path that has spaces:
 `doodlebot install "C:\Users\Nexus Two\probe.zip"`. `install` refuses more than one path

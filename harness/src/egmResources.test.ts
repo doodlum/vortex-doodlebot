@@ -114,6 +114,7 @@ describe("EGM resources", () => {
       expect(review?.[0]).toContain(argument);
     // Designs live on designs/<topic>, never on the feature branch.
     expect(egm).toContain("`designs/<topic>`");
+    expect(egm).toContain("`doodlebot design-branch <topic> --file <draft>`");
     expect(egm).toContain("never commit it on the feature branch");
   });
 

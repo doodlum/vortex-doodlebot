@@ -156,6 +156,8 @@ function commandUses(markdown: string): { text: string; command: string; word?: 
 }
 
 const REPO_SEGMENT = /(^|\/)(harness|designs)\/|(^|\/)\.vortex-src(\/|$)/;
+/** Vortex branch names that look like a repository path: a design's sibling branch. */
+const BRANCH_NAME = /^designs\/(?:<topic>|\*)$/;
 
 /**
  * Code tokens holding a repository path (a `harness/`, `designs/` or `.vortex-src` segment)
@@ -180,6 +182,7 @@ function pathTokenViolations(markdown: string): string[] {
       token = token.replace(/\\/g, "/");
       if (
         REPO_SEGMENT.test(token) &&
+        !BRANCH_NAME.test(token) &&
         !token.startsWith("<workspace>/") &&
         !token.startsWith("${CLAUDE_PLUGIN_ROOT}/")
       )
@@ -502,11 +505,27 @@ describe("skills", () => {
       expect(text).toContain(phrase);
   });
 
-  it("pr pushes only through pr-branch's fork check and keeps the design out", () => {
-    const uses = commandUses(read(skillFile("doodlebot", "pr"))).map((use) => use.text);
-    expect(uses).toContain("doodlebot pr-branch <topic> --checkout <checkout> --push");
-    expect(uses).toContain("doodlebot pr-checks <number>");
-    expect(read(skillFile("doodlebot", "pr"))).toContain("Design approved by <owner> on <date>");
+  it("pr opens the PR from the session's branch, pushed through the fork check", () => {
+    const text = read(skillFile("doodlebot", "pr"));
+    const uses = commandUses(text).map((use) => use.text);
+    expect(uses).toContain("doodlebot push-branch --checkout <checkout>");
+    expect(uses).toContain(
+      "doodlebot pr-preflight --checkout <checkout> --base upstream/master --test <test> --revert <file>",
+    );
+    expect(uses.some((use) => use.startsWith("doodlebot pr-checks <number>"))).toBe(true);
+    const flat = text.replace(/\s+/g, " ");
+    // pr-from-session-branch: the PR's head is the session's branch, a draft by default, in
+    // the fork or Nexus-Mods/Vortex as the person says, bound on Claude desktop.
+    expect(flat).toContain("--head <fork owner>:<branch> --draft");
+    expect(flat).toContain(
+      "Open the pull request in your fork (<fork>), or against Nexus-Mods/Vortex?",
+    );
+    expect(flat).toContain("`bind_pr`");
+    // The design is linked at its approved commit on designs/<topic>, never carried.
+    expect(flat).toContain("Design approved by <owner> on <date>");
+    expect(flat).toContain("<fork>/blob/<sha>/docs/designs/<topic>.md");
+    expect(flat).toContain("**A `proto/*` branch is refused**");
+    expect(text).not.toMatch(/pr-branch|(?<!\/)pr\/<topic>|design\/<topic>/);
   });
 
   it("defines the benchmark report in measure, with a Verdict only for two builds", () => {
@@ -663,6 +682,9 @@ describe("workspace paths in plugin skills and agents", () => {
     expect(pathTokenViolations("`doodlebot test core harness/src/tests/a.spec.ts`")).toEqual([]);
     expect(pathTokenViolations("`doodlebot up harness/src/tests/a.spec.ts`")).toHaveLength(1);
     expect(pathTokenViolations("See harness/AGENTS.md in prose.")).toEqual([]);
+    // A design's sibling branch is a Vortex branch name, not a doodlebot path.
+    expect(pathTokenViolations("`designs/<topic>` and `designs/*`")).toEqual([]);
+    expect(pathTokenViolations("`designs/x.md`")).toHaveLength(1);
   });
 
   it("names only plugin resources that exist", () => {

@@ -50,9 +50,12 @@ run it. Never write an approval the person has not given.
    folder and never commit it on the feature branch: a design never travels with the code.
 3. **The design branch.** When the draft is ready for the person to read, ask: "May I commit the
    draft to `designs/<topic>` and push it to your fork, so you can read and approve it at its
-   commit?" On a yes, run doodlebot design-branch <topic> --file <draft>. It commits the draft as `docs/designs/<topic>.md` on the sibling branch
+   commit?" On a yes, run `doodlebot design-branch <topic> --file <draft>`. It commits the draft as `docs/designs/<topic>.md` on the sibling branch
    `designs/<topic>`, built from the session branch's upstream base in a temporary worktree, so
-   the session's branch and files never change. Run it again after each revision.
+   the session's branch and files never change. It pushes the branch only to the person's own
+   fork (the same check as `doodlebot push-branch`) and prints the design's link at that
+   commit, `<fork>/blob/<sha>/docs/designs/<topic>.md`: give it to the person. Run it again
+   after each revision; each revision is a new commit with its own link.
 4. **EGM's staged review.** The person types `/egm:egm-review <draft>`, with the artifact
    directory line under it. Give `GoldfishContext` the Vortex files the design names.
 5. **The runtime review.** The person types EGM's review loop with doodlebot's runtime reviewer,
