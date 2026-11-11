@@ -162,7 +162,7 @@ excluded. Include cleanup (`doodlebot down`) and candidate lessons or kit gaps.
 ```
 
 Useful commands for a review of the author's branch, checked out at the identified head in
-`.vortex-src` or a `--dev-dir` checkout. The reviewer stops its own test Vortex before checks
+the session's Vortex checkout (a worktree of it) or a `--dev-dir` checkout. The reviewer stops its own test Vortex before checks
 that rewrite output or record evidence in that checkout:
 
 ```powershell

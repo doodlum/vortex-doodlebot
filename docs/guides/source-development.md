@@ -123,8 +123,8 @@ Stop it before you switch the checkout to another branch as well.
 
 ## An old managed clone
 
-Earlier versions of doodlebot kept a Vortex clone inside the workspace, at
-`<workspace>/.vortex-src`. Nothing uses it now. `doodlebot check` lists it as
+Earlier versions of doodlebot kept a Vortex clone inside the workspace. Nothing uses it now:
+doodlebot works in the Vortex checkout your session is in. `doodlebot check` lists it as
 `old managed clone (no longer used)` with its size; `doodlebot clean --yes` deletes it after you
 agree. Push any branch you want to keep first.
 

@@ -157,12 +157,12 @@ function commandUses(markdown: string): { text: string; command: string; word?: 
     .map(({ text, match }) => ({ text, command: match[1]!, word: match[3] }));
 }
 
-const REPO_SEGMENT = /(^|\/)(harness|designs)\/|(^|\/)\.vortex-src(\/|$)/;
+const REPO_SEGMENT = /(^|\/)(harness|designs)\//;
 /** Vortex branch names that look like a repository path: a design's sibling branch. */
 const BRANCH_NAME = /^designs\/(?:<topic>|\*)$/;
 
 /**
- * Code tokens holding a repository path (a `harness/`, `designs/` or `.vortex-src` segment)
+ * Code tokens holding a repository path (a `harness/` or `designs/` segment)
  * that do not start with `<workspace>/` or `${CLAUDE_PLUGIN_ROOT}/`. Tokens are split on
  * whitespace with quotes stripped; `--x=value` checks its value; the arguments after
  * `doodlebot test <suite>` are the suite's own and exempt.
@@ -460,7 +460,7 @@ describe("skills", () => {
     }
   });
 
-  it("qa and investigate put .vortex-src back, and qa fetches upstream before the merge-base", () => {
+  it("qa and investigate put the checkout back, and qa fetches upstream before the merge-base", () => {
     const qa = read(skillFile("doodlebot", "qa")).replace(/\s+/g, " ");
     expect(qa.indexOf("git -C <checkout> fetch upstream`")).toBeGreaterThan(-1);
     expect(qa.indexOf("git -C <checkout> fetch upstream`")).toBeLessThan(
@@ -468,9 +468,7 @@ describe("skills", () => {
     );
     expect(qa).toContain("**Put the checkout back.**");
     const investigate = read(skillFile("doodlebot", "investigate")).replace(/\s+/g, " ");
-    expect(investigate).toContain(
-      "put it back: `git -C <workspace>/.vortex-src switch <that branch>`",
-    );
+    expect(investigate).toContain("put it back: `git -C <checkout> switch <that branch>`");
   });
 
   it("investigate changes no code and never calls a different version not reproduced", () => {
@@ -719,8 +717,8 @@ describe("workspace paths in plugin skills and agents", () => {
     ],
     [
       "a --x=value token",
-      "`doodlebot up --dev-dir=<workspace>/.vortex-src`",
-      "`doodlebot up --dev-dir=.vortex-src`",
+      "`doodlebot up --dev-dir=<workspace>/harness/x`",
+      "`doodlebot up --dev-dir=harness/x`",
     ],
     [
       "a plugin resource",

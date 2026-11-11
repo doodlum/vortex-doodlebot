@@ -77,7 +77,17 @@ branch itself. Its description quotes the design's Overview and acceptance crite
 the design at the approved commit, so the link keeps working after any later revision. The
 preflight fails if a `docs/designs/` file is in the pull request's diff.
 
-Doodlebot's own designs are in the doodlebot repository's `designs/` folder, listed in `designs/SITEMAP.md`. The current one is `designs/companion-simplified.md`, the design this version of doodlebot implements.
+Doodlebot's own designs are in the doodlebot repository's `designs/` folder, listed in
+`designs/SITEMAP.md`. This version of doodlebot implements `designs/companion-simplified.md`
+and `designs/vortex-checkout.md`: doodlebot runs in your Vortex checkout or a worktree of it,
+designs go on a sibling branch, and `/doodlebot:prototype` tries an idea before it is designed.
+
+## Prototype first, if you like
+
+`/doodlebot:prototype <idea>` changes Vortex's code on a `proto/<idea>` branch, builds it and
+shows you screenshots, round after round, until you say it is enough. It approves nothing and is
+never shipped: `/doodlebot:pr` refuses a `proto/*` branch. It ends with a summary and the
+`/egm:egm-brainstorm` lines that start the design from what the prototype taught.
 
 ## What's next
 

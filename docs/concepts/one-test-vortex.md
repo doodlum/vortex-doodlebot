@@ -56,7 +56,7 @@ A record counts as running only while its process is alive and is `Vortex.exe`, 
   recording evidence in it or reverting it:
 
   ```text
-  A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
+  A harness Vortex is running from C:\Users\you\src\Vortex (pid 1234); run `doodlebot down` before building it.
   ```
 
 - **Updating the workspace**:

@@ -78,6 +78,42 @@ const STALE_TERMS = [
 ];
 const staleExempt = (file: string): boolean =>
   file.startsWith("designs/") || /\.test\.(?:ts|cjs)$/.test(file);
+
+/**
+ * The managed Vortex clone and the variables that named a checkout, retired by
+ * designs/vortex-checkout.md: doodlebot works in the session's Vortex checkout, or one cloned with
+ * `source --clone <dir>`. Joined so this file holds no literal mention of its own.
+ */
+const CHECKOUT_TERMS = [
+  [".vortex", "src"].join("-"),
+  ["VORTEX_AI", "SOURCE_DIR"].join("_"),
+  ["VORTEX_AI", "DEV_DIR"].join("_"),
+];
+/**
+ * Designs record the history. `.gitignore` keeps an old clone out of `git status`; `check` and
+ * `clean` (checkCommand.ts, diskUse.ts) still recognise one. The config and evidence tests assert
+ * that a leftover variable is ignored.
+ */
+const CHECKOUT_EXEMPT = new Set([
+  ".gitignore",
+  "harness/src/checkCommand.ts",
+  "harness/src/checkCommand.test.ts",
+  "harness/src/diskUse.ts",
+  "harness/src/diskUse.test.ts",
+  "harness/src/config.test.ts",
+  "harness/src/evidence.test.ts",
+]);
+
+/** `file:line: term` for each retired checkout term in a file outside the exemptions. */
+function checkoutTermHits(file: string, text: string): string[] {
+  if (file.startsWith("designs/") || CHECKOUT_EXEMPT.has(file)) return [];
+  const hits: string[] = [];
+  text.split(/\r?\n/).forEach((line, index) => {
+    for (const term of CHECKOUT_TERMS)
+      if (line.includes(term)) hits.push(`${file}:${String(index + 1)}: ${term}`);
+  });
+  return hits;
+}
 const BINARY = /\.(?:png|jpe?g|gif|ico|ttf|woff2?|zip|7z|exe|dll)$/i;
 
 /** Tracked and untracked non-ignored files that exist on disk. */
@@ -145,6 +181,25 @@ describe("the agent companion", () => {
         });
     }
     expect(hits).toEqual([]);
+  });
+
+  it("no-vortex-src: names no managed clone or checkout variable outside the exemptions", () => {
+    const hits = repositoryFiles().flatMap((file) => checkoutTermHits(file, read(file)));
+    expect(hits).toEqual([]);
+  });
+
+  it("no-vortex-src: a planted mention fails, and only the exemptions pass", () => {
+    const clone = CHECKOUT_TERMS[0]!;
+    const planted = `Clone it into <workspace>/${clone} first.`;
+    expect(checkoutTermHits("docs/guides/fix-a-bug.md", `ok\n${planted}`)).toEqual([
+      `docs/guides/fix-a-bug.md:2: ${clone}`,
+    ]);
+    expect(checkoutTermHits("plugins/doodlebot/skills/try/SKILL.md", CHECKOUT_TERMS[2]!)).toEqual([
+      `plugins/doodlebot/skills/try/SKILL.md:1: ${CHECKOUT_TERMS[2]!}`,
+    ]);
+    expect(checkoutTermHits("harness/src/config.ts", CHECKOUT_TERMS[1]!)).toHaveLength(1);
+    for (const exempt of ["designs/vortex-checkout.md", ".gitignore", "harness/src/diskUse.ts"])
+      expect(checkoutTermHits(exempt, planted)).toEqual([]);
   });
 
   it("keeps removed files and package scripts removed", () => {

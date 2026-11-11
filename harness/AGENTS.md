@@ -596,7 +596,7 @@ unless target or game flags are given (the login row replaces doctor's `Nexus lo
 EGM, enabled in `<workspace>/.claude/settings.json` or `~/.claude/settings.json`, or listed in
 `~/.claude/plugins/installed_plugins.json`; this checkout (the session's Vortex checkout: its
 fetch remotes, branch and build, or `advisory` with the step that makes one outside a checkout);
-an old managed clone `<workspace>/.vortex-src` as `advisory: old managed clone (no longer used)`
+the Vortex clone older kits kept in the workspace as `advisory: old managed clone (no longer used)`
 with its size (`doodlebot clean --yes` removes it once the person agrees);
 the inventory's items (a store install with a registered copy is `info`) and the login
 (`next: /doodlebot:setup --login`); the copy folder (`next: doodlebot game folder <dir>`); each
@@ -884,8 +884,7 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   named `@vortex/monorepo` (`vortexCheckoutOf`). Precedence: an explicit `--dev-dir <dir>`; then
   the session's checkout; then `--release`, `--installed` or `--exe`, otherwise the installed
   Vortex or a registered release. A target flag puts its build in front of the checkout. No
-  environment variable names a checkout: `VORTEX_AI_DEV_DIR` and `VORTEX_AI_SOURCE_DIR` are gone,
-  and a value left in a shell is ignored.
+  environment variable names a checkout; one left in a shell by an older kit is ignored.
   - `build`, `source` (except `--clone`), `design-branch`, `push-branch` and `pr-preflight` need a checkout
     (`--checkout`, `--dev-dir` or the session's); outside one they refuse with "Open Claude in a
     Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`)."
@@ -946,7 +945,7 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
     `doodlebot build --checkout <checkout>`, which puts back the `etc/` files the build rewrites,
     unless `--no-build`. It reports the checkout, branch, remotes, the exclude, whether it
     built, and the next step.
-  - An old managed clone `<workspace>/.vortex-src` from an earlier kit is no longer used:
+  - The Vortex clone an earlier kit kept in the workspace is no longer used:
     `check` reports it with its size, and `clean --yes` removes it once the person agrees
     (never while a harness Vortex runs from it).
 - **Branches start from upstream.** `source --branch <name>` fetches `upstream` and runs

@@ -14,8 +14,8 @@ lists the live tools and their schemas. See [README.md](README.md) for usage.
                              v
           node <workspace>/bin/doodlebot.cjs  ->  tsx harness/src/cli.ts
                              v
-   workspace (clone of this repo): harness, built extension, caches, .vortex-src
-                             v
+   workspace (clone of this repo): harness, built extension, caches, releases
+                             v         (Vortex source: the session's Vortex checkout)
        one isolated test Vortex per machine (record: ~/.doodlebot/instance.json)
 ```
 
@@ -197,8 +197,9 @@ read one file rather than coordinate processes.
   to run `doodlebot down` first.
 - `processes.ts` holds the platform checks the record relies on: `processAlive` (EPERM counts
   as alive) and `processImageName`.
-- Vortex source work happens on a branch of `.vortex-src` or in a checkout given with
-  `--dev-dir`. Independent QA runs after the author's `down` and starts with `up --fresh`.
+- Vortex source work happens in the session's Vortex checkout (the git top level of the
+  folder doodlebot runs in, a worktree included) or in one given with `--dev-dir`; the kit
+  keeps no clone of its own, and `source --clone <dir>` makes one outside the workspace. Independent QA runs after the author's `down` and starts with `up --fresh`.
 
 ## File map
 

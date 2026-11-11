@@ -81,8 +81,8 @@ item, each `ready`, `MISSING` or `BLOCKED` with its `next:` step, or `advisory`/
   baseline, 7-Zip (for `doodlebot release get`), the login folder's privacy, a running test
   Vortex, an old `Legacy lease store`;
 - EGM, from the Claude Code settings and installed-plugins list;
-- `<workspace>/.vortex-src`: remotes (a fork as `origin`, Nexus-Mods/Vortex as `upstream`),
-  branch, and whether it is built;
+- the session's Vortex checkout, when the session is in one: remotes (a fork as `origin`,
+  Nexus-Mods/Vortex as `upstream`), branch, and whether it is built;
 - `doodlebot inventory`: builds, games (a Steam install is never usable; a registered copy
   is), snapshots, sandboxes, collections;
 - the Nexus login;

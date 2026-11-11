@@ -235,8 +235,8 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          List what disk use to free (default 30 days): binaries in old
                          run, QA and benchmark folders (each report.md and files under
                          1 MB stay), unused baselines and caches, releases content.json
-                         no longer names, and the workspace's old managed clone
-                         (.vortex-src, no longer used); deletes only with --yes. Never
+                         no longer names, and the Vortex clone older kits kept in the
+                         workspace (no longer used); deletes only with --yes. Never
                          touches game copies, the login, pending restores or the running
                          instance
   source                 Prepare this session's Vortex checkout (the one holding the folder

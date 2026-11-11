@@ -13,8 +13,8 @@ companion, without you typing a terminal command.
 
 Setup installs the doodlebot runtime into a **workspace**: a clone of the doodlebot repository,
 with its dependencies installed and its Vortex extension built. The default folder is
-`%USERPROFILE%\doodlebot`. Test profiles, reports and the Vortex source clone live inside the
-workspace. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
+`%USERPROFILE%\doodlebot`. Test profiles and reports live inside the workspace. Vortex's own
+source is not in it: work on Vortex's code happens in a Vortex checkout you open Claude in. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
 `%USERPROFILE%\.doodlebot`, so they survive updates and a new workspace.
 
 Setup also writes a small launcher, the **shim**, so that the `doodlebot` command works from any
@@ -138,7 +138,7 @@ keeps them ([What doodlebot learns](../concepts/knowledge.md)).
    (`codex plugin --help` lists them).
 
 3. Delete the workspace folder (by default `%USERPROFILE%\doodlebot`). This also deletes its test
-   profiles, saved Nexus logins, reports and any Vortex source clone in it, so copy anything you
+   profiles, saved Nexus logins and reports, so copy anything you
    want to keep first.
 4. Delete the shim: `doodlebot.cmd` and `doodlebot` in the folder that `link` wrote them to
    (`where.exe doodlebot` shows it).

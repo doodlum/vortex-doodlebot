@@ -43,10 +43,11 @@ changing the checkout, and never stop one another session started.
    (`${CLAUDE_PLUGIN_ROOT}/skills/investigate/SKILL.md`). Continue only when it says
    **reproduced**, with a cause; otherwise report it and stop: a fix for an unreproduced bug is
    a guess.
-2. **Source and branch.** The person's checkout (`--dev-dir <checkout>`, `--checkout <checkout>`)
-   or `<workspace>/.vortex-src` (`/doodlebot:source`). `<checkout>` below is whichever. Cut the
-   branch from upstream: `doodlebot source --no-build --branch fix-<topic>` for the managed
-   checkout, or `git -C <checkout> switch --no-track -c fix-<topic> upstream/master`. Never
+2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`;
+   `/doodlebot:source` prepares it), or one the person names with `--dev-dir <checkout>`.
+   Outside a checkout, ask the person to open Claude in one (or clone one with
+   `doodlebot source --clone <dir>`) and stop. Cut the branch from upstream:
+   `doodlebot source --no-build --branch fix-<topic>`. Never
    work on `master`.
 3. **The control run (before).** Build the branch's base with
    `doodlebot build --checkout <checkout>` and repeat the reproduction with `/doodlebot:try`'s

@@ -146,8 +146,8 @@ delete, and deletes it only when you add `--yes`:
   `report.md` and the small files stay;
 - baselines and caches not used for 30 days;
 - releases that `~/.doodlebot/content.json` no longer names;
-- the old managed Vortex clone `<workspace>/.vortex-src` that earlier versions kept, which
-  nothing uses now, whatever its age.
+- the Vortex clone that earlier versions kept inside the workspace, which nothing uses now,
+  whatever its age.
 
 Use `--older-than <days>` for another age, and `--dry-run` to list only. `clean` never deletes a
 registered game copy, the Nexus login, a backup waiting to be restored, or the cache or checkout

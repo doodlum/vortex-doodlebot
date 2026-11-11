@@ -9,7 +9,8 @@ Bug fixes, documentation and test-only changes need no design; use
 
 - [Install EGM](../get-started/install.md#install-egm-for-design-review), release `v0.1.1`.
 - Open your agent **in your Vortex checkout**, or a worktree of it, and run `/doodlebot:source`
-  there. Say yes when it asks to keep `.doodlebot/` out of commits: EGM's working files go in
+  there. Without a checkout, `doodlebot source --clone <dir>` clones your fork into a folder you
+  name; then open the agent there. Say yes when it asks to keep `.doodlebot/` out of commits: EGM's working files go in
   `.doodlebot/egm`.
 - Run `/doodlebot:setup --check`: EGM is installed and a sandbox is ready.
 
@@ -40,8 +41,8 @@ about EGM is written into Vortex.
 6. **You approve.** Set the design's Status to Approved, or tell the agent to. The approved
    revision is the `designs/<topic>` commit holding the text you approved. The agent never
    writes an approval you have not given.
-7. `/doodlebot:source --branch feat/<topic>` cuts the work branch from upstream (or open a new
-   worktree session on it). The agent implements there, following Vortex's own rules, and writes
+7. `/doodlebot:source --branch feat/<topic>` cuts the work branch from upstream, or open a new
+   worktree session on `feat/<topic>`. The agent implements there, following Vortex's own rules, and writes
    the tests that prove it in the same branch. A prototype's diff is ported, never shipped.
    `/doodlebot:try` shows it working.
 8. `/doodlebot:qa --design <draft>`: from a fresh profile, each acceptance criterion with its

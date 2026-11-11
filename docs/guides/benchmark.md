@@ -11,7 +11,7 @@ builds, with `/doodlebot:measure --a <build> [--b <build>] --check <check>`.
     `doodlebot release get 2.8.0` (checked against the published SHA-256 and extracted without
     running the installer);
   - an executable (`--exe <path>`);
-  - a source checkout (`--dev-dir <path>`), such as a branch of `<workspace>/.vortex-src`.
+  - a source checkout (`--dev-dir <path>`), such as a worktree of your Vortex checkout.
 - Make sure no test Vortex is running; the agent asks before stopping one.
 - Keep the machine quiet while it measures: close CPU-heavy programs and do not use the machine.
   A verdict is only as good as these conditions.
@@ -57,8 +57,8 @@ median, minimum, maximum and count. A measurement of one build has no verdict.
    /doodlebot:measure --a 2.8.0 --b my branch --check mods-scroll --mods 3000
    ```
 
-   Name both builds: a release version, a path to an executable, a source checkout, or a
-   branch of `.vortex-src`.
+   Name both builds: a release version, a path to an executable, or a source checkout (your
+   session's Vortex checkout, or a worktree of it on another branch).
 
 2. The agent fixes the builds. A source checkout is built in production mode with
    `doodlebot build --checkout <dir> --production` and launched with `--production`, so it runs

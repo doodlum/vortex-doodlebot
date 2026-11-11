@@ -50,13 +50,13 @@ save time", "Commands that block" and "The report procedure".
 **The build.** What the person named; otherwise the installed Vortex, or the newest registered
 release when none is installed.
 
-| The person says           | Flags                                                              |
-| ------------------------- | ------------------------------------------------------------------ |
-| a release, "2.8.0"        | `--release 2.8.0` (first `doodlebot release get 2.8.0` if missing) |
-| the installed Vortex      | `--installed`                                                      |
-| an executable             | `--exe <path to Vortex.exe>`                                       |
-| my build, the source      | `--dev-dir <workspace>/.vortex-src` (or their checkout)            |
-| as users see it (timings) | add `--production` to a source build built with `--production`     |
+| The person says           | Flags                                                                 |
+| ------------------------- | --------------------------------------------------------------------- |
+| a release, "2.8.0"        | `--release 2.8.0` (first `doodlebot release get 2.8.0` if missing)    |
+| the installed Vortex      | `--installed`                                                         |
+| an executable             | `--exe <path to Vortex.exe>`                                          |
+| my build, the source      | no flag in the session's Vortex checkout, else `--dev-dir <checkout>` |
+| as users see it (timings) | add `--production` to a source build built with `--production`        |
 
 `doodlebot release get <version>` downloads only official releases, checks the published
 SHA-256 and never runs the installer. A release without a published digest is **blocked**.

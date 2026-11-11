@@ -69,7 +69,7 @@ change the checkout a running one uses, stops with a message like one of these:
 
 ```text
 A harness Vortex is running (pid 1234, cache C:\Users\you\doodlebot\harness\.cache); run `doodlebot down` before the core suite.
-A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
+A harness Vortex is running from C:\Users\you\src\Vortex (pid 1234); run `doodlebot down` before building it.
 ```
 
 Nothing was started or changed. If your session started that test Vortex, have the agent run
@@ -150,8 +150,12 @@ Current versions do not use them. Once no doodlebot Vortex is running, they can 
   `Legacy lease store`, and `/doodlebot:setup` offers to delete it;
 - `harness/.slots` in the workspace;
 - `.vortex-worktrees` in the workspace: commit or copy any work you still need from it, delete
-  the folder, then run `git -C <workspace>/.vortex-src worktree prune` so the Vortex clone
-  forgets the deleted checkouts. Their branches stay in `<workspace>/.vortex-src`.
+  the folder, then run `git worktree prune` in the old Vortex clone in the workspace so it
+  forgets the deleted checkouts. Their branches stay in that clone;
+- the Vortex clone older versions kept in the workspace. Current versions work in the Vortex
+  checkout your session is in. `doodlebot check` lists the old clone as
+  `advisory: old managed clone (no longer used)` with its size, and `doodlebot clean --yes`
+  removes it once you agree; push or copy any branch you still need first.
 
 ## What's next
 

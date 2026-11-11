@@ -7,7 +7,7 @@ This page shows how to find out why something in Vortex is broken, with
 
 - [Set up doodlebot](../get-started/set-up.md).
 - Have Vortex's build prerequisites, and a GitHub fork of Vortex if you want to push the fix.
-  The agent prepares the source clone if it does not exist yet; see
+  Open Claude in your Vortex checkout, or a worktree of it; the agent prepares it if needed. See
   [Work on Vortex source](source-development.md).
 - Have the bug report: what the user did, what they saw, their Vortex version, and any
   collection, mod or files they named; or a user's `vortex.log`. If the report depends on a
@@ -50,7 +50,7 @@ Run:
 Without an issue report, the agent investigates first, and continues only when the bug is
 reproduced. Then it:
 
-1. cuts a branch from upstream in `.vortex-src` (or your checkout);
+1. cuts a branch from upstream in your session's Vortex checkout;
 2. repeats the reproduction on the branch's base: the "before" run;
 3. fixes the bug, following Vortex's own contribution rules;
 4. writes a regression test **in the Vortex branch**, a Vortex unit test or a spec in Vortex's
