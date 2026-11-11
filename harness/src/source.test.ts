@@ -8,8 +8,9 @@ import {
   ForkError,
   NO_FORK_NOTE,
   commandEnv,
+  cloneVortex,
   cutWorkBranch,
-  ensureVortexSource,
+  fetchRemotes,
   missingBuildOutputs,
   nestedPath,
   needsShell,
@@ -114,16 +115,16 @@ describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
   it("clones upstream alone, as `upstream` with no origin, when there is no fork", async () => {
     const dir = path.join(root, "src-nofork");
     const messages: string[] = [];
-    const source = await ensureVortexSource({
-      dir,
+    const source = await cloneVortex(dir, {
       upstreamUrl: upstream,
       resolveRepo: async () => undefined,
       onProgress: (m) => messages.push(m),
     });
-    expect(source).toMatchObject({ cloned: true, hasFork: false, defaultBranch: "master" });
+    expect(source).toMatchObject({ hasFork: false, defaultBranch: "master" });
     expect(remotes(dir)).toEqual(["upstream"]);
     expect(git(dir, "remote", "get-url", "upstream")).toBe(upstream);
-    expect(messages.join("\n")).toContain(NO_FORK_NOTE);
+    expect(messages.join("\n")).toContain("no origin");
+    expect(NO_FORK_NOTE).toContain("the checkout is a clone of Nexus-Mods/Vortex");
 
     // source --update on an upstream-only clone fetches upstream and reports it.
     const work = path.join(root, "work");
@@ -132,8 +133,7 @@ describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
     git(work, "add", "-A");
     git(work, "commit", "-q", "-m", "later upstream");
     git(work, "push", "-q", upstream, "master");
-    const updated = await ensureVortexSource({ dir, update: true, upstreamUrl: upstream });
-    expect(updated).toMatchObject({ cloned: false, hasFork: false, repo: upstream });
+    await fetchRemotes(dir);
     expect(git(dir, "rev-parse", "upstream/master")).toBe(git(work, "rev-parse", "master"));
     expect(remotes(dir)).toEqual(["upstream"]);
 
@@ -145,8 +145,7 @@ describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
 
   it("clones the fork as origin beside upstream, and cuts branches from upstream", async () => {
     const dir = path.join(root, "src-fork");
-    const source = await ensureVortexSource({
-      dir,
+    const source = await cloneVortex(dir, {
       upstreamUrl: upstream,
       resolveRepo: async () => ({
         fullName: "me/Vortex",
@@ -156,7 +155,7 @@ describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
         parent: "Nexus-Mods/Vortex",
       }),
     });
-    expect(source).toMatchObject({ cloned: true, hasFork: true, repo: "me/Vortex" });
+    expect(source).toMatchObject({ hasFork: true, repo: "me/Vortex" });
     expect(remotes(dir)).toEqual(["origin", "upstream"]);
     expect(git(dir, "remote", "get-url", "origin")).toBe(fork);
     expect(git(dir, "remote", "get-url", "upstream")).toBe(upstream);
@@ -169,13 +168,19 @@ describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
     await expect(cutWorkBranch(dir, "bad..name")).rejects.toThrow(/not a valid branch name/);
   });
 
-  it("adds a missing upstream remote on update", async () => {
-    const dir = path.join(root, "src-old");
-    git(root, "clone", "-q", fork, dir);
-    const updated = await ensureVortexSource({ dir, update: true, upstreamUrl: upstream });
-    expect(updated.hasFork).toBe(true);
-    expect(remotes(dir)).toEqual(["origin", "upstream"]);
-    expect(updated.defaultBranch).toBe("master");
+  it("clones only into a new folder outside the workspace, and has no default folder", async () => {
+    const resolveRepo = async () => {
+      throw new Error("no lookup before the refusal");
+    };
+    const workspace = path.join(root, "workspace");
+    fs.mkdirSync(workspace);
+    await expect(
+      cloneVortex(path.join(workspace, "vortex"), { workspace, resolveRepo }),
+    ).rejects.toThrow(/is in the doodlebot workspace/);
+    await expect(cloneVortex(path.join(root, "work"), { workspace, resolveRepo })).rejects.toThrow(
+      /already exists and is not empty/,
+    );
+    expect(fs.readdirSync(workspace)).toEqual([]);
   });
 });
 
@@ -225,7 +230,7 @@ it("leaves a kit command's environment alone, and cleans a Vortex command's", ()
     VORTEX_AI_PNPM: path.resolve("/node22/pnpm.cmd"),
   };
   expect(commandEnv(path.join(repo, "harness"), base, repo)).toEqual(base);
-  const vortex = commandEnv(path.join(repo, ".vortex-src", "src"), base, repo);
+  const vortex = commandEnv(path.resolve("/vortex/worktree/src"), base, repo);
   expect(vortex.npm_config_user_agent).toBeUndefined();
   expect(vortex.PATH).toBe(
     [path.resolve("/node22"), path.resolve("/Windows")].join(path.delimiter),

@@ -162,8 +162,17 @@ describe("path rules", () => {
         "b",
         "to",
         "file",
+        "clone",
       ].sort(),
     );
+  });
+
+  it("resolves source --clone against the caller's directory, and takes the new booleans", () => {
+    const parsed = parse(["source", "--clone", "vortex", "--add-upstream", "--stale-ok"]);
+    expect(parsed.flags.clone).toBe(at("vortex"));
+    expect(parsed.flags["add-upstream"]).toBe(true);
+    expect(parsed.flags["stale-ok"]).toBe(true);
+    expect(parsed.positional).toEqual([]);
   });
 
   it("keeps a bare --ffmpeg command name for the PATH lookup", () => {

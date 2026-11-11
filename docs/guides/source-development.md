@@ -1,7 +1,7 @@
 # Work on Vortex source
 
-This page shows how to prepare a Vortex source clone with `/doodlebot:source`, work on a branch
-of it, and run your build in the test Vortex.
+This page shows how to work in your own Vortex checkout: open Claude in it, prepare it with
+`/doodlebot:source`, work on a branch of it, and run your build in the test Vortex.
 
 ## Before you begin
 
@@ -14,24 +14,39 @@ of it, and run your build in the test Vortex.
 You do not need Vortex source to drive a released Vortex, add a regression test for doodlebot's
 suite, or measure a release.
 
-## Prepare the source clone
+## Open Claude in your checkout
 
-1. Run:
+Doodlebot works in the Vortex checkout your Claude session is opened in, or in a worktree of it.
+That is the session's checkout: commands that build or change Vortex use it, and `doodlebot up`
+runs its build. Doodlebot's own workspace stays where setup put it.
+
+If you have no checkout yet, ask for one in a folder of your choosing (never inside the doodlebot
+workspace); the agent runs `doodlebot source --clone <dir>`. Then open Claude in that folder.
+
+Outside a checkout, commands that need Vortex's source refuse with:
+
+```text
+Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).
+```
+
+## Prepare the checkout
+
+1. In a Claude session opened in your checkout, run:
 
    ```text
    /doodlebot:source
    ```
 
-2. The agent runs `doodlebot source`, which clones Vortex into `<workspace>/.vortex-src` and
-   builds it.
+2. The agent runs `doodlebot source`, which installs Vortex's dependencies with its pinned pnpm
+   and builds the checkout.
 
 3. The agent makes a branch for your work, for example
    `doodlebot source --branch fix-download-panel`.
 
-The expected result: a built clone in `<workspace>/.vortex-src`, on a new branch.
+The expected result: a built checkout on a new branch.
 
-To work in a different checkout instead, name it; the agent passes it to every command with
-`--dev-dir <path>`.
+To work in a different checkout than the session's, name it; the agent passes it to every
+command with `--dev-dir <path>`.
 
 ## Working with your fork and worktrees
 
@@ -62,9 +77,11 @@ to push there. An organisation's fork is accepted only when you set it in
 You can keep several branches built side by side, each in its own worktree, and use one Claude
 session per branch:
 
-1. `git -C <workspace>/.vortex-src worktree add ../vortex-<branch> <branch>`
-2. `doodlebot build --checkout <dir>` in that worktree.
-3. In that session, the agent adds `--dev-dir <dir>` to every command.
+1. Make a worktree: `git -C <checkout> worktree add <dir> <branch>`, or start a worktree session
+   in the Claude desktop app.
+2. Open Claude in that worktree and run `/doodlebot:source`: each worktree needs its own install
+   and build.
+3. Commands in that session use the worktree; no flag is needed.
 
 Each worktree is a full Vortex build of several GB. Editing, building and unit tests run in
 parallel. Only one test Vortex runs at a time on the machine, so starting one while another
@@ -72,8 +89,8 @@ session's runs is refused. Wait for the other session to finish; never stop its 
 
 ## Run your build
 
-- `/doodlebot:try <scenario> on my source build` starts the build with
-  `doodlebot up --dev-dir <workspace>/.vortex-src --sandbox`.
+- `/doodlebot:try <scenario> on my source build` starts the session's build with
+  `doodlebot up --sandbox`.
 - A source build runs in development mode, with React's slower development build. For timings
   that reflect users, the agent builds with `doodlebot build --checkout <dir> --production` and
   starts with `--production`. It then confirms that Vortex reports production mode.
@@ -86,11 +103,18 @@ While the test Vortex runs from a checkout, commands that would change or record
 refuse:
 
 ```text
-A harness Vortex is running from C:\Users\you\doodlebot\.vortex-src (pid 1234); run `doodlebot down` before building it.
+A harness Vortex is running from C:\dev\Vortex (pid 1234); run `doodlebot down` before building it.
 ```
 
-Stop that test Vortex with `doodlebot down` if your session started it, then repeat the command. Stop it before you switch `.vortex-src` to
-another branch as well.
+Stop that test Vortex with `doodlebot down` if your session started it, then repeat the command.
+Stop it before you switch the checkout to another branch as well.
+
+## An old managed clone
+
+Earlier versions of doodlebot kept a Vortex clone inside the workspace, at
+`<workspace>/.vortex-src`. Nothing uses it now. `doodlebot check` lists it as
+`old managed clone (no longer used)` with its size; `doodlebot clean --yes` deletes it after you
+agree. Push any branch you want to keep first.
 
 ## Features and refactors start with a design
 

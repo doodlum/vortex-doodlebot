@@ -140,6 +140,13 @@ describe("qa check", () => {
     expect(real.code).toBe(0);
     expect(real.text).toMatch(/^OK: \d+ catalogue entries are valid\./);
   });
+
+  it("qa check outside a Vortex checkout validates the entries and says the spec diff was skipped", () => {
+    const result = qaCommand(["check"], {}, {}, {});
+    expect(result.code).toBe(0);
+    expect(result.text).toMatch(/^OK: \d+ catalogue entries are valid\./);
+    expect(result.text).toContain("Not in a Vortex checkout: the spec diff was skipped");
+  });
 });
 
 describe("guards and selection", () => {

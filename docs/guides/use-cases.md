@@ -29,7 +29,7 @@ section (U11).
 
 You get a status table: each item is ready, missing with the exact command that fixes it, or
 blocked with the reason. It covers the workspace, Vortex builds, game copies, sandboxes, the
-Nexus login, EGM, the Vortex source, pending restores, open kit gaps and disk use. See
+Nexus login, EGM, the Vortex checkout you are in, pending restores, open kit gaps and disk use. See
 [Set up doodlebot](../get-started/set-up.md).
 
 ## U1: Try something in Vortex
@@ -151,3 +151,14 @@ Nothing to type: it happens during every other use case. Each report ends with *
 - a proposed QA catalogue entry for an area nothing tests.
 
 You decide what becomes a change for everyone. See [What doodlebot learns](../concepts/knowledge.md).
+
+## U12: Work on Vortex in this checkout
+
+1. Open Claude in your Vortex checkout, or in a worktree of it (a Claude desktop worktree session
+   works). With no checkout yet, ask for one: the agent runs `doodlebot source --clone <dir>` into
+   a folder you name, and you open Claude there.
+2. Run `/doodlebot:source`. It installs and builds that checkout.
+
+Every command that builds or changes Vortex then uses the session's checkout, and
+`doodlebot up` runs its build. Outside a checkout those commands refuse and say how to get one.
+See [Work on Vortex source](source-development.md).

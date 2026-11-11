@@ -85,7 +85,9 @@ ready, missing with the exact next step, or blocked with the reason:
 - the workspace and its version, and `doodlebot doctor` for the installed Vortex and the sandbox
   (Vortex, the extension, the sandbox baseline, 7-Zip, the login folder's privacy, a running
   test Vortex);
-- whether the EGM plugin is installed, and the Vortex source clone's remotes, branch and build;
+- whether the EGM plugin is installed, and the Vortex checkout the session is in: its remotes,
+  branch and build (an old managed clone in the workspace is listed as no longer used, with its
+  size);
 - `doodlebot inventory`: releases, game copies, snapshots, sandboxes and collections;
 - the Nexus login;
 - the folder game copies go in, and any pending restore of a game's user folders, with

@@ -57,6 +57,8 @@ export const BOOLEAN_FLAGS = new Set([
   "wontfix",
   "push",
   "allow-logout",
+  "stale-ok",
+  "add-upstream",
 ]);
 
 /**
@@ -84,6 +86,7 @@ export const PATH_FLAGS = new Set([
   "b",
   "to",
   "file",
+  "clone",
 ]);
 
 /** The positional arguments that are files the caller named, by command. */

@@ -83,9 +83,10 @@ Initial account setup (only for Nexus collections)
 Instance lifecycle
   doctor                 Report prerequisites and actionable fixes
   check [--json]         The read-only status table /doodlebot:setup --check prints: the
-                         workspace, doctor, EGM, .vortex-src, the inventory, the login,
-                         the copy folder, pending restores, open kit gaps, local lessons
-                         KNOWLEDGE.md now holds, and disk use (warns below 10 GB free)
+                         workspace, doctor, EGM, this session's Vortex checkout, the
+                         inventory, the login, the copy folder, pending restores, open kit
+                         gaps, local lessons KNOWLEDGE.md now holds, and disk use (warns
+                         below 10 GB free); an old managed clone is reported as unused
   up                     Start/restart the matching working profile
     --fresh              Reset working state from its baseline; reuse current OAuth
     --no-game            Global UI without managing a game
@@ -121,22 +122,27 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          List what disk use to free (default 30 days): binaries in old
                          run, QA and benchmark folders (each report.md and files under
                          1 MB stay), unused baselines and caches, releases content.json
-                         no longer names; deletes only with --yes. Never touches game
-                         copies, the login, pending restores or the running instance
-  source                 Clone your fork (origin) and Nexus-Mods/Vortex (upstream) to
-                         .vortex-src and build it; without a fork, clone upstream alone
-                         (enough to build and test; pushing needs a fork)
-    --update             Fetch every remote of an existing clone (adds a missing upstream)
+                         no longer names, and the workspace's old managed clone
+                         (.vortex-src, no longer used); deletes only with --yes. Never
+                         touches game copies, the login, pending restores or the running
+                         instance
+  source                 Prepare this session's Vortex checkout (the one holding the folder
+                         you run doodlebot in, or --dev-dir): check upstream, install
+                         and build it
+    --clone <dir>        Clone your fork (origin) and Nexus-Mods/Vortex (upstream) into
+                         <dir>, outside the workspace; without a fork, clone upstream alone
+                         (enough to build and test; pushing needs a fork). No default
+    --update             Fetch every remote of the checkout
     --branch <name>      Cut a new work branch from upstream/<default branch>
-    --no-build           Clone only
-    --where              Print managed source path
+    --no-build           Skip install and build
+    --where              Print the session's checkout
   pr-branch <topic>      Build pr/<topic> from the merge-base with upstream: every commit
                          except docs(design) ones (a non-design commit touching
                          docs/designs/ is refused)
     --design-commit <sha>  The approved design commit: tag it design/<topic>; a tag already
                          on an earlier approval is kept as design/<topic>-v<n>. Without it
                          no tag is set or moved (never tag an unapproved revision)
-    --checkout <dir>     Vortex checkout (default: .vortex-src)
+    --checkout <dir>     Vortex checkout (default: this session's)
     --base <ref>         Base (default: upstream/<default branch>)
     --push               Push both to origin, only after gh shows origin is your own fork
                          of Nexus-Mods/Vortex (or the VORTEX_AI_VORTEX_REPO fork you can
@@ -156,7 +162,7 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
   pr-preflight           Mechanical checks on a Vortex branch before pushing: size,
                          callers outside the diff, revert check (negative control),
                          measurements in comments, design kept out, PR description
-    --checkout <dir>     Vortex checkout (default: .vortex-src)
+    --checkout <dir>     Vortex checkout (default: this session's)
     --base <ref>         Base to diff from (default: upstream/master, via merge-base)
     --head <ref>         Compare this ref without checking it out (no revert check)
     --test <path>        Test file for the revert check; repeatable (default: the
@@ -169,7 +175,7 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --pr <number|url>    Also lint that PR's title and description (--repo as above)
     --json               Machine-readable report; exit code 1 on any failure
   build                  Build a Vortex checkout with its pinned pnpm:
-    --checkout <dir>     (default .vortex-src)
+    --checkout <dir>     (default: this session's checkout)
     --production         NODE_ENV=production for the build only (else NODE_ENV unset);
                          etc/vortex.api.md and etc/Dependency Report.md are put back if
                          the build rewrote them. Refuses while a Vortex runs from it.
@@ -253,8 +259,9 @@ Testing and iteration
                          each unmet need with the command that meets it) and its verdict
                          rule. --allow-logout also selects entries that log out of the
                          account (only with the person's go-ahead)
-  qa check               Validate the catalogue; with .vortex-src, also list specs added
-                         since its recorded commit and guards that match no file
+  qa check               Validate the catalogue; in a Vortex checkout, also list specs added
+                         since its recorded commit and guards that match no file (outside
+                         one, that comparison is skipped and the output says so)
   perf-summary --check <check> --a <file> [--a <file>...] [--b <file>...] [--out <md>] [--json]
                          Medians, ranges and a verdict from performance-check evidence; one
                          side (no --b) has no verdict
@@ -266,7 +273,7 @@ Testing and iteration
   build-extension        Force extension build
 
 Target and isolation (repeat the same flags for all commands)
-  --installed            Use released Vortex even when .vortex-src exists
+  --installed            Use released Vortex even in a Vortex checkout
   --exe <path>           Explicit Vortex.exe
   --release <version>    A release registered by release get
   --dev-dir <path>       Explicit source checkout
@@ -283,7 +290,10 @@ Target and isolation (repeat the same flags for all commands)
                          use for any timing meant to reflect users' experience.
                          up fails unless the renderer loaded production React
 
-Without a target flag: .vortex-src if present, otherwise installed Vortex.
+Without a target flag: this session's Vortex checkout (the git top level holding the folder you
+run doodlebot in, when its package.json is @vortex/monorepo; a worktree counts), otherwise the
+installed Vortex. build, source (except --clone), pr-branch and pr-preflight need a checkout:
+outside one they refuse.
 Relative paths you type are yours: they resolve against the directory you run doodlebot in.
 For Vortex changes follow its contribution rules and task-specific documentation.
 ```

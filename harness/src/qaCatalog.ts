@@ -324,7 +324,10 @@ export function formatCheck(catalog: Catalog, check: CatalogCheck, vortex?: Vort
     lines.push(`OK: ${String(catalog.entries.length)} catalogue entries are valid.`);
   else lines.push("Catalogue problems:", ...check.problems.map((p) => `  ${p}`));
   if (vortex === undefined) {
-    lines.push("No Vortex checkout (.vortex-src): specs and guards were not compared.");
+    lines.push(
+      "Not in a Vortex checkout: the spec diff was skipped (specs and guards were not compared). " +
+        "Run `doodlebot qa check` from a Vortex checkout or worktree to compare them.",
+    );
     return lines.join("\n");
   }
   lines.push(

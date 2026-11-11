@@ -6,7 +6,8 @@
  * - in run, QA and benchmark folders under `harness/.artifacts` older than `--older-than` days
  *   (default 30), every file of 1 MB or more except `report.md`;
  * - under `harness/.cache`, baseline snapshots and nested caches not used for that long;
- * - releases in `~/.doodlebot/releases` that `content.json` no longer names.
+ * - releases in `~/.doodlebot/releases` that `content.json` no longer names;
+ * - the old managed clone `<workspace>/.vortex-src`, which nothing uses any more (whatever its age).
  *
  * It never touches a registered game copy, any `oauth-*.json` or `login-*` folder, a pending
  * restore's backup, or the cache of the running harness Vortex.
@@ -23,6 +24,7 @@ import {
   DEFAULT_ARTIFACT_DIR,
   DEFAULT_CACHE_DIR,
   RELEASES_DIR,
+  REPO_ROOT,
   normalizedPath,
 } from "./paths";
 import { runningVortex, type InstanceRecord } from "./runningVortex";
@@ -39,7 +41,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface CleanItem {
   /** What is deleted: a folder or a file. */
   path: string;
-  kind: "evidence" | "cache" | "release";
+  kind: "evidence" | "cache" | "release" | "old-clone";
   bytes: number;
   reason: string;
   /** For evidence: the files deleted inside a kept folder (reports and small files stay). */
@@ -51,6 +53,8 @@ export interface CleanDeps {
   cacheDir?: string;
   releasesDir?: string;
   contentFile?: string;
+  /** The old managed clone (default `<workspace>/.vortex-src`). */
+  oldClone?: string;
   now?: () => Date;
   running?: () => InstanceRecord | undefined;
 }
@@ -94,7 +98,16 @@ function protectedPaths(deps: CleanDeps): { paths: string[]; why: string }[] {
     })),
     ...(running === undefined
       ? []
-      : [{ paths: [running.cacheDir, running.userDataDir], why: "the running instance's cache" }]),
+      : [
+          {
+            paths: [
+              running.cacheDir,
+              running.userDataDir,
+              ...(running.sourceDir === undefined ? [] : [running.sourceDir]),
+            ],
+            why: "the running instance's cache or checkout",
+          },
+        ]),
   ];
 }
 
@@ -229,6 +242,20 @@ function releaseItems(deps: CleanDeps, guards: { paths: string[]; why: string }[
     }));
 }
 
+/** The old managed clone, when it is there and no running Vortex uses it. */
+function oldCloneItems(deps: CleanDeps, guards: { paths: string[]; why: string }[]): CleanItem[] {
+  const dir = deps.oldClone ?? path.join(REPO_ROOT, ".vortex-src");
+  if (!fs.existsSync(dir) || protection(dir, guards) !== undefined) return [];
+  return [
+    {
+      path: dir,
+      kind: "old-clone",
+      bytes: folderBytes(dir) ?? 0,
+      reason: "old managed clone (no longer used); a branch with unpushed work goes with it",
+    },
+  ];
+}
+
 /** What `clean` would delete. */
 export function planClean(olderThanDays: number, deps: CleanDeps = {}): CleanItem[] {
   if (!Number.isFinite(olderThanDays) || olderThanDays < 0)
@@ -239,6 +266,7 @@ export function planClean(olderThanDays: number, deps: CleanDeps = {}): CleanIte
     ...evidenceItems(deps, cutoff, guards),
     ...cacheItems(deps, cutoff, guards),
     ...releaseItems(deps, guards),
+    ...oldCloneItems(deps, guards),
   ];
 }
 

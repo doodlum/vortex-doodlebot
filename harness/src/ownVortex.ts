@@ -5,7 +5,7 @@
  *
  * Which processes count: any `Vortex.exe`, or an `electron.exe` whose command line names a Vortex
  * folder (a dev build), that is not in the recorded harness Vortex's process tree. The path does
- * not matter: a `.vortex-src` build the owner started by hand is the owner's too. Electron's
+ * not matter: a checkout or worktree build the owner started by hand is the owner's too. Electron's
  * renderer, GPU, utility and crash-handler processes (`--type=...`) are part of some Vortex's
  * tree; they never count on their own, so a harness Vortex's helpers still exiting after its main
  * process are not mistaken for the owner's.

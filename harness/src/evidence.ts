@@ -204,6 +204,31 @@ export function resolveEvidenceCommand(
   );
 }
 
+/**
+ * A doodlebot child (`doodlebot <command>` or `node <…>/doodlebot.cjs <command>`) with
+ * `--dev-dir <checkout>` after its command, unless it names a target already. Any other command
+ * is returned unchanged: it reaches the checkout through INIT_CWD.
+ */
+export function withDevDir(
+  command: { executable: string; args: string[] },
+  checkout: string,
+): { executable: string; args: string[] } {
+  const doodlebot = /(?:^|[\\/])doodlebot(?:\.cjs|\.cmd|\.ps1)?$/i;
+  const at = doodlebot.test(command.executable)
+    ? 0
+    : command.args[0] !== undefined && /(?:^|[\\/])doodlebot\.cjs$/i.test(command.args[0])
+      ? 1
+      : undefined;
+  const word = at === undefined ? undefined : command.args[at];
+  if (at === undefined || word === undefined || word.startsWith("-")) return command;
+  const named = command.args.some((arg) => /^--(?:dev-dir|release|exe|installed)(?:=|$)/.test(arg));
+  if (named) return command;
+  return {
+    executable: command.executable,
+    args: [...command.args.slice(0, at + 1), "--dev-dir", checkout, ...command.args.slice(at + 1)],
+  };
+}
+
 /** The CLI calls this before loading app configuration; an evidence run never chooses a Vortex. */
 export async function collectCommandEvidence(options: {
   checkout: string;
@@ -234,17 +259,22 @@ export async function collectCommandEvidence(options: {
   const startedAt = new Date().toISOString();
   let result: Awaited<ReturnType<typeof runEvidenceProcess>>;
   const env = commandEnv(cwd);
+  let child = actual;
   if (options.runtime !== undefined) {
     env.VORTEX_AI_PRODUCTION = options.runtime.mode === "production" ? "1" : "0";
     env.VORTEX_AI_INSTALLED = options.runtime.kind === "installed" ? "1" : "0";
     if (options.runtime.kind === "installed") env.VORTEX_AI_EXE = options.runtime.files[0]!.path;
     else {
+      // A source runtime is reached the way a session reaches its checkout: the child's caller
+      // folder (INIT_CWD) is the runtime's checkout, and a doodlebot child is also given
+      // --dev-dir. Nothing reads a target from the environment any more.
       delete env.VORTEX_AI_EXE;
-      env.VORTEX_AI_DEV_DIR = options.runtime.source!.checkout;
+      env.INIT_CWD = options.runtime.source!.checkout;
+      child = withDevDir(actual, options.runtime.source!.checkout);
     }
   }
   try {
-    result = await runEvidenceProcess({ ...actual, cwd, env, signal: cancellation.signal });
+    result = await runEvidenceProcess({ ...child, cwd, env, signal: cancellation.signal });
   } finally {
     cancellation.dispose();
   }
@@ -281,7 +311,7 @@ export async function collectCommandEvidence(options: {
     schemaVersion: 1,
     startedAt,
     finishedAt: new Date().toISOString(),
-    command: { ...actual, cwd, requested },
+    command: { ...child, cwd, requested },
     kit,
     before,
     after,

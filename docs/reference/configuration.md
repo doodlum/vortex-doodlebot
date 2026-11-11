@@ -23,11 +23,13 @@ Use the same target, game, cache and port settings for every command on one prof
 
 ## Target selection
 
-An explicit `--dev-dir` chooses that source checkout. Otherwise `--installed` or
-`VORTEX_AI_INSTALLED=1` selects released Vortex, and `--exe` or `VORTEX_AI_EXE` names its
-executable. Without those choices, a configured source directory or the managed
-`<workspace>/.vortex-src` can take precedence over an installed Vortex, so name the target
-explicitly for checks you want to repeat.
+An explicit `--dev-dir` chooses that source checkout. Otherwise, when Claude is opened in a
+Vortex checkout or one of its worktrees, that checkout is used: doodlebot finds it from the folder
+the command runs in (the Git top level, whose `package.json` is named `@vortex/monorepo`).
+`--installed` or `VORTEX_AI_INSTALLED=1` selects released Vortex instead, and `--exe` or
+`VORTEX_AI_EXE` names its executable. Outside a checkout, without those choices, the installed
+Vortex runs. No environment variable selects a checkout. Name the target explicitly for checks
+you want to repeat.
 
 `--release <version>` chooses an official release that `doodlebot release get <version>`
 downloaded and registered. Doodlebot checks the download against the SHA-256 GitHub publishes,
@@ -39,8 +41,14 @@ needs nothing more: `doodlebot check` and `doctor` count a registered release as
 Vortex and tell you to use `--release <version>`.
 
 A `--dev-dir` that is not a built Vortex checkout fails with
-`--dev-dir <path> is not a built Vortex checkout: <reason>`. `doodlebot doctor` reports the
-same error as a failing `Vortex` check.
+`--dev-dir <path> is not a built Vortex checkout: <reason>`. Starting Vortex in a checkout that
+is not built fails with `This session's checkout <path> is not built: ...`, naming
+`doodlebot build --checkout <path>`. `doodlebot doctor` reports either as a failing `Vortex`
+check, and its `This checkout` line names the session's checkout.
+
+`build`, `source` (except `source --clone <dir>`), `pr-branch` and `pr-preflight` need a
+checkout. Outside one they refuse with
+`Open Claude in a Vortex checkout or worktree (or clone one with doodlebot source --clone <dir>).`
 
 `doodlebot doctor` reports the baseline for the flags you give it. With `--no-game` its
 `Profile cache` and `Sandbox baseline` lines describe the no-game baseline, which is separate
@@ -66,9 +74,7 @@ cache you choose, the running test Vortex is recorded in `~/.doodlebot/instance.
 | ------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `VORTEX_AI_INSTALLED`                       | Prefer installed Vortex when true                                                     |
 | `VORTEX_AI_EXE`                             | Explicit released executable                                                          |
-| `VORTEX_AI_DEV_DIR`                         | Explicit source checkout                                                              |
-| `VORTEX_AI_SOURCE_DIR`                      | Managed source location; default `.vortex-src` in the workspace                       |
-| `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source` clones                               |
+| `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source --clone` clones                       |
 | `VORTEX_AI_VORTEX_REPO`                     | Your fork as `owner/name` (also a pushable organisation fork for `pr-branch --push`)  |
 | `VORTEX_AI_NEXUS_USER`                      | Your Nexus user name, replaced with `<nexus user>` when you share a lesson or gap     |
 | `VORTEX_AI_PNPM`                            | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`            |
@@ -114,6 +120,7 @@ to one command:
 | `--allow-logout`        | `qa list`              | Also select entries that log out of the account (only after you agree)     |
 | `--need <need>`         | `inventory`            | The content chosen for these needs (repeatable), instead of every item     |
 | `--json`                | `inventory`, `qa list` | Print JSON                                                                 |
+| `--clone <dir>`         | `source`               | Clone Vortex into that new folder, outside the workspace                   |
 | `--release <version>`   | `test <suite>`         | Run the suite on that registered release; not passed on to the suite       |
 | `--design-commit <sha>` | `pr-branch`            | Tag that approved design commit `design/<topic>`; without it, no tag moves |
 
@@ -133,7 +140,6 @@ instead of installing the first part of a split one, which can name another file
 | `<workspace>/harness/qa/`        | The QA catalogue, checked in                              |
 | `<workspace>/harness/.env`       | Optional private local configuration                      |
 | `<workspace>/dist/`              | The built doodlebot extension                             |
-| `<workspace>/.vortex-src/`       | The managed Vortex source clone                           |
 
 Git ignores these paths in the workspace, but logs, screenshots and reports still need a privacy
 check before you share them. See [Security and privacy](../security.md).

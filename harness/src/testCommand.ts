@@ -175,8 +175,11 @@ export async function testCommand(
   }
   const release = releaseEnvironment(passthrough, options.findRelease, options.exists);
   const command = suiteCommand(suite, release.args);
+  // `test --dev-dir <checkout> <suite>`: the suite's config finds that checkout as the session's
+  // (its caller folder, INIT_CWD), as it would run from inside it.
+  const devDir = typeof flags["dev-dir"] === "string" ? { INIT_CWD: flags["dev-dir"] } : {};
   return (options.run ?? runInteractive)(command.executable, command.args, {
     cwd: command.cwd,
-    env: { ...process.env, ...release.env },
+    env: { ...process.env, ...release.env, ...devDir },
   });
 }

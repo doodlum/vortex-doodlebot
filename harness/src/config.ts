@@ -4,6 +4,7 @@
  * Everything an operator has to supply lives here, in one place, so `doctor` can
  * check it and AGENTS.md can document it without either drifting from the code.
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,7 @@ import { findRelease } from "./content";
 import { ConfigError } from "./errors";
 import { peekDevElectron } from "./electronRuntime";
 import { DEFAULT_ARTIFACT_DIR, DEFAULT_CACHE_DIR, HARNESS_ROOT, REPO_ROOT } from "./paths";
+import { callerCwd } from "./processRunner";
 
 export { ConfigError, REPO_ROOT };
 
@@ -139,22 +141,55 @@ function installedVortexCandidates(): string[] {
   ].filter((p) => p !== "");
 }
 
+/** The root `package.json` name that marks a Vortex checkout. */
+export const VORTEX_PACKAGE_NAME = "@vortex/monorepo";
+
+/** What a command that needs Vortex's source says outside a checkout. */
+export const NEEDS_CHECKOUT =
+  "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).";
+
 /**
- * The Vortex clone this repo manages, at `.vortex-src`, or undefined.
- *
- * Deliberately the only place a source checkout is looked for. The suite never
- * goes hunting around the filesystem for a Vortex repo: "some checkout
- * somewhere" is not something it can reason about, build from, or push to.
+ * The Vortex checkout holding `cwd`, or undefined: the git top level above it (a worktree's own
+ * folder in a worktree) when its root package.json is Vortex's. Deliberately the only place a
+ * checkout is found besides an explicit `--dev-dir`: the kit never searches the disk for one.
  */
-function managedSourceDir(): string | undefined {
-  const variable = process.env.VORTEX_AI_SOURCE_DIR;
-  if (variable === "") return undefined;
-  // A relative variable is the workspace's, explicitly: createRequire rejects a relative path.
-  const dir =
-    variable === undefined
-      ? path.join(REPO_ROOT, ".vortex-src")
-      : path.resolve(REPO_ROOT, variable);
-  return fs.existsSync(path.join(dir, "src", "main", "package.json")) ? dir : undefined;
+export function vortexCheckoutOf(cwd: string): string | undefined {
+  let top: string;
+  try {
+    top = execFileSync("git", ["-C", path.resolve(cwd), "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return undefined;
+  }
+  if (top === "") return undefined;
+  const root = path.resolve(top);
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {
+      name?: unknown;
+    };
+    return manifest.name === VORTEX_PACKAGE_NAME ? root : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The checkout this session works in: the one holding the caller's folder (`callerCwd()`). */
+export function sessionCheckout(cwd: string = callerCwd()): string | undefined {
+  return vortexCheckoutOf(cwd);
+}
+
+/**
+ * The checkout a command that needs Vortex's source uses: an explicit one, else the session's.
+ * Outside a checkout it refuses with the one step that fixes it.
+ */
+export function requireCheckout(explicit?: string, cwd: string = callerCwd()): string {
+  if (explicit !== undefined && explicit !== "") return path.resolve(explicit);
+  const checkout = sessionCheckout(cwd);
+  if (checkout === undefined) throw new ConfigError(NEEDS_CHECKOUT);
+  return checkout;
 }
 
 export function findInstalledVortex(): string | undefined {
@@ -163,16 +198,28 @@ export function findInstalledVortex(): string | undefined {
   return installedVortexCandidates().find((c) => fs.existsSync(c));
 }
 
+export interface TargetOverrides {
+  devDir?: string;
+  exe?: string;
+  preferInstalled?: boolean;
+  release?: string;
+  /**
+   * The caller's folder (`callerCwd()`): the Vortex checkout holding it is the session's, used
+   * after an explicit `--dev-dir`. Without it no checkout is looked for.
+   */
+  cwd?: string;
+}
+
 /**
  * Resolve how to start Vortex.
  *
- * The extension itself is written to work against a stock released build, and
- * that constraint still holds — but this suite's job is building and testing
- * Vortex, so a clone it manages takes precedence once one exists.
+ * The extension itself is written to work against a stock released build, and that constraint
+ * still holds. Precedence: an explicit `--dev-dir`; then the session's checkout (the Vortex
+ * checkout holding `cwd`); then `--release`, `--installed` or `--exe`, otherwise the installed
+ * Vortex. A target flag (`--release`, `--installed`, `--exe`) puts its build in front of the
+ * session's checkout.
  */
-export function resolveTarget(
-  overrides: { devDir?: string; exe?: string; preferInstalled?: boolean; release?: string } = {},
-): VortexTarget {
+export function resolveTarget(overrides: TargetOverrides = {}): VortexTarget {
   // A registered official release (`doodlebot release get`), extracted outside the workspace.
   if (overrides.release !== undefined) {
     if (overrides.devDir !== undefined || overrides.exe !== undefined)
@@ -184,24 +231,21 @@ export function resolveTarget(
       );
     return { kind: "installed", executable: release.exe, args: [], appName: "Vortex" };
   }
-  // Precedence: an explicit --dev-dir, then the clone this repo manages, then an
-  // installed Vortex. The clone wins because if you have gone to the trouble of
-  // cloning Vortex here, working on it is the whole point — but --installed
-  // puts the released build back in front.
+  // Precedence: an explicit --dev-dir, then the session's checkout, then an installed Vortex.
+  // The checkout wins because a session opened in one is there to work on it; --installed and
+  // --exe put a released build back in front.
   const installed = overrides.preferInstalled === true || envFlag("VORTEX_AI_INSTALLED");
-  const managed = installed || overrides.exe !== undefined ? undefined : managedSourceDir();
   const explicit = overrides.devDir !== undefined && overrides.devDir !== "";
-  const variable = process.env.VORTEX_AI_DEV_DIR;
   // An explicit --dev-dir is resolved against this process's directory (the CLI has already
-  // resolved it against the caller's); a relative VORTEX_AI_DEV_DIR is the workspace's. Either
-  // way createRequire, which rejects a relative path, only ever sees an absolute one.
+  // resolved it against the caller's), so createRequire, which rejects a relative path, only
+  // ever sees an absolute one.
   const devDir = explicit
     ? path.resolve(overrides.devDir!)
     : overrides.devDir !== undefined || installed || overrides.exe !== undefined
       ? undefined
-      : variable !== undefined && variable !== ""
-        ? path.resolve(REPO_ROOT, variable)
-        : managed;
+      : overrides.cwd === undefined
+        ? undefined
+        : vortexCheckoutOf(overrides.cwd);
   if (devDir !== undefined && devDir !== "") {
     const mainDir = path.join(devDir, "src", "main");
     const resolved = fs.existsSync(mainDir) ? mainDir : devDir;
@@ -214,7 +258,9 @@ export function resolveTarget(
       throw new ConfigError(
         explicit
           ? `--dev-dir ${devDir} is not a built Vortex checkout: ${reason}`
-          : `${devDir} is not a built Vortex checkout: ${reason}`,
+          : `This session's checkout ${devDir} is not built: ${reason}. Build it with ` +
+              `\`doodlebot build --checkout ${devDir}\`, or name another target ` +
+              "(--release <version>, --installed or --exe <path>).",
         { cause: error },
       );
     }
@@ -231,13 +277,13 @@ export function resolveTarget(
   if (exe === undefined) {
     throw new ConfigError(`No Vortex to drive.
 
-  Work on Vortex itself:     doodlebot source
-     (finds your GitHub fork, clones it into .vortex-src here, and builds it)
+  Work on Vortex itself:      open Claude in a Vortex checkout or worktree and run
+     doodlebot source (or clone one first: doodlebot source --clone <dir>)
 
-  Or drive a released build:  install it from
-     https://www.nexusmods.com/about/vortex/
+  Or drive a released build:  doodlebot release get <version>, then --release <version>,
+     or install it from https://www.nexusmods.com/about/vortex/
 
-  Or point at one directly:   VORTEX_AI_EXE / VORTEX_AI_DEV_DIR`);
+  Or point at one directly:   --exe <path> (VORTEX_AI_EXE) or --dev-dir <checkout>`);
   }
   return { kind: "installed", executable: exe, args: [], appName: "Vortex" };
 }
@@ -276,7 +322,8 @@ export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig {
     gamePath: process.env.VORTEX_AI_GAME_PATH,
     cacheDir: envValue("VORTEX_AI_CACHE_DIR") ?? DEFAULT_CACHE_DIR,
     artifactDir: envValue("VORTEX_AI_ARTIFACT_DIR") ?? DEFAULT_ARTIFACT_DIR,
-    target: resolveTargetSafely(),
+    // The session's checkout counts only when no target was given (resolving it runs git).
+    target: overrides.target ?? resolveTargetSafely({ cwd: callerCwd() }),
     headless: envFlag("VORTEX_AI_HEADLESS"),
     production: envFlag("VORTEX_AI_PRODUCTION"),
     ...overrides,

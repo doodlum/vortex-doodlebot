@@ -116,6 +116,17 @@ describe("doodlebot test", () => {
     ).rejects.toThrow(/Release 2\.9\.0 is not registered; run `doodlebot release get 2\.9\.0`/);
   });
 
+  it("--dev-dir before the suite makes that checkout the suite's session checkout", async () => {
+    const run = vi.fn(async () => 0);
+    const checkout = path.resolve("/vortex/worktree");
+    await testCommand(["core"], { "dev-dir": checkout }, [], { run });
+    expect(run).toHaveBeenCalledWith(
+      process.execPath,
+      [playwrightCli, "test", "--config", "harness/playwright.config.ts"],
+      { cwd: REPO_ROOT, env: { ...process.env, INIT_CWD: checkout } },
+    );
+  });
+
   it("runs the suite from the workspace root with this process's environment", async () => {
     const run = vi.fn(async () => 7);
     await expect(testCommand(["core"], {}, ["--reporter=json"], { run })).resolves.toBe(7);

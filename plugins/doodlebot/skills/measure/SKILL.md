@@ -64,10 +64,12 @@ confirm `automation_status.vortexVersion` is the version asked for; if not, stop
 Give each build its own new cache folder, `<cache A>` (and `<cache B>`), for example
 `<workspace>/harness/.cache/bench-<UTC time>-a`, and use that build's cache for every `up`,
 `call`, check, `status` and `down` of that build. Agent shells do not keep environment
-variables between calls, so set `VORTEX_AI_CACHE_DIR` (and the build's `VORTEX_AI_EXE`,
-`VORTEX_AI_INSTALLED` or `VORTEX_AI_DEV_DIR`, below) inside each invocation, for example
-`$env:VORTEX_AI_CACHE_DIR = '<cache A>'; doodlebot test …` in one PowerShell call, or pass
-`--cache-dir <cache>` to `up`, `call`, `status` and `down`.
+variables between calls, so set `VORTEX_AI_CACHE_DIR` (and, for a release or an executable,
+the build's `VORTEX_AI_EXE` and `VORTEX_AI_INSTALLED`, below) inside each invocation, for
+example `$env:VORTEX_AI_CACHE_DIR = '<cache A>'; doodlebot test …` in one PowerShell call, or
+pass `--cache-dir <cache>` to `up`, `call`, `status` and `down`. A source build is named with
+`--dev-dir <dir>` on every command, including `doodlebot test --dev-dir <dir> <check>`: no
+environment variable selects a checkout.
 
 Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/` now.
 
@@ -93,12 +95,12 @@ console.log(`cacheDir: ${config.cacheDir}`);
 console.log(`target: ${config.target.kind}`);
 ```
 
-Select the build through the environment, because `doodlebot script` passes only `--dev-dir`,
-`--cache-dir` and the port flags to the kit: a release or an executable sets
-`VORTEX_AI_EXE=<its Vortex.exe>` (a release's is in `doodlebot release list --json`) and
-`VORTEX_AI_INSTALLED=1`; a source checkout sets `VORTEX_AI_DEV_DIR=<path>` and unsets both.
-In the same invocation, with `VORTEX_AI_CACHE_DIR` set to the build's cache, run
-`doodlebot script <report folder>/tombstone.mts`. Check the printed `cacheDir` and `target`,
+Select the build as `doodlebot script` takes it (it passes only `--dev-dir`, `--cache-dir` and
+the port flags to the kit): a release or an executable sets `VORTEX_AI_EXE=<its Vortex.exe>`
+(a release's is in `doodlebot release list --json`) and `VORTEX_AI_INSTALLED=1` in the
+environment; a source checkout unsets both and passes `--dev-dir <dir>`. In the same invocation,
+with `VORTEX_AI_CACHE_DIR` set to the build's cache, run
+`doodlebot script <report folder>/tombstone.mts` (with `--dev-dir <dir>` for a source build). Check the printed `cacheDir` and `target`,
 and keep the tombstone path for the report.
 
 ## 3. Run

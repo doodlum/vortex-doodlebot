@@ -1,6 +1,7 @@
 /**
  * `doodlebot check [--json]`: the one status table `/doodlebot:setup --check` prints (design 4.1).
- * It only reads: the workspace, `doctor`, the EGM plugin settings, `.vortex-src`, the inventory,
+ * It only reads: the workspace, `doctor`, the EGM plugin settings, this session's Vortex checkout,
+ * an old managed clone left in the workspace, the inventory,
  * content.json (copy folder, pending restores), the kit gaps, local lessons that duplicate shared
  * ones (4.10), and disk use (4.13). Every row is ready, missing with the exact next command,
  * blocked with the reason, or advisory/info.
@@ -24,7 +25,8 @@ import {
   REPO_ROOT,
 } from "./paths";
 import { gitBranch } from "./runningVortex";
-import { hasVortexSource, missingBuildOutputs, vortexSourceDir } from "./source";
+import { NEEDS_CHECKOUT, sessionCheckout } from "./config";
+import { missingBuildOutputs } from "./source";
 import { versionInfo, type VersionInfo } from "./versionCommand";
 
 export type RowStatus = "ready" | "missing" | "blocked" | "advisory" | "info";
@@ -61,6 +63,8 @@ export interface CheckDeps {
   /** Claude Code's installed-plugins list. */
   installedPluginsFile?: string;
   source?: () => SourceState | undefined;
+  /** The old managed clone `<workspace>/.vortex-src`, which nothing uses any more. */
+  oldClone?: string;
   artifactDir?: string;
   cacheDir?: string;
   releasesDir?: string;
@@ -82,9 +86,9 @@ const git = (dir: string, args: string[]): string | undefined => {
   }
 };
 
-function managedSourceState(): SourceState | undefined {
-  const dir = vortexSourceDir();
-  if (!hasVortexSource(dir)) return undefined;
+function checkoutState(): SourceState | undefined {
+  const dir = sessionCheckout();
+  if (dir === undefined) return undefined;
   const remotes: Record<string, string> = {};
   for (const line of (git(dir, ["remote", "-v"]) ?? "").split(/\r?\n/)) {
     const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim());
@@ -165,10 +169,11 @@ function sourceRow(state: SourceState | undefined): CheckRow {
   if (state === undefined)
     return {
       area: "vortex source",
-      item: ".vortex-src",
-      status: "missing",
-      detail: "not cloned; needed to fix, investigate or QA Vortex code",
-      next: "doodlebot source",
+      item: "this checkout",
+      status: "advisory",
+      detail:
+        "this session is not in a Vortex checkout; needed to fix, investigate or QA Vortex code",
+      next: NEEDS_CHECKOUT,
     };
   const remotes = Object.entries(state.remotes)
     .map(([name, url]) => `${name} ${url}`)
@@ -176,7 +181,7 @@ function sourceRow(state: SourceState | undefined): CheckRow {
   const pushes = state.remotes.origin !== undefined;
   return {
     area: "vortex source",
-    item: ".vortex-src",
+    item: "this checkout",
     status: state.built ? "ready" : "missing",
     detail:
       `${state.dir}; remotes: ${remotes || "none"}` +
@@ -184,6 +189,25 @@ function sourceRow(state: SourceState | undefined): CheckRow {
       `; branch ${state.branch ?? "detached"}; ${state.built ? "built" : "not built"}`,
     ...(state.built ? {} : { next: `doodlebot build --checkout ${state.dir}` }),
   };
+}
+
+/**
+ * The managed clone older kits kept at `<workspace>/.vortex-src`: nothing uses it now. Reported
+ * with its size; `doodlebot clean --yes` removes it once the person agrees.
+ */
+function oldCloneRows(deps: CheckDeps): CheckRow[] {
+  const dir = deps.oldClone ?? path.join(REPO_ROOT, ".vortex-src");
+  if (!fs.existsSync(dir)) return [];
+  const bytes = (deps.sizeOf ?? folderBytes)(dir);
+  return [
+    {
+      area: "vortex source",
+      item: "old managed clone",
+      status: "advisory",
+      detail: `old managed clone (no longer used): ${dir}${bytes === undefined ? "" : `, ${formatBytes(bytes)}`}`,
+      next: "doodlebot clean --dry-run, then doodlebot clean --yes after the person agrees",
+    },
+  ];
 }
 
 function doctorRows(checks: Check[]): CheckRow[] {
@@ -348,7 +372,8 @@ export async function checkRows(deps: CheckDeps = {}): Promise<CheckRow[]> {
     workspace,
     ...doctorRows(deps.doctor === undefined ? [] : await deps.doctor()),
     egmRow(deps),
-    sourceRow((deps.source ?? managedSourceState)()),
+    sourceRow((deps.source ?? checkoutState)()),
+    ...oldCloneRows(deps),
     ...inventoryRows((deps.inventory ?? (() => readInventory()))()),
     ...contentRows(deps),
     ...learningRows(deps),

@@ -39,9 +39,9 @@ const handStartedSource: ProcessInfo = {
   pid: 300,
   ppid: 4,
   name: "electron.exe",
-  exe: "C:\\dev\\doodlebot\\.vortex-src\\node_modules\\electron\\dist\\electron.exe",
+  exe: "C:\\dev\\Vortex-worktrees\\fix-123\\node_modules\\electron\\dist\\electron.exe",
   commandLine:
-    '"C:\\dev\\doodlebot\\.vortex-src\\node_modules\\electron\\dist\\electron.exe" C:\\dev\\doodlebot\\.vortex-src\\src\\main',
+    '"C:\\dev\\Vortex-worktrees\\fix-123\\node_modules\\electron\\dist\\electron.exe" C:\\dev\\Vortex-worktrees\\fix-123\\src\\main',
 };
 const releaseOutsideTree: ProcessInfo = {
   pid: 400,
@@ -70,7 +70,7 @@ describe("the owner's own Vortex", () => {
   it.each([
     ["an installed Vortex.exe", installed],
     ["an electron dev build", devBuild],
-    ["a hand-started .vortex-src build", handStartedSource],
+    ["a hand-started worktree build", handStartedSource],
     ["a registered release outside the recorded tree", releaseOutsideTree],
   ])("refuses %s", (_label, process) => {
     expect(ownVortexProcesses([...harnessTree, process], 500)).toEqual([process]);

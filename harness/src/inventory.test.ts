@@ -68,7 +68,10 @@ describe("the inventory", () => {
     expect(byId(inventory, "sandbox:fallout4")).toMatchObject({ ready: true, gameId: "fallout4" });
     expect(byId(inventory, "collection:offline")?.ready).toBe(true);
     expect(byId(inventory, "login")).toMatchObject({ ready: false, next: LOGIN_NEXT });
-    expect(byId(inventory, "source")).toMatchObject({ ready: false, next: "doodlebot source" });
+    expect(byId(inventory, "source")).toMatchObject({
+      ready: false,
+      next: "doodlebot source --clone <dir>, or open Claude in a Vortex checkout or worktree",
+    });
     expect(formatInventory(inventory)).toContain(`next: ${LOGIN_NEXT}`);
     // A captured `doodlebot setup --oauth` can hang on Windows; the plugin command runs it.
     expect(LOGIN_NEXT).toBe("/doodlebot:setup --login");
@@ -220,7 +223,7 @@ describe("the inventory", () => {
       });
     }, deps.contentFile);
     deps.source = () => ({
-      dir: path.join(root, ".vortex-src"),
+      dir: path.join(root, "vortex-checkout"),
       info: { built: false, branch: "fix/x", head: "acb3d86210" },
     });
     const inventory = readInventory(deps);
@@ -231,7 +234,7 @@ describe("the inventory", () => {
     });
     expect(byId(inventory, "source")).toMatchObject({
       ready: false,
-      next: `doodlebot build --checkout ${path.join(root, ".vortex-src")}`,
+      next: `doodlebot build --checkout ${path.join(root, "vortex-checkout")}`,
       details: { branch: "fix/x", head: "acb3d86210", built: false },
     });
   });

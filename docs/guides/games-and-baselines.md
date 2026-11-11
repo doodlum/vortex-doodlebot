@@ -145,11 +145,13 @@ delete, and deletes it only when you add `--yes`:
 - in run, QA and benchmark folders older than 30 days, every file of 1 MB or more; each
   `report.md` and the small files stay;
 - baselines and caches not used for 30 days;
-- releases that `~/.doodlebot/content.json` no longer names.
+- releases that `~/.doodlebot/content.json` no longer names;
+- the old managed Vortex clone `<workspace>/.vortex-src` that earlier versions kept, which
+  nothing uses now, whatever its age.
 
 Use `--older-than <days>` for another age, and `--dry-run` to list only. `clean` never deletes a
-registered game copy, the Nexus login, a backup waiting to be restored, or the cache of the test
-Vortex while it runs.
+registered game copy, the Nexus login, a backup waiting to be restored, or the cache or checkout
+of the test Vortex while it runs.
 
 ```powershell
 doodlebot clean --older-than 14

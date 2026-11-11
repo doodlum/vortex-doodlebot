@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ANONYMOUS, markerFile, snapshotDir } from "./bootstrap";
 import { loadConfig, type HarnessConfig } from "./config";
-import { formatDoctorReport, missingVortexCheck, runDoctor } from "./doctor";
+import { checkoutCheck, formatDoctorReport, missingVortexCheck, runDoctor } from "./doctor";
 
 let temp: string;
 let home: string;
@@ -118,6 +118,25 @@ describe("doctor with an unresolvable target", () => {
     const report = await runDoctor(config, { skipGame: true, homeDir: home });
     expect(report.targetError).toBeUndefined();
     expect(check(report, "Vortex (installed)")?.ok).toBe(true);
+  });
+});
+
+describe("doctor's This checkout row", () => {
+  it("names the session's checkout, or the step that makes one, without failing", async () => {
+    expect(checkoutCheck("C:/dev/Vortex")).toEqual({
+      name: "This checkout",
+      ok: true,
+      advisory: true,
+      detail: "C:/dev/Vortex",
+    });
+    const report = await runDoctor(config, { skipGame: true, homeDir: home, checkout: undefined });
+    expect(check(report, "This checkout")).toMatchObject({
+      ok: false,
+      advisory: true,
+      fix: "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
+    });
+    expect(check(report, "Vortex source")).toBeUndefined();
+    expect(report.ok).toBe(true);
   });
 });
 

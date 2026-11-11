@@ -15,6 +15,7 @@ let deps: CleanDeps & {
   cacheDir: string;
   releasesDir: string;
   contentFile: string;
+  oldClone: string;
 };
 let running: InstanceRecord | undefined;
 const NOW = new Date("2026-11-10T12:00:00.000Z");
@@ -44,6 +45,8 @@ beforeEach(() => {
     cacheDir: path.join(root, "cache"),
     releasesDir: path.join(root, "releases"),
     contentFile: path.join(root, "content.json"),
+    // Never the workspace's own: a clean --yes here would delete it.
+    oldClone: path.join(root, "workspace", ".vortex-src"),
     now: () => NOW,
     running: () => running,
   };
@@ -168,6 +171,32 @@ describe("clean", () => {
     expect(planClean(30, deps)).toEqual([
       expect.objectContaining({ path: path.dirname(path.dirname(orphan)), kind: "release" }),
     ]);
+  });
+
+  it("lists the old managed clone whatever its age, and deletes it only with --yes", () => {
+    const file = write(path.join(deps.oldClone, "src", "main", "package.json"), 2048);
+    expect(planClean(30, deps)).toEqual([
+      expect.objectContaining({
+        path: deps.oldClone,
+        kind: "old-clone",
+        reason: expect.stringContaining("old managed clone (no longer used)"),
+      }),
+    ]);
+    expect(cleanCommand({}, deps).text).toContain("Nothing was deleted.");
+    expect(fs.existsSync(file)).toBe(true);
+    // A harness Vortex running from it keeps it.
+    running = {
+      pid: 1,
+      startedAt: NOW.toISOString(),
+      cacheDir: path.join(root, "other-cache"),
+      userDataDir: path.join(root, "other-cache", "live"),
+      mcpPort: 3701,
+      sourceDir: deps.oldClone,
+    };
+    expect(planClean(30, deps)).toEqual([]);
+    running = undefined;
+    expect(cleanCommand({ yes: true }, deps).text).toContain("Deleted 1 item(s).");
+    expect(fs.existsSync(deps.oldClone)).toBe(false);
   });
 
   it("refuses a bad --older-than and reports nothing to clean", () => {
