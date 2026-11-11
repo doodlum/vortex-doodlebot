@@ -68,8 +68,9 @@ variables between calls, so set `VORTEX_AI_CACHE_DIR` (and, for a release or an 
 the build's `VORTEX_AI_EXE` and `VORTEX_AI_INSTALLED`, below) inside each invocation, for
 example `$env:VORTEX_AI_CACHE_DIR = '<cache A>'; doodlebot test …` in one PowerShell call, or
 pass `--cache-dir <cache>` to `up`, `call`, `status` and `down`. A source build is named with
-`--dev-dir <dir>` on every command, including `doodlebot test --dev-dir <dir> <check>`: no
-environment variable selects a checkout.
+`--dev-dir <dir>` on every command, including `doodlebot test --dev-dir <dir> --production
+<check>`: no environment variable selects a checkout. `--production` goes before the check's
+name: the build is a production build, and `test` refuses a build made in the other mode.
 
 Create the report folder `<workspace>/harness/.artifacts/benchmarks/<UTC time>-<slug>/` now.
 
@@ -119,7 +120,8 @@ Each run is these four steps, each with that build's cache (above):
    Check the log's `target:` line names this build.
 2. `doodlebot call automation_status`, recording `vortexVersion` and `nodeEnv`. A source
    build must show `production`.
-3. `doodlebot test <check> <options>`, in the background with a log, waiting for it to exit.
+3. `doodlebot test <check> <options>` (for a source build, `doodlebot test --dev-dir <dir>
+--production <check> <options>`), in the background with a log, waiting for it to exit.
    Capture its `evidence: <path>` line and its exit code.
 4. `doodlebot down`.
 

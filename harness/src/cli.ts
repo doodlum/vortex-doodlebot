@@ -17,6 +17,8 @@ import { parseArgs, type ParsedArgs } from "./cliArgs";
 import {
   ConfigError,
   REPO_ROOT,
+  SUITE_CHECKOUT_ENV,
+  TARGET_EXE_ENV,
   loadConfig,
   requireCheckout,
   resolveTarget,
@@ -1230,10 +1232,13 @@ async function main(): Promise<number> {
             VORTEX_MCP_PORT: String(config.mcpPort),
             VORTEX_AI_CDP_PORT: String(config.cdpPort),
             VORTEX_MCP_TOKEN: config.mcpToken,
-            // A source target reaches the script the way a session reaches its checkout.
+            // The target this command chose is named explicitly, so the script's loadConfig()
+            // never re-resolves it from the caller's folder (an unbuilt worktree would refuse).
             ...(config.target.kind === "dev" && config.target.sourceDir !== undefined
-              ? { INIT_CWD: config.target.sourceDir }
-              : {}),
+              ? { [SUITE_CHECKOUT_ENV]: config.target.sourceDir }
+              : config.target.executable !== ""
+                ? { [TARGET_EXE_ENV]: config.target.executable }
+                : {}),
           },
         });
       }

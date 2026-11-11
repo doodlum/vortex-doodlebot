@@ -190,6 +190,9 @@ export async function testCommand(
   const env: NodeJS.ProcessEnv = { ...process.env, ...release.env };
   delete env[SUITE_CHECKOUT_ENV];
   delete env[STALE_OK_ENV];
+  // `--production` before the suite name is the kit's: the suite launches a production build,
+  // and the build record must be a production one.
+  if (flags.production === true) env.VORTEX_AI_PRODUCTION = "1";
   const checkout =
     Object.keys(release.env).length > 0
       ? undefined

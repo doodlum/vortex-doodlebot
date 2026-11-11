@@ -210,6 +210,30 @@ describe("doodlebot test", () => {
         });
       });
 
+      it("takes --production before the suite: a production build runs only with it", async () => {
+        const run = vi.fn(async () => 0);
+        const checkout = vortexRepo(path.join(root, "vortex"), true);
+        writeBuildRecord(checkout, checkoutBuildIdentity(checkout)!, "production");
+        await expect(
+          testCommand(["mods-scroll"], { "dev-dir": checkout }, [], { run, cwd: root }),
+        ).rejects.toThrow(/production/);
+        expect(run).not.toHaveBeenCalled();
+        await testCommand(["mods-scroll"], { "dev-dir": checkout, production: true }, [], {
+          run,
+          cwd: root,
+        });
+        expect(run).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.any(Array),
+          expect.objectContaining({
+            env: expect.objectContaining({
+              [SUITE_CHECKOUT_ENV]: checkout,
+              VORTEX_AI_PRODUCTION: "1",
+            }),
+          }),
+        );
+      });
+
       it("refuses a build missing an output before the suite starts", async () => {
         const run = vi.fn(async () => 0);
         const checkout = vortexRepo(path.join(root, "vortex"), true);

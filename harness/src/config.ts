@@ -152,6 +152,8 @@ export class UnbuiltCheckoutError extends ConfigError {}
  * treats it as an explicit `--dev-dir`, so an unbuilt or non-Vortex folder refuses there too.
  */
 export const SUITE_CHECKOUT_ENV = "DOODLEBOT_SUITE_CHECKOUT";
+/** The executable a command started from the CLI (`script`) was given, named explicitly. */
+export const TARGET_EXE_ENV = "DOODLEBOT_TARGET_EXE";
 
 /** What a command that needs Vortex's source says outside a checkout. */
 export const NEEDS_CHECKOUT =
@@ -331,9 +333,11 @@ export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig {
     target:
       overrides.target ??
       resolveTargetSafely(
-        envValue(SUITE_CHECKOUT_ENV) === undefined
-          ? { cwd: callerCwd() }
-          : { devDir: envValue(SUITE_CHECKOUT_ENV) },
+        envValue(SUITE_CHECKOUT_ENV) !== undefined
+          ? { devDir: envValue(SUITE_CHECKOUT_ENV) }
+          : envValue(TARGET_EXE_ENV) !== undefined
+            ? { exe: envValue(TARGET_EXE_ENV) }
+            : { cwd: callerCwd() },
       ),
     headless: envFlag("VORTEX_AI_HEADLESS"),
     production: envFlag("VORTEX_AI_PRODUCTION"),

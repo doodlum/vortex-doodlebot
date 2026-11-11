@@ -12,6 +12,7 @@ import {
   DEFAULT_MCP_PORT,
   NEEDS_CHECKOUT,
   SUITE_CHECKOUT_ENV,
+  TARGET_EXE_ENV,
   UnbuiltCheckoutError,
   loadConfig,
   requireCheckout,
@@ -253,5 +254,16 @@ describe("the session's checkout", { timeout: 60_000 }, () => {
     fs.mkdirSync(plain);
     vi.stubEnv(SUITE_CHECKOUT_ENV, plain);
     expect(() => loadConfig()).toThrow(`--dev-dir ${plain} is not a built Vortex checkout`);
+  });
+
+  it("a script started in an unbuilt worktree uses the executable DOODLEBOT_TARGET_EXE names", () => {
+    const unbuilt = vortexRepo(path.join(root, "unbuilt"), false);
+    vi.stubEnv("INIT_CWD", unbuilt);
+    // Without the explicit target, the caller's unbuilt checkout refuses.
+    expect(() => loadConfig()).toThrow(UnbuiltCheckoutError);
+    const exe = path.join(root, "Vortex.exe");
+    fs.writeFileSync(exe, "");
+    vi.stubEnv(TARGET_EXE_ENV, exe);
+    expect(loadConfig().target).toMatchObject({ kind: "installed", executable: exe });
   });
 });
