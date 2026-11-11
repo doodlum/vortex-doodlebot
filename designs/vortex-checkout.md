@@ -278,10 +278,21 @@ A ninth command, the owner's choice.
   - The CSS viewport is then the requested width. The zoom persists with no CDP session, unlike
     `Emulation.setDeviceMetricsOverride`, which ends when its session detaches.
   - It returns `{ requested, actual, zoomFactor, cssWidth }`.
-  - Any later `ui_set_viewport` at or above the minimum, and `ui_set_viewport` with
-    `reset: true`, set the zoom factor back to 1.
-- **Callers:** `responsive` uses it for narrow widths.
-- **Window-size matrix for the proof:** 640x720, 800x720, then 1280x720 to restore.
+  - **The person's own zoom is kept.** Before the first change it reads `getZoomFactor()` and
+    keeps it. The narrow factor is computed relative to it: `kept × minimumWidth /
+requestedWidth`. Any later `ui_set_viewport` at or above the minimum, and `reset: true`,
+    restore the kept factor, not 1.
+  - **Screenshots** at that zoom show the narrow layout, at a higher `devicePixelRatio`: the
+    spike measured 2 to 3.2. `getViewport` reports both.
+- **Callers:** `responsive` uses it for narrow widths. `responsiveSweep`'s `finally` restores the
+  zoom as well as the window size.
+- **Spike on released 2.8.0 (2026-11-11):**
+  - `require('electron').webFrame.setZoomFactor` is reachable from the renderer;
+  - at factor 1.6, `innerWidth` went from 1023 to 639, and restoring the factor gave 1023 again;
+  - if a later Vortex hides `webFrame`, `ui_set_viewport` returns `emulated: false` with the
+    reason, and the narrow width is reported "not tested".
+- **Window-size matrix for the proof:** 640x720, 800x720, then 1280x720 to restore. Widths are
+  asserted within 2 px, since fractional scaling rounds.
 
 **Issue 3: `install` with an unquoted path containing spaces.** PR #3 (`e9b7e70`, `9f7fed5`,
 already in this branch).
