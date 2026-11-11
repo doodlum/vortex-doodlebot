@@ -120,31 +120,41 @@ export const VORTEX_PACKAGE_NAME;
 
 [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L145).
 
+A source checkout that is not built: refused, never replaced by another Vortex.
+
+```typescript
+export class UnbuiltCheckoutError {}
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L148).
+
+The checkout `doodlebot test` resolved and checked for its suite. The suite's `loadConfig`
+treats it as an explicit `--dev-dir`, so an unbuilt or non-Vortex folder refuses there too.
+
+```typescript
+export const SUITE_CHECKOUT_ENV;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L154).
+
 What a command that needs Vortex's source says outside a checkout.
 
 ```typescript
 export const NEEDS_CHECKOUT;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L148).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L157).
 
-The Vortex checkout holding `cwd`, or undefined: the git top level above it (a worktree's own
+The Vortex checkout holding `cwd` (default the caller's folder, `callerCwd()`): the session's
+checkout. Undefined outside one. It is the git top level above it (a worktree's own
 folder in a worktree) when its root package.json is Vortex's. Deliberately the only place a
 checkout is found besides an explicit `--dev-dir`: the kit never searches the disk for one.
 
 ```typescript
-export function vortexCheckoutOf(cwd: string): string | undefined;
+export function vortexCheckoutOf(cwd: string = callerCwd()): string | undefined;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L156).
-
-The checkout this session works in: the one holding the caller's folder (`callerCwd()`).
-
-```typescript
-export function sessionCheckout(cwd: string = callerCwd()): string | undefined;
-```
-
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L180).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L166).
 
 The checkout a command that needs Vortex's source uses: an explicit one, else the session's.
 Outside a checkout it refuses with the one step that fixes it.
@@ -153,13 +163,13 @@ Outside a checkout it refuses with the one step that fixes it.
 export function requireCheckout(explicit?: string, cwd: string = callerCwd()): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L188).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L184).
 
 ```typescript
 export function findInstalledVortex(): string | undefined;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L195).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L191).
 
 ```typescript
 export interface TargetOverrides {
@@ -172,10 +182,14 @@ export interface TargetOverrides {
    * after an explicit `--dev-dir`. Without it no checkout is looked for.
    */
   cwd?: string;
+  /**
+   * The checkout holding `cwd` when the caller already looked (null: none), so git runs once.
+   */
+  checkout?: string | null;
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L201).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L197).
 
 Resolve how to start Vortex.
 
@@ -203,13 +217,13 @@ export function resolveTargetSafely(
 ): VortexTarget;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L298).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L300).
 
 ```typescript
 export type ConfigOverrides = Partial<HarnessConfig>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L312).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L316).
 
 Flags (as overrides) first, then the environment, then the defaults.
 
@@ -217,7 +231,7 @@ Flags (as overrides) first, then the environment, then the defaults.
 export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L315).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L319).
 
 This repo — holds the built extension that gets copied into an instance.
 
@@ -225,13 +239,13 @@ This repo — holds the built extension that gets copied into an instance.
 export function extensionRoot(): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L343).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L354).
 
 ```typescript
 export const MCP_EXTENSION_ID;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L347).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L358).
 
 Earlier ids of this extension; removed from a profile before installing, so two servers never load.
 
@@ -239,7 +253,7 @@ Earlier ids of this extension; removed from a profile before installing, so two 
 export const LEGACY_EXTENSION_IDS;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L349).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L360).
 
 Optional helper for integrations that specifically need the legacy API key.
 Collections use requireOAuth instead. Credentials belong in local setup,
@@ -249,7 +263,7 @@ never in chat or committed files.
 export function requireApiKey(config: HarnessConfig): string;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L356).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/config.ts#L367).
 
 ## mcpClient
 

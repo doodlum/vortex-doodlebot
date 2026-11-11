@@ -4,8 +4,10 @@
  * deploys to `<gamePath>/Data/textures/<name>.txt`.
  *
  * `doodlebot fixture fomod --out <zip> [--name <text>]`: a FOMOD installer archive with one
- * install step and one option, so `install` opens Vortex's installer dialog and keeps it open
- * until it is answered. It installs `textures/<name>.txt` always, and `textures/<name>-option.txt`
+ * install step and one option, so installing it opens Vortex's installer dialog. `doodlebot
+ * install` advances FOMODs with their defaults (localMod.ts `autoAdvanceFomods`); to hold the
+ * dialog open, start the install with `vortex_dispatch` `start-install` instead (harness/AGENTS.md,
+ * "Install and deploy"). It installs `textures/<name>.txt` always, and `textures/<name>-option.txt`
  * when the option is chosen.
  */
 import fs from "node:fs";

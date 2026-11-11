@@ -21,6 +21,11 @@ export const RELEASES_DIR = path.join(USER_STATE_DIR, "releases");
 /** Profiles and login cache of the one instance a bare `doodlebot up` runs. */
 export const DEFAULT_CACHE_DIR = path.join(HARNESS_ROOT, ".cache");
 export const DEFAULT_ARTIFACT_DIR = path.join(HARNESS_ROOT, ".artifacts");
+/**
+ * The Vortex clone older doodlebots kept in the workspace. `check` reports it; nothing deletes it
+ * (`clean` refuses it), since it can hold worktrees and unpushed work.
+ */
+export const OLD_CLONE_DIR = path.join(REPO_ROOT, ".vortex-src");
 
 /** A path spelled the same however it was given: resolved, real, forward slashes. */
 export function normalizedPath(dir: string): string {

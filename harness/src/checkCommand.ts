@@ -1,12 +1,11 @@
 /**
  * `doodlebot check [--json]`: the one status table `/doodlebot:setup --check` prints (design 4.1).
  * It only reads: the workspace, `doctor`, the EGM plugin settings, this session's Vortex checkout,
- * an old managed clone left in the workspace, the inventory,
+ * a Vortex clone an older doodlebot left in the workspace (never deleted), the inventory,
  * content.json (copy folder, pending restores), the kit gaps, local lessons that duplicate shared
  * ones (4.10), and disk use (4.13). Every row is ready, missing with the exact next command,
  * blocked with the reason, or advisory/info.
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -21,12 +20,13 @@ import {
   CONTENT_FILE,
   DEFAULT_ARTIFACT_DIR,
   DEFAULT_CACHE_DIR,
+  OLD_CLONE_DIR,
   RELEASES_DIR,
-  REPO_ROOT,
 } from "./paths";
 import { gitBranch } from "./runningVortex";
-import { NEEDS_CHECKOUT, sessionCheckout } from "./config";
-import { missingBuildOutputs } from "./source";
+import { NEEDS_CHECKOUT, vortexCheckoutOf } from "./config";
+import { gitText } from "./gitText";
+import { missingBuildOutputs, remotesOf } from "./source";
 import { versionInfo, type VersionInfo } from "./versionCommand";
 
 export type RowStatus = "ready" | "missing" | "blocked" | "advisory" | "info";
@@ -58,12 +58,12 @@ export interface CheckDeps {
   contentFile?: string;
   gapsFile?: string;
   knowledge?: { local?: string; shared?: string };
-  /** Claude Code settings files that may enable EGM: the workspace's, then the user's. */
-  settingsFiles?: string[];
+  /** The user's Claude Code settings (default `~/.claude/settings.json`); only user scope counts. */
+  userSettingsFile?: string;
   /** Claude Code's installed-plugins list. */
   installedPluginsFile?: string;
-  source?: () => SourceState | undefined;
-  /** The old managed clone `<workspace>/.vortex-src`, which nothing uses any more. */
+  source?: () => SourceState | undefined | Promise<SourceState | undefined>;
+  /** The Vortex clone older kits kept in the workspace (default OLD_CLONE_DIR). */
   oldClone?: string;
   artifactDir?: string;
   cacheDir?: string;
@@ -74,26 +74,10 @@ export interface CheckDeps {
   freeBytes?: (dir: string) => number | undefined;
 }
 
-const git = (dir: string, args: string[]): string | undefined => {
-  try {
-    return execFileSync("git", ["-C", dir, ...args], {
-      encoding: "utf8",
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  } catch {
-    return undefined;
-  }
-};
-
-function checkoutState(): SourceState | undefined {
-  const dir = sessionCheckout();
+async function checkoutState(): Promise<SourceState | undefined> {
+  const dir = vortexCheckoutOf();
   if (dir === undefined) return undefined;
-  const remotes: Record<string, string> = {};
-  for (const line of (git(dir, ["remote", "-v"]) ?? "").split(/\r?\n/)) {
-    const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim());
-    if (match) remotes[match[1]!] = match[2]!;
-  }
+  const remotes = await remotesOf(dir);
   const branch = gitBranch(dir);
   return {
     dir,
@@ -130,41 +114,63 @@ const readJson = (file: string): unknown => {
   }
 };
 
+/** An `installed_plugins.json` entry: version 2 lists one install per scope. */
+type PluginInstall = { scope?: unknown; projectPath?: unknown };
+
+/** The scopes EGM is installed at; a version 1 entry (no list, no scope) counts as user scope. */
+function egmInstallScopes(file: string): string[] {
+  const installed = readJson(file) as { plugins?: Record<string, unknown> } | undefined;
+  return Object.entries(installed?.plugins ?? {})
+    .filter(([key]) => key.startsWith("egm@"))
+    .flatMap(([, value]) =>
+      Array.isArray(value)
+        ? (value as PluginInstall[]).map((entry) =>
+            typeof entry.scope === "string" ? entry.scope : "user",
+          )
+        : ["user"],
+    );
+}
+
+/**
+ * EGM must be there in every Vortex checkout and worktree the person opens Claude in, so only
+ * user scope counts: the user's settings enabling it, or a user-scope install. A project-scope
+ * install (the doodlebot workspace's `.claude/settings.json` enables EGM for that folder only)
+ * is reported as missing, with the step that installs it for the user.
+ */
 function egmRow(deps: CheckDeps): CheckRow {
-  const settingsFiles = deps.settingsFiles ?? [
-    path.join(REPO_ROOT, ".claude", "settings.json"),
-    path.join(os.homedir(), ".claude", "settings.json"),
-  ];
-  const enabledIn = settingsFiles.filter((file) => {
-    const settings = readJson(file) as { enabledPlugins?: Record<string, unknown> } | undefined;
-    return settings?.enabledPlugins?.["egm@egm"] === true;
-  });
-  const installed = readJson(
+  const item = "EGM (Elephant-Goldfish Model)";
+  const userSettings = deps.userSettingsFile ?? path.join(os.homedir(), ".claude", "settings.json");
+  const settings = readJson(userSettings) as
+    | { enabledPlugins?: Record<string, unknown> }
+    | undefined;
+  const enabled = settings?.enabledPlugins?.["egm@egm"] === true;
+  const scopes = egmInstallScopes(
     deps.installedPluginsFile ??
       path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json"),
-  ) as { plugins?: Record<string, unknown> } | undefined;
-  const isInstalled = Object.keys(installed?.plugins ?? {}).some((key) => key.startsWith("egm@"));
-  if (enabledIn.length === 0 && !isInstalled)
+  );
+  if (enabled || scopes.includes("user"))
     return {
       area: "plugins",
-      item: "EGM (Elephant-Goldfish Model)",
-      status: "missing",
-      detail: "not enabled in any Claude Code settings file and not installed; features need it",
-      next: "/plugin install egm@egm (the marketplace is registered in <workspace>/.claude/settings.json)",
+      item,
+      status: "ready",
+      detail: [
+        ...(enabled ? [`enabled in ${userSettings}`] : []),
+        scopes.includes("user")
+          ? "installed at user scope"
+          : "not in installed_plugins.json (Claude Code installs it on trust)",
+      ].join("; "),
     };
   return {
     area: "plugins",
-    item: "EGM (Elephant-Goldfish Model)",
-    status: "ready",
-    detail: [
-      ...(enabledIn.length > 0 ? [`enabled in ${enabledIn.join(", ")}`] : []),
-      isInstalled
-        ? "installed"
-        : "not in installed_plugins.json (Claude Code installs it on trust)",
-    ].join("; "),
+    item,
+    status: "missing",
+    detail:
+      scopes.length > 0
+        ? `installed only at ${[...new Set(scopes)].join(", ")} scope, so a session in a Vortex checkout doesn't have it`
+        : "not installed at user scope; designing features needs it",
+    next: "install EGM at user scope: /plugin marketplace add google/elephant-goldfish-model, then /plugin install egm@egm (user scope)",
   };
 }
-
 function sourceRow(state: SourceState | undefined): CheckRow {
   if (state === undefined)
     return {
@@ -192,20 +198,26 @@ function sourceRow(state: SourceState | undefined): CheckRow {
 }
 
 /**
- * The managed clone older kits kept at `<workspace>/.vortex-src`: nothing uses it now. Reported
- * with its size; `doodlebot clean --yes` removes it once the person agrees.
+ * The Vortex clone older kits kept in the workspace (OLD_CLONE_DIR). It can hold worktrees and
+ * unpushed work, so doodlebot never deletes it: the row says where to open Claude instead.
  */
 function oldCloneRows(deps: CheckDeps): CheckRow[] {
-  const dir = deps.oldClone ?? path.join(REPO_ROOT, ".vortex-src");
+  const dir = deps.oldClone ?? OLD_CLONE_DIR;
   if (!fs.existsSync(dir)) return [];
-  const bytes = (deps.sizeOf ?? folderBytes)(dir);
+  const listing = gitText(dir, ["worktree", "list", "--porcelain"]);
+  const worktrees =
+    listing === undefined
+      ? undefined
+      : listing.split(/\r?\n/).filter((line) => line.startsWith("worktree ")).length - 1;
   return [
     {
       area: "vortex source",
-      item: "old managed clone",
+      item: "old Vortex clone",
       status: "advisory",
-      detail: `old managed clone (no longer used): ${dir}${bytes === undefined ? "" : `, ${formatBytes(bytes)}`}`,
-      next: "doodlebot clean --dry-run, then doodlebot clean --yes after the person agrees",
+      detail:
+        `Your Vortex clone from an older doodlebot (${dir}` +
+        `${worktrees === undefined ? "" : `, ${String(worktrees)} worktree${worktrees === 1 ? "" : "s"}`}` +
+        "): open Claude in it or one of its worktrees",
     },
   ];
 }
@@ -372,7 +384,7 @@ export async function checkRows(deps: CheckDeps = {}): Promise<CheckRow[]> {
     workspace,
     ...doctorRows(deps.doctor === undefined ? [] : await deps.doctor()),
     egmRow(deps),
-    sourceRow((deps.source ?? checkoutState)()),
+    sourceRow(await (deps.source ?? checkoutState)()),
     ...oldCloneRows(deps),
     ...inventoryRows((deps.inventory ?? (() => readInventory()))()),
     ...contentRows(deps),

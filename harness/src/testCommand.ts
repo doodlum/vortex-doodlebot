@@ -2,15 +2,19 @@
  * `doodlebot test <suite> [args…]` and `doodlebot test --list`: the kit's Playwright suites and
  * opt-in check scripts, by name. Each runs from the workspace root with this Node, so relative
  * arguments after the suite resolve there, and with this process's environment, so
- * PLAYWRIGHT_JSON_OUTPUT_FILE and the VORTEX_AI_* settings pass through.
+ * PLAYWRIGHT_JSON_OUTPUT_FILE and the VORTEX_AI_* settings pass through. A source checkout
+ * (`--dev-dir`, else the session's) is resolved and checked here, then named to the suite
+ * explicitly (`DOODLEBOT_SUITE_CHECKOUT`); `--stale-ok` passes on as `DOODLEBOT_STALE_OK`.
  */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 
+import { SUITE_CHECKOUT_ENV, resolveTarget, vortexCheckoutOf } from "./config";
 import { findRelease, type RegisteredRelease } from "./content";
 import { ConfigError } from "./errors";
 import { REPO_ROOT } from "./paths";
-import { runInteractive, tsxCli } from "./processRunner";
+import { callerCwd, runInteractive, tsxCli } from "./processRunner";
+import { STALE_OK_ENV, checkSourceBuild, launchMode } from "./productionMode";
 
 interface Suite {
   name: string;
@@ -160,6 +164,8 @@ export async function testCommand(
     run?: typeof runInteractive;
     findRelease?: (version: string) => RegisteredRelease | undefined;
     exists?: (file: string) => boolean;
+    /** The caller's folder (default `callerCwd()`), whose checkout is the session's. */
+    cwd?: string;
   } = {},
 ): Promise<number> {
   const write = options.write ?? ((text: string) => process.stdout.write(`${text}\n`));
@@ -173,13 +179,56 @@ export async function testCommand(
     write(formatSuites());
     return 2;
   }
-  const release = releaseEnvironment(passthrough, options.findRelease, options.exists);
+  // `--stale-ok` is the kit's, not the suite's: it is taken out wherever it appears.
+  const staleOk = flags["stale-ok"] === true || passthrough.includes("--stale-ok");
+  const release = releaseEnvironment(
+    passthrough.filter((arg) => arg !== "--stale-ok"),
+    options.findRelease,
+    options.exists,
+  );
   const command = suiteCommand(suite, release.args);
-  // `test --dev-dir <checkout> <suite>`: the suite's config finds that checkout as the session's
-  // (its caller folder, INIT_CWD), as it would run from inside it.
-  const devDir = typeof flags["dev-dir"] === "string" ? { INIT_CWD: flags["dev-dir"] } : {};
+  const env: NodeJS.ProcessEnv = { ...process.env, ...release.env };
+  delete env[SUITE_CHECKOUT_ENV];
+  delete env[STALE_OK_ENV];
+  const checkout =
+    Object.keys(release.env).length > 0
+      ? undefined
+      : suiteCheckout(typeof flags["dev-dir"] === "string" ? flags["dev-dir"] : undefined, {
+          cwd: options.cwd ?? callerCwd(),
+          staleOk,
+          production: env.VORTEX_AI_PRODUCTION === "1" || env.VORTEX_AI_PRODUCTION === "true",
+          write,
+        });
+  if (checkout !== undefined) env[SUITE_CHECKOUT_ENV] = checkout;
+  if (staleOk) env[STALE_OK_ENV] = "1";
   return (options.run ?? runInteractive)(command.executable, command.args, {
     cwd: command.cwd,
-    env: { ...process.env, ...release.env, ...devDir },
+    env,
   });
+}
+
+/**
+ * The source checkout a suite drives, checked before anything starts: `--dev-dir`, else the
+ * session's checkout. An unbuilt or non-Vortex `--dev-dir`, an unbuilt session checkout, missing
+ * build outputs and a stale build record (unless `--stale-ok`) all refuse here, as `up` does,
+ * instead of the suite falling back to the installed Vortex. Undefined outside a checkout.
+ */
+export function suiteCheckout(
+  devDir: string | undefined,
+  options: {
+    cwd: string;
+    staleOk?: boolean;
+    production?: boolean;
+    write?: (text: string) => void;
+  },
+): string | undefined {
+  if (devDir === undefined && vortexCheckoutOf(options.cwd) === undefined) return undefined;
+  const target = resolveTarget(devDir === undefined ? { cwd: options.cwd } : { devDir });
+  if (target.kind !== "dev" || target.sourceDir === undefined) return undefined;
+  checkSourceBuild(target.sourceDir, {
+    staleOk: options.staleOk,
+    mode: launchMode(options.production),
+    report: options.write,
+  });
+  return target.sourceDir;
 }

@@ -21,7 +21,7 @@ import {
   requireCheckout,
   resolveTarget,
   resolveTargetSafely,
-  sessionCheckout,
+  vortexCheckoutOf,
   type ConfigOverrides,
   type HarnessConfig,
 } from "./config";
@@ -81,11 +81,10 @@ import {
   commandEnv,
   detectGitHubUser,
   formatPrepared,
-  missingBuildOutputs,
   prepareCheckout,
   resolveVortexRepo,
 } from "./source";
-import { checkBuildRecord } from "./productionMode";
+import { sourceBuildIsCurrent } from "./productionMode";
 import { gapCommand } from "./gapCommand";
 import { IssuesDisabledError } from "./share";
 import { designBranchCommand, pushSessionBranch } from "./prPush";
@@ -103,9 +102,11 @@ const LAUNCHES = new Set(["up", "bootstrap", "setup"]);
 function configFrom(
   flags: ParsedArgs["flags"],
   command: string,
-): { config: HarnessConfig; targetError?: string } {
+): { config: HarnessConfig; targetError?: string; sessionCheckout?: string | null } {
   const overrides: ConfigOverrides = {};
   let targetError: string | undefined;
+  /** The session's checkout when probed: null for none, undefined when a flag named the target. */
+  let sessionCheckout: string | null | undefined;
   if (typeof flags.game === "string") overrides.gameId = flags.game;
   if (typeof flags["game-path"] === "string") overrides.gamePath = flags["game-path"];
   const devDir = typeof flags["dev-dir"] === "string" ? flags["dev-dir"] : undefined;
@@ -128,17 +129,19 @@ function configFrom(
       targetError = error.message;
       overrides.target = { kind: "installed", executable: "", args: [], appName: "Vortex" };
     }
-  } else if (
-    LAUNCHES.has(command) ||
-    (command === "doctor" && sessionCheckout(callerCwd()) !== undefined)
-  ) {
-    // A launch from an unbuilt session checkout refuses with the build command, rather than
-    // quietly starting the installed Vortex instead; doctor reports the same as its Vortex check.
+  } else {
+    // The session's checkout, probed once (doctor reports it as well).
+    sessionCheckout = vortexCheckoutOf(callerCwd()) ?? null;
     try {
-      overrides.target = resolveTarget({ cwd: callerCwd() });
+      overrides.target = resolveTarget({ cwd: callerCwd(), checkout: sessionCheckout });
     } catch (error) {
-      if (!(error instanceof ConfigError) || command !== "doctor") throw error;
-      targetError = error.message;
+      if (!(error instanceof ConfigError)) throw error;
+      // A launch from an unbuilt session checkout refuses with the build command, rather than
+      // quietly starting the installed Vortex instead; doctor reports it as its Vortex check. A
+      // command that launches nothing talks to the running instance, so an unbuilt checkout is
+      // not its concern: it gets the empty installed target (loadConfig would refuse it).
+      if (LAUNCHES.has(command)) throw error;
+      if (command === "doctor" && sessionCheckout !== null) targetError = error.message;
       overrides.target = { kind: "installed", executable: "", args: [], appName: "Vortex" };
     }
   }
@@ -152,8 +155,11 @@ function configFrom(
     throw new ConfigError("Choose one of --sandbox and --bethesda-sandbox.");
   }
   const keepKey = flags["with-api-key"] === true;
-  const result = (chosen: HarnessConfig) =>
-    targetError === undefined ? { config: chosen } : { config: chosen, targetError };
+  const result = (chosen: HarnessConfig) => ({
+    config: chosen,
+    ...(targetError === undefined ? {} : { targetError }),
+    ...(sessionCheckout === undefined ? {} : { sessionCheckout }),
+  });
   if (flags["bethesda-sandbox"] === true) {
     return result(localOnlyConfig(bethesdaSandboxConfig(config), keepKey));
   }
@@ -196,7 +202,8 @@ Instance lifecycle
                          workspace, doctor, EGM, this session's Vortex checkout, the
                          inventory, the login, the copy folder, pending restores, open kit
                          gaps, local lessons KNOWLEDGE.md now holds, and disk use (warns
-                         below 10 GB free); an old managed clone is reported as unused
+                         below 10 GB free); a Vortex clone an older doodlebot kept in the
+                         workspace is reported with its worktrees, never deleted
   up                     Start/restart the matching working profile
     --fresh              Reset working state from its baseline; reuse current OAuth
     --no-game            Global UI without managing a game
@@ -380,7 +387,9 @@ Kit gaps (what the kit should have done and didn't, in ~/.doodlebot/gaps.md)
 
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
-                         the suite is the suite's (core: Playwright's)
+                         the suite is the suite's (core: Playwright's), except the kit's
+                         --release <version> and --stale-ok. A source checkout (--dev-dir,
+                         else the session's) must be built and current before it starts
   test --list            List the suites (also test --help or test -h)
   qa list [--touching <paths...>] [--allow-logout] [--json]
                          The QA catalogue (harness/qa/catalog.json): checks Vortex's own
@@ -632,7 +641,7 @@ async function main(): Promise<number> {
   }
 
   if (command === "qa") {
-    const vortexDir = sessionCheckout(callerCwd());
+    const vortexDir = vortexCheckoutOf(callerCwd());
     const result = qaCommand(
       positional,
       flags,
@@ -655,10 +664,11 @@ async function main(): Promise<number> {
     log(
       await checkCommand(flags, {
         doctor: async () => {
-          const { config, targetError } = configFrom(doctorFlags, "doctor");
+          const { config, targetError, sessionCheckout } = configFrom(doctorFlags, "doctor");
           const report = await runDoctor(config, {
             skipGame: flags["no-game"] === true,
             ...(targetError === undefined ? {} : { targetError }),
+            ...(sessionCheckout === undefined ? {} : { checkout: sessionCheckout ?? undefined }),
           });
           return report.checks;
         },
@@ -673,7 +683,7 @@ async function main(): Promise<number> {
     return result.code;
   }
 
-  const { config, targetError } = configFrom(flags, command);
+  const { config, targetError, sessionCheckout } = configFrom(flags, command);
   const dispatch = async (): Promise<number> => {
     switch (command) {
       case "log": {
@@ -773,6 +783,7 @@ async function main(): Promise<number> {
         const report = await runDoctor(config, {
           skipGame: flags["no-game"] === true,
           ...(targetError === undefined ? {} : { targetError }),
+          ...(sessionCheckout === undefined ? {} : { checkout: sessionCheckout ?? undefined }),
         });
         log(formatDoctorReport(report));
         return report.ok ? 0 : 1;
@@ -1016,8 +1027,7 @@ async function main(): Promise<number> {
           ...(typeof flags.branch === "string" ? { branch: flags.branch } : {}),
           build: flags.build !== false && flags["no-build"] !== true,
           onProgress: (m) => log(`  ${m}`),
-          upToDate: (dir) =>
-            checkBuildRecord(dir).status === "match" && missingBuildOutputs(dir).length === 0,
+          upToDate: sourceBuildIsCurrent,
           runBuild: (dir) =>
             buildCheckout({
               checkout: dir,

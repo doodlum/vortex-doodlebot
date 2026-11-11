@@ -34,7 +34,10 @@ filled-in lines to hand the person, from `/egm:egm-brainstorm` to the runtime re
 Commands that launch Vortex or run long run in the background with a log, as
 `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md` describes under "Commands that block". Only one
 test Vortex runs at a time; stop this session's with `doodlebot down` before building or
-changing the checkout, and never stop one another session started.
+changing the checkout, and never stop one another session started. It is this session's only
+by setup's ownership rule (`${CLAUDE_PLUGIN_ROOT}/skills/setup/SKILL.md`, "A running test
+Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session launched and its
+`startedAt` is after this session's own launch.
 
 ## Steps
 
@@ -46,9 +49,18 @@ changing the checkout, and never stop one another session started.
 2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`;
    `/doodlebot:source` prepares it), or one the person names with `--dev-dir <checkout>`.
    Outside a checkout, ask the person to open Claude in one (or clone one with
-   `doodlebot source --clone <dir>`) and stop. Cut the branch from upstream:
-   `doodlebot source --no-build --branch fix-<topic>`. Never
-   work on `master`.
+   `doodlebot source --clone <dir>`) and stop. First `git -C <checkout> status --porcelain`
+   must print nothing: cutting a branch carries uncommitted changes onto it, so with output,
+   say what it printed and ask the person to commit or stash it, and stop. Then cut the branch
+   from upstream: `doodlebot source --no-build --branch fix-<topic>`. Never work on `master`.
+   - A desktop worktree session starts on a branch the app named (`claude/...`), which the cut
+     leaves behind, unused. Say so. When that branch has no commits of its own
+     (`git -C <checkout> rev-list --count upstream/<default>..HEAD` prints `0`, with `<default>`
+     from `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` without its
+     `upstream/` prefix), offer instead to
+     rename it, `git -C <checkout> branch -m fix-<topic>`, after `git -C <checkout> fetch
+upstream` and only when it already sits at `upstream/<default>`; run it only on the
+     person's yes.
 3. **The control run (before).** Build the branch's base with
    `doodlebot build --checkout <checkout>` and repeat the reproduction with `/doodlebot:try`'s
    report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This

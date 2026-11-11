@@ -153,9 +153,9 @@ Current versions do not use them. Once no doodlebot Vortex is running, they can 
   the folder, then run `git worktree prune` in the old Vortex clone in the workspace so it
   forgets the deleted checkouts. Their branches stay in that clone;
 - the Vortex clone older versions kept in the workspace. Current versions work in the Vortex
-  checkout your session is in. `doodlebot check` lists the old clone as
-  `advisory: old managed clone (no longer used)` with its size, and `doodlebot clean --yes`
-  removes it once you agree; push or copy any branch you still need first.
+  checkout your session is in, and that clone is one: `doodlebot check` lists it as "Your
+  Vortex clone from an older doodlebot (<path>, <n> worktrees): open Claude in it or one of its
+  worktrees". Doodlebot never deletes it, and `doodlebot clean` leaves it alone.
 
 ## What's next
 

@@ -14,12 +14,13 @@
  * So the harness sets NODE_ENV=production itself, then asks the renderer which React build
  * it loaded (`automation_status.react`) and refuses the run unless it is production.
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import { ConfigError } from "./config";
 import { hashBytes, worktreeChanges } from "./evidence";
+import { gitText } from "./gitText";
+import { missingBuildOutputs } from "./source";
 
 export interface ProductionStatus {
   nodeEnv?: string | null;
@@ -108,19 +109,6 @@ export interface BuildRecord {
   bundleSha256?: string;
 }
 
-function gitText(dir: string, args: string[]): string | undefined {
-  try {
-    return execFileSync("git", ["-C", dir, ...args], {
-      encoding: "utf8",
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 64 * 1024 * 1024,
-    }).trim();
-  } catch {
-    return undefined;
-  }
-}
-
 /** Where a checkout's build record lives, or undefined when it is not a git checkout. */
 export function buildRecordFile(checkout: string): string | undefined {
   const gitDir = gitText(checkout, ["rev-parse", "--absolute-git-dir"]);
@@ -199,8 +187,8 @@ export type BuildRecordCheck =
  * content, make the build stale, whatever HEAD says: a `git switch` that changes files is stale,
  * committing the very changes that were built is not.
  */
-export function checkBuildRecord(checkout: string): BuildRecordCheck {
-  const build = `\`doodlebot build --checkout ${checkout}\``;
+export function checkBuildRecord(checkout: string, mode?: BuildRecord["mode"]): BuildRecordCheck {
+  const build = `\`doodlebot build --checkout ${checkout}${mode === "production" ? " --production" : ""}\``;
   const record = readBuildRecord(checkout);
   if (record === undefined)
     return {
@@ -233,10 +221,71 @@ export function checkBuildRecord(checkout: string): BuildRecordCheck {
   const files = [...new Set([...Object.keys(now), ...Object.keys(record.changes)])]
     .filter((file) => (record.changes[file] ?? "head") !== (now[file] ?? "head"))
     .sort();
-  if (files.length === 0) return { status: "match", record };
-  return stale(
-    files,
-    `${String(files.length)} file${files.length === 1 ? "" : "s"}, for example ${files[0]!}`,
+  if (files.length > 0)
+    return stale(
+      files,
+      `${String(files.length)} file${files.length === 1 ? "" : "s"}, for example ${files[0]!}`,
+    );
+  // The same tree built in the other mode is another build: NODE_ENV is inlined at build time.
+  if (mode !== undefined && record.mode !== mode)
+    return {
+      status: "stale",
+      files: [],
+      message:
+        `The build of ${short} is a ${record.mode} build, and a ${mode} one is wanted. Run ${build}, ` +
+        "or pass --stale-ok to launch it anyway.",
+    };
+  return { status: "match", record };
+}
+
+/**
+ * `doodlebot test <suite> --stale-ok` sets this for the suite, so a bootstrap inside it launches
+ * the stale build `test` already accepted.
+ */
+export const STALE_OK_ENV = "DOODLEBOT_STALE_OK";
+
+/** The mode a launch wants its source build in: `--production` (VORTEX_AI_PRODUCTION) or not. */
+export const launchMode = (production: boolean | undefined): BuildRecord["mode"] =>
+  production === true ? "production" : "development";
+
+/**
+ * Refuse a source build that cannot be launched as asked: outputs missing from src/main/build, or
+ * a build record that no longer matches the checkout (or the mode). `staleOk` launches a stale one
+ * anyway, saying so through `report`; no record at all is a warning. `up`, `bootstrap` and
+ * `doodlebot test` all go through this.
+ */
+export function checkSourceBuild(
+  checkout: string,
+  options: {
+    staleOk?: boolean;
+    mode?: BuildRecord["mode"];
+    report?: (message: string) => void;
+  } = {},
+): void {
+  const report = options.report ?? ((): void => undefined);
+  const missing = missingBuildOutputs(checkout);
+  if (missing.length > 0)
+    throw new ConfigError(
+      `${checkout} is not fully built: src/main/build lacks ${missing.join(", ")}. Vortex would ` +
+        `start and then fail at the first install. Build it: \`doodlebot build --checkout ${checkout}\`` +
+        ` (or \`node build.mjs\` in its src/main).`,
+    );
+  // A stale build never runs silently (design 4.6): the checkout must still be what was built.
+  const record = checkBuildRecord(checkout, options.mode);
+  if (record.status === "stale") {
+    if (options.staleOk !== true) throw new ConfigError(record.message);
+    report(`warning: launching a stale build (--stale-ok): ${record.message}`);
+  } else if (record.status === "none") report(`warning: ${record.message}`);
+}
+
+/**
+ * Whether `source` can skip install and build: every output is there and the build record
+ * matches the checkout as a development build, the kind `source` makes.
+ */
+export function sourceBuildIsCurrent(checkout: string): boolean {
+  return (
+    missingBuildOutputs(checkout).length === 0 &&
+    checkBuildRecord(checkout, "development").status === "match"
   );
 }
 

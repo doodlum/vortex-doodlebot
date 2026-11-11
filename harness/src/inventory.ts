@@ -13,7 +13,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { SNAPSHOT_SCHEMA_VERSION, readMarker } from "./bootstrap";
-import { findInstalledVortex, sessionCheckout } from "./config";
+import { findInstalledVortex, vortexCheckoutOf } from "./config";
 import { readContent, type Content } from "./content";
 import { normalizeVersionResource } from "./releaseFetch";
 import { ConfigError } from "./errors";
@@ -92,7 +92,7 @@ export interface InventoryDeps {
 }
 
 function checkoutSource(): { dir: string; info: SourceInfo } | undefined {
-  const dir = sessionCheckout();
+  const dir = vortexCheckoutOf();
   if (dir === undefined) return undefined;
   let head: string | undefined;
   try {

@@ -4,7 +4,6 @@
  * Everything an operator has to supply lives here, in one place, so `doctor` can
  * check it and AGENTS.md can document it without either drifting from the code.
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +11,7 @@ import path from "node:path";
 import { findRelease } from "./content";
 import { ConfigError } from "./errors";
 import { peekDevElectron } from "./electronRuntime";
+import { gitText } from "./gitText";
 import { DEFAULT_ARTIFACT_DIR, DEFAULT_CACHE_DIR, HARNESS_ROOT, REPO_ROOT } from "./paths";
 import { callerCwd } from "./processRunner";
 
@@ -144,27 +144,28 @@ function installedVortexCandidates(): string[] {
 /** The root `package.json` name that marks a Vortex checkout. */
 export const VORTEX_PACKAGE_NAME = "@vortex/monorepo";
 
+/** A source checkout that is not built: refused, never replaced by another Vortex. */
+export class UnbuiltCheckoutError extends ConfigError {}
+
+/**
+ * The checkout `doodlebot test` resolved and checked for its suite. The suite's `loadConfig`
+ * treats it as an explicit `--dev-dir`, so an unbuilt or non-Vortex folder refuses there too.
+ */
+export const SUITE_CHECKOUT_ENV = "DOODLEBOT_SUITE_CHECKOUT";
+
 /** What a command that needs Vortex's source says outside a checkout. */
 export const NEEDS_CHECKOUT =
   "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).";
 
 /**
- * The Vortex checkout holding `cwd`, or undefined: the git top level above it (a worktree's own
+ * The Vortex checkout holding `cwd` (default the caller's folder, `callerCwd()`): the session's
+ * checkout. Undefined outside one. It is the git top level above it (a worktree's own
  * folder in a worktree) when its root package.json is Vortex's. Deliberately the only place a
  * checkout is found besides an explicit `--dev-dir`: the kit never searches the disk for one.
  */
-export function vortexCheckoutOf(cwd: string): string | undefined {
-  let top: string;
-  try {
-    top = execFileSync("git", ["-C", path.resolve(cwd), "rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return undefined;
-  }
-  if (top === "") return undefined;
+export function vortexCheckoutOf(cwd: string = callerCwd()): string | undefined {
+  const top = gitText(path.resolve(cwd), ["rev-parse", "--show-toplevel"]);
+  if (top === undefined || top === "") return undefined;
   const root = path.resolve(top);
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {
@@ -176,18 +177,13 @@ export function vortexCheckoutOf(cwd: string): string | undefined {
   }
 }
 
-/** The checkout this session works in: the one holding the caller's folder (`callerCwd()`). */
-export function sessionCheckout(cwd: string = callerCwd()): string | undefined {
-  return vortexCheckoutOf(cwd);
-}
-
 /**
  * The checkout a command that needs Vortex's source uses: an explicit one, else the session's.
  * Outside a checkout it refuses with the one step that fixes it.
  */
 export function requireCheckout(explicit?: string, cwd: string = callerCwd()): string {
   if (explicit !== undefined && explicit !== "") return path.resolve(explicit);
-  const checkout = sessionCheckout(cwd);
+  const checkout = vortexCheckoutOf(cwd);
   if (checkout === undefined) throw new ConfigError(NEEDS_CHECKOUT);
   return checkout;
 }
@@ -208,6 +204,10 @@ export interface TargetOverrides {
    * after an explicit `--dev-dir`. Without it no checkout is looked for.
    */
   cwd?: string;
+  /**
+   * The checkout holding `cwd` when the caller already looked (null: none), so git runs once.
+   */
+  checkout?: string | null;
 }
 
 /**
@@ -245,7 +245,9 @@ export function resolveTarget(overrides: TargetOverrides = {}): VortexTarget {
       ? undefined
       : overrides.cwd === undefined
         ? undefined
-        : vortexCheckoutOf(overrides.cwd);
+        : overrides.checkout !== undefined
+          ? (overrides.checkout ?? undefined)
+          : vortexCheckoutOf(overrides.cwd);
   if (devDir !== undefined && devDir !== "") {
     const mainDir = path.join(devDir, "src", "main");
     const resolved = fs.existsSync(mainDir) ? mainDir : devDir;
@@ -255,7 +257,7 @@ export function resolveTarget(overrides: TargetOverrides = {}): VortexTarget {
     } catch (error) {
       // The first line: Node appends the require stack to a missing module's message.
       const reason = (error instanceof Error ? error.message : String(error)).split(/\r?\n/)[0];
-      throw new ConfigError(
+      throw new UnbuiltCheckoutError(
         explicit
           ? `--dev-dir ${devDir} is not a built Vortex checkout: ${reason}`
           : `This session's checkout ${devDir} is not built: ${reason}. Build it with ` +
@@ -304,7 +306,9 @@ export function resolveTargetSafely(
     const explicit =
       (overrides.devDir !== undefined && overrides.devDir !== "") ||
       overrides.release !== undefined;
-    if (explicit && error instanceof ConfigError) throw error;
+    // An unbuilt checkout, named or the session's, is never swapped for the installed Vortex.
+    if (error instanceof UnbuiltCheckoutError || (explicit && error instanceof ConfigError))
+      throw error;
     return { kind: "installed", executable: "", args: [], appName: "Vortex" };
   }
 }
@@ -322,8 +326,15 @@ export function loadConfig(overrides: ConfigOverrides = {}): HarnessConfig {
     gamePath: process.env.VORTEX_AI_GAME_PATH,
     cacheDir: envValue("VORTEX_AI_CACHE_DIR") ?? DEFAULT_CACHE_DIR,
     artifactDir: envValue("VORTEX_AI_ARTIFACT_DIR") ?? DEFAULT_ARTIFACT_DIR,
-    // The session's checkout counts only when no target was given (resolving it runs git).
-    target: overrides.target ?? resolveTargetSafely({ cwd: callerCwd() }),
+    // The session's checkout counts only when no target was given (resolving it runs git). A
+    // suite `doodlebot test` started names its checkout explicitly (SUITE_CHECKOUT_ENV).
+    target:
+      overrides.target ??
+      resolveTargetSafely(
+        envValue(SUITE_CHECKOUT_ENV) === undefined
+          ? { cwd: callerCwd() }
+          : { devDir: envValue(SUITE_CHECKOUT_ENV) },
+      ),
     headless: envFlag("VORTEX_AI_HEADLESS"),
     production: envFlag("VORTEX_AI_PRODUCTION"),
     ...overrides,

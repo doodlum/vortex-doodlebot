@@ -86,8 +86,8 @@ ready, missing with the exact next step, or blocked with the reason:
   (Vortex, the extension, the sandbox baseline, 7-Zip, the login folder's privacy, a running
   test Vortex);
 - whether the EGM plugin is installed, and the Vortex checkout the session is in: its remotes,
-  branch and build (an old managed clone in the workspace is listed as no longer used, with its
-  size);
+  branch and build (a Vortex clone an older doodlebot kept in the workspace is listed with its
+  worktrees, as a checkout to open Claude in; doodlebot never deletes it);
 - `doodlebot inventory`: releases, game copies, snapshots, sandboxes and collections;
 - the Nexus login;
 - the folder game copies go in, and any pending restore of a game's user folders, with

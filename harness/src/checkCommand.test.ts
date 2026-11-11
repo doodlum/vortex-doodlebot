@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -63,7 +64,7 @@ beforeEach(() => {
       local: path.join(root, "knowledge.md"),
       shared: path.join(root, "shared-knowledge.md"),
     },
-    settingsFiles: [settings],
+    userSettingsFile: settings,
     installedPluginsFile: path.join(root, "installed_plugins.json"),
     source: () => ({
       dir: path.join(root, "vortex"),
@@ -107,7 +108,7 @@ describe("doodlebot check", () => {
     expect(row(rows, "this checkout")?.detail).toMatch(
       /upstream https:.*no fork as origin.*master/,
     );
-    expect(row(rows, "old managed clone")).toBeUndefined();
+    expect(row(rows, "old Vortex clone")).toBeUndefined();
     expect(row(rows, "sandbox")?.status).toBe("ready");
     expect(row(rows, "copy folder")).toMatchObject({
       status: "missing",
@@ -185,10 +186,35 @@ describe("doodlebot check", () => {
   });
 
   it("reports EGM missing with the install step when no settings file enables it", async () => {
-    deps.settingsFiles = [path.join(root, "absent.json")];
+    deps.userSettingsFile = path.join(root, "absent.json");
     expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
       status: "missing",
-      next: expect.stringContaining("/plugin install egm@egm"),
+      next: expect.stringContaining("install EGM at user scope"),
+    });
+  });
+
+  it("U4: counts only user scope for EGM; a project-scope install alone is missing", async () => {
+    deps.userSettingsFile = path.join(root, "absent.json");
+    const install = (scope: string) =>
+      fs.writeFileSync(
+        deps.installedPluginsFile!,
+        JSON.stringify({
+          version: 2,
+          plugins: {
+            "egm@egm": [{ scope, ...(scope === "project" ? { projectPath: root } : {}) }],
+          },
+        }),
+      );
+    install("project");
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "missing",
+      detail: expect.stringContaining("installed only at project scope"),
+      next: expect.stringContaining("install EGM at user scope"),
+    });
+    install("user");
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "ready",
+      detail: "installed at user scope",
     });
   });
 
@@ -205,15 +231,32 @@ describe("doodlebot check", () => {
     expect(formatCheck([])).toContain("Nothing missing.");
   });
 
-  it("reports an old managed clone as advisory, with its size and the clean step", async () => {
-    fs.mkdirSync(deps.oldClone!);
-    deps.sizeOf = (dir) => (dir === deps.oldClone ? 5 * 1024 ** 3 : undefined);
-    expect(row(await checkRows(deps), "old managed clone")).toEqual({
+  it("S1: reports an old Vortex clone with its worktrees and no delete step", async () => {
+    const clone = deps.oldClone!;
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
+    fs.mkdirSync(clone);
+    git(clone, "init", "-q", "-b", "master");
+    git(
+      clone,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "init",
+    );
+    for (const name of ["wt-a", "wt-b"])
+      git(clone, "worktree", "add", "-q", "-b", name, path.join(root, name));
+    expect(row(await checkRows(deps), "old Vortex clone")).toEqual({
       area: "vortex source",
-      item: "old managed clone",
+      item: "old Vortex clone",
       status: "advisory",
-      detail: `old managed clone (no longer used): ${deps.oldClone!}, 5.0 GB`,
-      next: "doodlebot clean --dry-run, then doodlebot clean --yes after the person agrees",
+      detail: `Your Vortex clone from an older doodlebot (${clone}, 2 worktrees): open Claude in it or one of its worktrees`,
     });
+    expect(await checkCommand({}, deps)).not.toMatch(/doodlebot clean/);
   });
 });

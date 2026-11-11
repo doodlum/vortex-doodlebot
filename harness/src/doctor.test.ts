@@ -7,7 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ANONYMOUS, markerFile, snapshotDir } from "./bootstrap";
 import { loadConfig, type HarnessConfig } from "./config";
-import { checkoutCheck, formatDoctorReport, missingVortexCheck, runDoctor } from "./doctor";
+import {
+  checkPnpmOverride,
+  checkoutCheck,
+  formatDoctorReport,
+  missingVortexCheck,
+  runDoctor,
+} from "./doctor";
 
 let temp: string;
 let home: string;
@@ -151,5 +157,20 @@ describe("the Vortex check without an installed Vortex", () => {
     const check = missingVortexCheck([]);
     expect(check.ok).toBe(false);
     expect(check.fix).toMatch(/^doodlebot release get <version>/);
+  });
+});
+
+describe("live-C: VORTEX_AI_PNPM", () => {
+  it("is checked only when set, and fails with the fix when it names no file", () => {
+    expect(checkPnpmOverride(undefined)).toBeUndefined();
+    expect(checkPnpmOverride(" ")).toBeUndefined();
+    const missing = path.join(os.tmpdir(), "no-such-folder", "pnpm.cmd");
+    expect(checkPnpmOverride(missing, () => false)).toEqual({
+      name: "VORTEX_AI_PNPM",
+      ok: false,
+      detail: expect.stringContaining(`VORTEX_AI_PNPM names ${missing}, which does not exist.`),
+      fix: "Fix or remove the VORTEX_AI_PNPM line in harness/.env (or the environment)",
+    });
+    expect(checkPnpmOverride("C:/tools/pnpm.cmd", () => true)).toMatchObject({ ok: true });
   });
 });

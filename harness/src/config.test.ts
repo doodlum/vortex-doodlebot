@@ -11,11 +11,12 @@ import {
   DEFAULT_CDP_PORT,
   DEFAULT_MCP_PORT,
   NEEDS_CHECKOUT,
+  SUITE_CHECKOUT_ENV,
+  UnbuiltCheckoutError,
   loadConfig,
   requireCheckout,
   resolveTarget,
   resolveTargetSafely,
-  sessionCheckout,
   vortexCheckoutOf,
 } from "./config";
 import { DEFAULT_ARTIFACT_DIR, DEFAULT_CACHE_DIR } from "./paths";
@@ -192,7 +193,7 @@ describe("the session's checkout", { timeout: 60_000 }, () => {
     const worktree = path.join(root, "vortex-fix");
     git(repo, "worktree", "add", "-q", "-b", "fix", worktree);
     fakeCheckout(worktree);
-    expect(real(sessionCheckout(path.join(worktree, "src"))!)).toBe(real(worktree));
+    expect(real(vortexCheckoutOf(path.join(worktree, "src"))!)).toBe(real(worktree));
     expect(real(resolveTarget({ cwd: worktree }).sourceDir!)).toBe(real(worktree));
   });
 
@@ -229,12 +230,28 @@ describe("the session's checkout", { timeout: 60_000 }, () => {
     });
   });
 
-  it("refuses an unbuilt session checkout with the build command; the safe resolver falls back", () => {
+  it("refuses an unbuilt session checkout with the build command, through the safe resolver too", () => {
     const unbuilt = vortexRepo(path.join(root, "unbuilt"), false);
-    expect(() => resolveTarget({ cwd: unbuilt })).toThrow(
-      `This session's checkout ${path.resolve(git(unbuilt, "rev-parse", "--show-toplevel"))} is not built`,
-    );
+    const message = `This session's checkout ${path.resolve(git(unbuilt, "rev-parse", "--show-toplevel"))} is not built`;
+    expect(() => resolveTarget({ cwd: unbuilt })).toThrow(message);
     expect(() => resolveTarget({ cwd: unbuilt })).toThrow("doodlebot build --checkout");
-    expect(resolveTargetSafely({ cwd: unbuilt }).kind).toBe("installed");
+    // S2: before, the safe resolver quietly fell back to the installed Vortex here.
+    expect(() => resolveTargetSafely({ cwd: unbuilt })).toThrow(UnbuiltCheckoutError);
+    expect(() => resolveTargetSafely({ cwd: unbuilt })).toThrow(message);
+    // Outside a checkout it still falls back rather than throwing.
+    vi.stubEnv("VORTEX_AI_EXE", path.join(root, "none.exe"));
+    vi.stubEnv("ProgramFiles", path.join(root, "pf"));
+    vi.stubEnv("LOCALAPPDATA", path.join(root, "lad"));
+    expect(resolveTargetSafely({ cwd: os.tmpdir() })).toMatchObject({ kind: "installed" });
+  });
+
+  it("S2: a suite's loadConfig uses the checkout DOODLEBOT_SUITE_CHECKOUT names, as an explicit --dev-dir", () => {
+    vi.stubEnv(SUITE_CHECKOUT_ENV, repo);
+    expect(real(loadConfig().target.sourceDir!)).toBe(real(repo));
+    // An unbuilt or non-Vortex folder refuses instead of falling back to the installed Vortex.
+    const plain = path.join(root, "plain");
+    fs.mkdirSync(plain);
+    vi.stubEnv(SUITE_CHECKOUT_ENV, plain);
+    expect(() => loadConfig()).toThrow(`--dev-dir ${plain} is not a built Vortex checkout`);
   });
 });

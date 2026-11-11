@@ -2,7 +2,7 @@
  * Preparing the session's Vortex checkout, and cloning a new one where the person says.
  *
  * The person opens Claude in a Vortex checkout or one of its worktrees, and that is the checkout
- * the kit works in (config.ts `sessionCheckout`); the kit never goes hunting around the
+ * the kit works in (config.ts `vortexCheckoutOf`); the kit never goes hunting around the
  * filesystem for one. `source --clone <dir>` makes one: it asks GitHub who the operator is,
  * looks for their fork, and clones it into the folder the person named, outside the workspace.
  * Without a fork it clones Nexus-Mods/Vortex itself, as the remote `upstream`: enough to read,
@@ -28,10 +28,6 @@ const execFileAsync = promisify(execFile);
 export const UPSTREAM = "Nexus-Mods/Vortex";
 const UPSTREAM_URL = `https://github.com/${UPSTREAM}.git`;
 
-export function hasVortexSource(dir: string): boolean {
-  return fs.existsSync(path.join(dir, "src", "main", "package.json"));
-}
-
 /** `dir` is `root` or inside it. */
 function isInside(dir: string, root: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(dir));
@@ -39,9 +35,6 @@ function isInside(dir: string, root: string): boolean {
 }
 
 export class ForkError extends Error {}
-
-/** Only an ordinary nonzero command exit permits the Nx build fallback. */
-export class CommandExitError extends ForkError {}
 
 export interface PackageManagerCommand {
   cmd: string;
@@ -59,6 +52,30 @@ export function parsePnpmVersion(packageManager: string | undefined): string {
     );
   }
   return match[1];
+}
+
+/**
+ * Why `VORTEX_AI_PNPM` can't be used, or undefined: it is set but names no file. Without this
+ * check the install or build failed with only "The system cannot find the path specified".
+ */
+export function pnpmOverrideProblem(
+  override: string | undefined = process.env.VORTEX_AI_PNPM,
+  exists: (file: string) => boolean = fs.existsSync,
+): string | undefined {
+  const value = override?.trim() ?? "";
+  if (value === "" || exists(value)) return undefined;
+  return (
+    `VORTEX_AI_PNPM names ${value}, which does not exist. Point it at a pnpm of the checkout's ` +
+    "pinned version (in harness/.env or the environment), or remove it to use `pnpm dlx`."
+  );
+}
+
+/** Refuse before an install or build when `VORTEX_AI_PNPM` names a missing file. */
+export function assertPnpmOverride(
+  override: string | undefined = process.env.VORTEX_AI_PNPM,
+): void {
+  const problem = pnpmOverrideProblem(override);
+  if (problem !== undefined) throw new ConfigError(problem);
 }
 
 /**
@@ -201,7 +218,7 @@ export async function runStreaming(
     if (result.code === null)
       throw new ForkError(`${options.label} ended without an exit code; child exit confirmed.`);
     if (result.code !== 0)
-      throw new CommandExitError(
+      throw new ForkError(
         `${options.label} failed (${cmd} ${args.join(" ")}) with ` +
           `${result.signal === null ? `exit code ${String(result.code)}` : `signal ${result.signal}`}. ` +
           `Its output is above.`,
@@ -356,15 +373,6 @@ export interface CloneOptions {
   upstreamUrl?: string;
   /** The doodlebot workspace, which a clone never goes inside (default this repository). */
   workspace?: string;
-}
-
-export interface BuildSourceOptions {
-  /** The checkout to install or build. */
-  dir: string;
-  /** Install dependencies only. */
-  installOnly?: boolean;
-  /** Progress reporting. */
-  onProgress?: (message: string) => void;
 }
 
 export interface VortexSource {
@@ -635,10 +643,7 @@ export async function prepareCheckout(options: PrepareOptions): Promise<Prepared
     build = "current";
   } else if (options.build !== false) {
     if (options.runBuild === undefined) throw new ForkError("prepareCheckout needs runBuild.");
-    await (
-      options.install ??
-      ((at) => buildVortexSource({ dir: at, installOnly: true, onProgress: report }))
-    )(dir);
+    await (options.install ?? ((at) => installVortexDeps(at, report)))(dir);
     build = (await options.runBuild(dir)).exitCode === 0 ? "built" : "failed";
   }
   return {
@@ -730,24 +735,22 @@ export async function cutWorkBranch(
 }
 
 /**
- * Install dependencies and build the clone.
- *
- * Kept separate from cloning because it is by far the slower half and the one
- * most likely to need re-running on its own after a pull.
+ * `pnpm install --frozen-lockfile` in a checkout, with its pinned pnpm. The build itself is
+ * `doodlebot build` (vortexBuild.ts), which also writes the build record.
  */
-export async function buildVortexSource(options: BuildSourceOptions): Promise<void> {
-  const report = options.onProgress ?? ((): void => undefined);
-  const dir = options.dir;
-  // A running Vortex holds the checkout's native modules open; reinstalling or rebuilding them
-  // underneath it fails or corrupts the build.
-  assertNoVortexRunningFrom(dir, options.installOnly === true ? "installing it" : "building it");
-  if (!hasVortexSource(dir)) {
+export async function installVortexDeps(
+  dir: string,
+  onProgress: (message: string) => void = () => undefined,
+): Promise<void> {
+  // A running Vortex holds the checkout's native modules open; reinstalling them underneath it
+  // fails or corrupts the install.
+  assertNoVortexRunningFrom(dir, "installing it");
+  if (!fs.existsSync(path.join(dir, "src", "main", "package.json")))
     throw new ForkError(`${dir} is not a Vortex checkout (no src/main/package.json).`);
-  }
-
-  report("installing dependencies (slow: native modules are rebuilt)");
+  assertPnpmOverride();
+  onProgress("installing dependencies (slow: native modules are rebuilt)");
   const pnpm = await sourcePnpmCommand(dir);
-  report(
+  onProgress(
     pnpm.exact
       ? `using Vortex's pinned pnpm ${pnpm.version}`
       : `installed pnpm does not match; bootstrapping Vortex's pinned pnpm ${pnpm.version} with pnpm dlx`,
@@ -758,52 +761,8 @@ export async function buildVortexSource(options: BuildSourceOptions): Promise<vo
     cwd: dir,
     label: "Installing Vortex's dependencies",
   });
-  if (options.installOnly === true) {
-    report("dependencies installed");
-    return;
-  }
-
-  assertNoVortexRunningFrom(dir, "building it");
-  report("building renderer and main");
-  try {
-    await runStreaming(pnpm.cmd, [...pnpm.args, "nx", "run", "@vortex/main:build"], {
-      cwd: dir,
-      label: "Building Vortex",
-    });
-  } catch (err) {
-    if (!(err instanceof CommandExitError)) throw err;
-    // Vortex's full build can exit non-zero on a bundled extension whose native
-    // dependency did not build, while still having produced the renderer and
-    // most other outputs. Fall back to building main's own bundle so one
-    // unrelated extension cannot block the whole suite — but only accept that
-    // if the artifacts the harness actually needs exist afterwards.
-    report("full build failed; building main's own bundle directly");
-    await runStreaming("node", ["./build.mjs"], {
-      cwd: path.join(dir, "src", "main"),
-      label: "Building main",
-    });
-    if (!buildArtifactsPresent(dir)) throw err;
-    report("main built — the earlier failure was in a bundled extension");
-  }
-
-  // An nx cache hit restores only the outputs a target declares, and @vortex/main's list has
-  // lagged its build script: hash-worker.cjs was missing from it, so a cached build ran until the
-  // first install and then failed to find it (KNOWLEDGE.md). Rebuild main directly when so.
-  const missing = missingBuildOutputs(dir);
-  if (missing.length > 0) {
-    report(`the build left out ${missing.join(", ")}; building main's own bundle directly`);
-    await runStreaming("node", ["./build.mjs"], {
-      cwd: path.join(dir, "src", "main"),
-      label: "Building main",
-    });
-    const still = missingBuildOutputs(dir);
-    if (still.length > 0)
-      throw new ForkError(`The build did not produce ${still.join(", ")} in src/main/build.`);
-  }
-
-  report("build complete");
+  onProgress("dependencies installed");
 }
-
 /**
  * What a source build must have produced for the harness to launch it and use it, that
  * src/main/build lacks: main.cjs, renderer.js, and every worker main's build script bundles
@@ -823,9 +782,4 @@ export function missingBuildOutputs(dir: string): string[] {
   return ["main.cjs", "renderer.js", ...workers].filter(
     (name) => !fs.existsSync(path.join(build, name)),
   );
-}
-
-/** The outputs the harness needs in order to launch a source build. */
-export function buildArtifactsPresent(dir: string): boolean {
-  return missingBuildOutputs(dir).length === 0;
 }

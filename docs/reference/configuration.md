@@ -70,27 +70,27 @@ cache you choose, the running test Vortex is recorded in `~/.doodlebot/instance.
 
 ## Environment variables
 
-| Variable                                    | Purpose and default                                                                   |
-| ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `VORTEX_AI_INSTALLED`                       | Prefer installed Vortex when true                                                     |
-| `VORTEX_AI_EXE`                             | Explicit released executable                                                          |
-| `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source --clone` clones                       |
-| `VORTEX_AI_VORTEX_REPO`                     | Your fork as `owner/name` (also a pushable organisation fork for `push-branch`)       |
-| `VORTEX_AI_NEXUS_USER`                      | Your Nexus user name, replaced with `<nexus user>` when you share a lesson or gap     |
-| `VORTEX_AI_PNPM`                            | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`            |
-| `VORTEX_MCP_TOKEN`                          | Bearer token for the MCP server; doodlebot creates a private one if unset             |
-| `VORTEX_MCP_PORT`                           | MCP port; default 3701                                                                |
-| `VORTEX_AI_CDP_PORT`                        | CDP port; default 9222                                                                |
-| `VORTEX_AI_GAME_ID`                         | Game ID; default `fallout4`; `--sandbox` chooses the sandbox game                     |
-| `VORTEX_AI_GAME_PATH`                       | Explicit game folder                                                                  |
-| `VORTEX_AI_CACHE_DIR`                       | Profile and baseline cache; default `harness/.cache`. Only the default is signed in   |
-| `VORTEX_AI_ARTIFACT_DIR`                    | Screenshots, reports and other outputs; default `harness/.artifacts` in the workspace |
-| `VORTEX_AI_HEADLESS`                        | Hide the window; off by default. Screenshots may be blank                             |
-| `VORTEX_AI_PRODUCTION`                      | Require production mode for a source build                                            |
-| `VORTEX_AI_NEXUS_API_KEY` / `NEXUS_API_KEY` | Optional legacy API key; not a login for collections                                  |
-| `VORTEX_AI_KIT`                             | Set by `doodlebot script` for the script it runs                                      |
-| `DOODLEBOT_DOCS_PYTHON`                     | Python executable for building this documentation                                     |
-| `DOODLEBOT_DOCS_BASE`                       | Git base revision for the documentation pairing check                                 |
+| Variable                                    | Purpose and default                                                                                                                                                        |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VORTEX_AI_INSTALLED`                       | Prefer installed Vortex when true                                                                                                                                          |
+| `VORTEX_AI_EXE`                             | Explicit released executable                                                                                                                                               |
+| `VORTEX_AI_GITHUB_USER`                     | GitHub user whose Vortex fork `doodlebot source --clone` clones                                                                                                            |
+| `VORTEX_AI_VORTEX_REPO`                     | Your fork as `owner/name` (also a pushable organisation fork for `push-branch`)                                                                                            |
+| `VORTEX_AI_NEXUS_USER`                      | Your Nexus user name, replaced with `<nexus user>` when you share a lesson or gap                                                                                          |
+| `VORTEX_AI_PNPM`                            | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`. A path that names no file is reported by `doodlebot check`, and `source` and `build` refuse it |
+| `VORTEX_MCP_TOKEN`                          | Bearer token for the MCP server; doodlebot creates a private one if unset                                                                                                  |
+| `VORTEX_MCP_PORT`                           | MCP port; default 3701                                                                                                                                                     |
+| `VORTEX_AI_CDP_PORT`                        | CDP port; default 9222                                                                                                                                                     |
+| `VORTEX_AI_GAME_ID`                         | Game ID; default `fallout4`; `--sandbox` chooses the sandbox game                                                                                                          |
+| `VORTEX_AI_GAME_PATH`                       | Explicit game folder                                                                                                                                                       |
+| `VORTEX_AI_CACHE_DIR`                       | Profile and baseline cache; default `harness/.cache`. Only the default is signed in                                                                                        |
+| `VORTEX_AI_ARTIFACT_DIR`                    | Screenshots, reports and other outputs; default `harness/.artifacts` in the workspace                                                                                      |
+| `VORTEX_AI_HEADLESS`                        | Hide the window; off by default. Screenshots may be blank                                                                                                                  |
+| `VORTEX_AI_PRODUCTION`                      | Require production mode for a source build                                                                                                                                 |
+| `VORTEX_AI_NEXUS_API_KEY` / `NEXUS_API_KEY` | Optional legacy API key; not a login for collections                                                                                                                       |
+| `VORTEX_AI_KIT`                             | Set by `doodlebot script` for the script it runs                                                                                                                           |
+| `DOODLEBOT_DOCS_PYTHON`                     | Python executable for building this documentation                                                                                                                          |
+| `DOODLEBOT_DOCS_BASE`                       | Git base revision for the documentation pairing check                                                                                                                      |
 
 Both ports must be distinct integers between 1 and 65535.
 
@@ -111,20 +111,20 @@ Both ports must be distinct integers between 1 and 65535.
 Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands. A few belong
 to one command:
 
-| Flag                          | Command                | Effect                                                                       |
-| ----------------------------- | ---------------------- | ---------------------------------------------------------------------------- |
-| `--new`                       | `game copy`            | Make another copy even when one of the same version exists                   |
-| `--older-than <days>`         | `clean`                | What counts as old; default 30 days                                          |
-| `--dry-run`, `--yes`          | `clean`                | List only; delete what is listed (without `--yes` it only lists)             |
-| `--touching <paths...>`       | `qa list`              | Vortex files a change touches, relative to the Vortex root                   |
-| `--allow-logout`              | `qa list`              | Also select entries that log out of the account (only after you agree)       |
-| `--need <need>`               | `inventory`            | The content chosen for these needs (repeatable), instead of every item       |
-| `--json`                      | `inventory`, `qa list` | Print JSON                                                                   |
-| `--clone <dir>`               | `source`               | Clone Vortex into that new folder, outside the workspace                     |
-| `--release <version>`         | `test <suite>`         | Run the suite on that registered release; not passed on to the suite         |
-| `--stale-ok`                  | `up`, `bootstrap`      | Start a source build even though its checkout changed since the build        |
-| `--add-upstream`, `--exclude` | `source`               | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` out of Git           |
-| `--file <draft>`              | `design-branch`        | The design draft to commit as `docs/designs/<topic>.md` on `designs/<topic>` |
+| Flag                          | Command                   | Effect                                                                                                   |
+| ----------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `--new`                       | `game copy`               | Make another copy even when one of the same version exists                                               |
+| `--older-than <days>`         | `clean`                   | What counts as old; default 30 days                                                                      |
+| `--dry-run`, `--yes`          | `clean`                   | List only; delete what is listed (without `--yes` it only lists)                                         |
+| `--touching <paths...>`       | `qa list`                 | Vortex files a change touches, relative to the Vortex root                                               |
+| `--allow-logout`              | `qa list`                 | Also select entries that log out of the account (only after you agree)                                   |
+| `--need <need>`               | `inventory`               | The content chosen for these needs (repeatable), instead of every item                                   |
+| `--json`                      | `inventory`, `qa list`    | Print JSON                                                                                               |
+| `--clone <dir>`               | `source`                  | Clone Vortex into that new folder, outside the workspace                                                 |
+| `--release <version>`         | `test <suite>`            | Run the suite on that registered release; not passed on to the suite                                     |
+| `--stale-ok`                  | `up`, `bootstrap`, `test` | Start a source build even though its checkout changed since the build, or it was built in the other mode |
+| `--add-upstream`, `--exclude` | `source`                  | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` out of Git                                       |
+| `--file <draft>`              | `design-branch`           | The design draft to commit as `docs/designs/<topic>.md` on `designs/<topic>`                             |
 
 A path argument is one word to the shell, so quote a path that has spaces:
 `doodlebot install "C:\Users\Nexus Two\probe.zip"`. `install` refuses more than one path

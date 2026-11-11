@@ -87,7 +87,8 @@ Instance lifecycle
                          workspace, doctor, EGM, this session's Vortex checkout, the
                          inventory, the login, the copy folder, pending restores, open kit
                          gaps, local lessons KNOWLEDGE.md now holds, and disk use (warns
-                         below 10 GB free); an old managed clone is reported as unused
+                         below 10 GB free); a Vortex clone an older doodlebot kept in the
+                         workspace is reported with its worktrees, never deleted
   up                     Start/restart the matching working profile
     --fresh              Reset working state from its baseline; reuse current OAuth
     --no-game            Global UI without managing a game
@@ -271,7 +272,9 @@ Kit gaps (what the kit should have done and didn't, in ~/.doodlebot/gaps.md)
 
 Testing and iteration
   test <suite> [args...] Run a suite or check from the workspace root; every argument after
-                         the suite is the suite's (core: Playwright's)
+                         the suite is the suite's (core: Playwright's), except the kit's
+                         --release <version> and --stale-ok. A source checkout (--dev-dir,
+                         else the session's) must be built and current before it starts
   test --list            List the suites (also test --help or test -h)
   qa list [--touching <paths...>] [--allow-logout] [--json]
                          The QA catalogue (harness/qa/catalog.json): checks Vortex's own

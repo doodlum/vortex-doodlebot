@@ -148,8 +148,11 @@ Nexus ever ships a search endpoint, the fix is the same shape as
 Each HTTP request has its own MCP server/transport; state listeners and UI refs
 remain shared within the renderer. Refs include a renderer-lifetime identifier
 and stay valid across snapshots while their element is connected and keeps the
-role and accessible name it had when the ref was issued (a `WeakMap` fingerprint
-in `uiAutomation.ts`); a recycled row is refused, never redirected. Harness
+role, accessible name and row (the closest `[role=row]` or `<tr>`: its name, or a
+hash of its text) it had when the ref was issued (a `WeakMap` fingerprint in
+`uiAutomation.ts`); a recycled row is refused, never redirected. The person's own
+zoom, kept while a narrow width is emulated, is stored on `window`, so it survives
+an extension hot reload. Harness
 snapshot/action transactions are still serialized with dialog watchers, and
 nothing serializes two processes driving the instance at once, so drive it from
 one session at a time.

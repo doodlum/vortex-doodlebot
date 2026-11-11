@@ -238,7 +238,7 @@ export function resolveEvidenceCommand(
 /**
  * A doodlebot child (`doodlebot <command>` or `node <…>/doodlebot.cjs <command>`) with
  * `--dev-dir <checkout>` after its command, unless it names a target already. Any other command
- * is returned unchanged: it reaches the checkout through INIT_CWD.
+ * is returned unchanged: it chooses no Vortex.
  */
 export function withDevDir(
   command: { executable: string; args: string[] },
@@ -296,11 +296,9 @@ export async function collectCommandEvidence(options: {
     env.VORTEX_AI_INSTALLED = options.runtime.kind === "installed" ? "1" : "0";
     if (options.runtime.kind === "installed") env.VORTEX_AI_EXE = options.runtime.files[0]!.path;
     else {
-      // A source runtime is reached the way a session reaches its checkout: the child's caller
-      // folder (INIT_CWD) is the runtime's checkout, and a doodlebot child is also given
-      // --dev-dir. Nothing reads a target from the environment any more.
+      // A doodlebot child reaches a source runtime one way: `--dev-dir <checkout>`, which every
+      // launch (and `test`) treats as explicit. Nothing reads a target from the environment.
       delete env.VORTEX_AI_EXE;
-      env.INIT_CWD = options.runtime.source!.checkout;
       child = withDevDir(actual, options.runtime.source!.checkout);
     }
   }

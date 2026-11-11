@@ -243,7 +243,7 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
     expect(processAlive(pid!)).toBe(false);
     expect(fs.readFileSync(path.join(repo, "value.ts"), "utf8")).toBe(before);
   });
-  it("reaches a source runtime's checkout through INIT_CWD, never VORTEX_AI_DEV_DIR", async () => {
+  it("gives a source runtime's checkout to a child only through --dev-dir, never the environment", async () => {
     const elsewhere = path.join(root, "elsewhere");
     vi.stubEnv("VORTEX_AI_DEV_DIR", elsewhere);
     vi.stubEnv("INIT_CWD", elsewhere);
@@ -273,8 +273,9 @@ describe("recorded process and checkout boundaries", { timeout: 60_000 }, () => 
         init: string;
         dev: string | null;
       };
-      // The leftover variable passes through untouched, and nothing reads it any more.
-      expect(seen).toEqual({ init: runtime.source.checkout, dev: elsewhere });
+      // S2: INIT_CWD is no longer rewritten (one mechanism, --dev-dir); the leftover variable passes
+      // through untouched, and nothing reads it any more.
+      expect(seen).toEqual({ init: elsewhere, dev: elsewhere });
     } finally {
       vi.unstubAllEnvs();
     }

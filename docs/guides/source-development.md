@@ -121,12 +121,13 @@ A harness Vortex is running from C:\dev\Vortex (pid 1234); run `doodlebot down` 
 Stop that test Vortex with `doodlebot down` if your session started it, then repeat the command.
 Stop it before you switch the checkout to another branch as well.
 
-## An old managed clone
+## Your clone from an older doodlebot
 
-Earlier versions of doodlebot kept a Vortex clone inside the workspace. Nothing uses it now:
-doodlebot works in the Vortex checkout your session is in. `doodlebot check` lists it as
-`old managed clone (no longer used)` with its size; `doodlebot clean --yes` deletes it after you
-agree. Push any branch you want to keep first.
+Earlier versions of doodlebot kept a Vortex clone inside the workspace. It is still a Vortex
+checkout, with your branches and worktrees: open Claude in it, or in one of its worktrees, and
+doodlebot works there. `doodlebot check` lists it as "Your Vortex clone from an older doodlebot
+(<path>, <n> worktrees): open Claude in it or one of its worktrees". Doodlebot never deletes it;
+`doodlebot clean` leaves it alone.
 
 ## Features and refactors start with a design
 

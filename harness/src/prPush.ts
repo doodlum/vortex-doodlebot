@@ -177,8 +177,17 @@ export function withTempWorktree<T>(
   } finally {
     git(dir, ["worktree", "remove", "--force", worktree]);
     fs.rmSync(worktree, { recursive: true, force: true });
-    git(dir, ["worktree", "prune"]);
   }
+}
+
+/** The worktree of `dir`'s repository that has `branch` checked out, if any. */
+function worktreeHolding(git: GitRunner, dir: string, branch: string): string | undefined {
+  let worktree: string | undefined;
+  for (const line of git(dir, ["worktree", "list", "--porcelain"]).stdout.split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) worktree = line.slice("worktree ".length);
+    else if (line === `branch refs/heads/${branch}`) return worktree;
+  }
+  return undefined;
 }
 
 const TOPIC = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
@@ -243,9 +252,12 @@ export interface DesignBranchResult {
 
 /**
  * Commits `file` as `docs/designs/<topic>.md` on `designs/<topic>` and pushes the branch to the
- * person's fork. The branch continues from its local head, or the fork's copy, or else starts at
- * the merge-base of the session's HEAD and `base` (default `upstream/<default branch>`). The
- * commit is made in a temporary worktree, so the session's branch and `git status` are unchanged.
+ * person's fork. It fetches the fork's copy first and continues from the newer of the local branch
+ * and `origin/designs/<topic>` (refusing when they have diverged), or else starts at the
+ * merge-base of the session's HEAD and `base` (default `upstream/<default branch>`). It refuses
+ * while another worktree has the branch checked out. The commit is made in a temporary worktree,
+ * so the session's branch and `git status` are unchanged, and the local branch moves only after
+ * the push succeeded.
  */
 export function designBranch(
   dir: string,
@@ -264,13 +276,41 @@ export function designBranch(
     throw new ConfigError(
       `${branch} is checked out here; run design-branch from the session's work branch.`,
     );
+  // A worktree on the branch would be left behind its own branch: refuse rather than move it.
+  const holder = worktreeHolding(git, dir, branch);
+  if (holder !== undefined)
+    throw new ConfigError(
+      `${branch} is checked out in ${holder}. Switch that worktree to another branch (or remove ` +
+        "it), then run design-branch again.",
+    );
   // The fork check comes first, so nothing is committed that could not be pushed.
   const fork = checkPushRemote(dir, options);
+  // Build on the newest revision: another session may have pushed one.
+  const fetched = git(dir, [
+    "fetch",
+    "origin",
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+  ]);
+  if (fetched.code !== 0 && !/couldn't find remote ref/i.test(fetched.stderr))
+    throw new ConfigError(
+      `Fetching ${branch} from origin failed, so the newest revision is unknown and nothing was ` +
+        `committed: ${fetched.stderr.trim().split("\n")[0] ?? ""}`,
+    );
   const local = resolved(git, dir, `refs/heads/${branch}`);
   const remote = resolved(git, dir, `refs/remotes/origin/${branch}`);
+  const isAncestor = (a: string, b: string): boolean =>
+    git(dir, ["merge-base", "--is-ancestor", a, b]).code === 0;
   let start: string;
   let from: string;
-  if (local !== undefined) {
+  if (local !== undefined && remote !== undefined && !isAncestor(remote, local)) {
+    if (!isAncestor(local, remote))
+      throw new ConfigError(
+        `${branch} and origin/${branch} have diverged. Reconcile them (keep the revision the ` +
+          "person approved), then run design-branch again.",
+      );
+    start = remote;
+    from = `origin/${branch}`;
+  } else if (local !== undefined) {
     start = local;
     from = branch;
   } else if (remote !== undefined) {
@@ -296,14 +336,11 @@ export function designBranch(
       committed: !unchanged,
     };
   });
-  run(git, dir, ["branch", "-f", branch, commit], `Setting ${branch}`);
+  // Push the commit first and move the local branch only once the push succeeded, so the branch
+  // is never left moved but not pushed.
   report(`pushing ${branch} to ${fork}`);
-  run(
-    git,
-    dir,
-    ["push", "origin", `refs/heads/${branch}:refs/heads/${branch}`],
-    `Pushing ${branch}`,
-  );
+  run(git, dir, ["push", "origin", `${commit}:refs/heads/${branch}`], `Pushing ${branch}`);
+  run(git, dir, ["branch", "-f", branch, commit], `Setting ${branch}`);
   return {
     branch,
     commit,

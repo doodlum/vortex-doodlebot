@@ -11,6 +11,8 @@ import {
   bundleModeFromText,
   bundleModeOf,
   checkBuildRecord,
+  checkSourceBuild,
+  sourceBuildIsCurrent,
   checkoutBuildIdentity,
   productionErrorMessage,
   productionProblem,
@@ -169,6 +171,42 @@ describe("the build record (stale-build-refused)", { timeout: 60_000 }, () => {
     expect(readBuildRecord(checkout)?.changes).toHaveProperty("src/renderer/a.ts");
     git("commit", "-qam", "the built change");
     expect(checkBuildRecord(checkout).status).toBe("match");
+  });
+
+  it("T4: a build of the right tree in the other mode is stale, with the reason", () => {
+    recordBuild();
+    write("src/main/build/main.cjs", "main\n");
+    expect(checkBuildRecord(checkout, "development").status).toBe("match");
+    const check = checkBuildRecord(checkout, "production");
+    expect(check).toMatchObject({ status: "stale", files: [] });
+    expect(check.status === "stale" && check.message).toBe(
+      `The build of ${git("rev-parse", "HEAD").slice(0, 10)} is a development build, and a ` +
+        `production one is wanted. Run \`doodlebot build --checkout ${checkout} --production\`, ` +
+        "or pass --stale-ok to launch it anyway.",
+    );
+    expect(() => checkSourceBuild(checkout, { mode: "production" })).toThrow(/development build/);
+    const warnings: string[] = [];
+    checkSourceBuild(checkout, {
+      mode: "production",
+      staleOk: true,
+      report: (m) => warnings.push(m),
+    });
+    expect(warnings).toEqual([
+      expect.stringMatching(/^warning: launching a stale build \(--stale-ok\)/),
+    ]);
+  });
+
+  it("T3: source skips install and build only for a current development build with every output", () => {
+    // What `doodlebot source` passes prepareCheckout as upToDate.
+    recordBuild();
+    expect(sourceBuildIsCurrent(checkout)).toBe(false); // main.cjs is missing
+    write("src/main/build/main.cjs", "main\n");
+    expect(sourceBuildIsCurrent(checkout)).toBe(true);
+    write("src/renderer/a.ts", "export const a = 9;\n");
+    expect(sourceBuildIsCurrent(checkout)).toBe(false);
+    write("src/renderer/a.ts", "export const a = 1;\n");
+    writeBuildRecord(checkout, checkoutBuildIdentity(checkout)!, "production");
+    expect(sourceBuildIsCurrent(checkout)).toBe(false);
   });
 
   it("has no record for a build made some other way, and says so without refusing", () => {

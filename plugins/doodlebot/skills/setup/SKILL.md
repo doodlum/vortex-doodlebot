@@ -80,7 +80,8 @@ item, each `ready`, `MISSING` or `BLOCKED` with its `next:` step, or `advisory`/
 - `doctor` for the installed Vortex and the sandbox: Vortex, the extension, the sandbox
   baseline, 7-Zip (for `doodlebot release get`), the login folder's privacy, a running test
   Vortex, an old `Legacy lease store`;
-- EGM, from the Claude Code settings and installed-plugins list;
+- EGM at user scope, from the user's Claude Code settings and installed-plugins list (a
+  project-scope install alone is missing: a session in a Vortex checkout would not have it);
 - the session's Vortex checkout, when the session is in one: remotes (a fork as `origin`,
   Nexus-Mods/Vortex as `upstream`), branch, and whether it is built;
 - `doodlebot inventory`: builds, games (a Steam install is never usable; a registered copy

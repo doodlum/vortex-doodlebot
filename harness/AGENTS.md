@@ -148,7 +148,9 @@ from the workspace root.
   `doodlebot call ui_active_dialogs`, take `doodlebot snapshot` for the button's ref and answer
   with `doodlebot click --ref <ref>` (`install` times out after 300 s). `install`'s own
   dialog and FOMOD watchers (`autoAnswerDialogs`, `autoAdvanceFomods`) snapshot while it
-  runs; a ref you hold survives their snapshots while its element is unchanged. On `now shows
+  runs; a ref you hold survives their snapshots while its element is unchanged (same role,
+  accessible name and row). `install` advances a FOMOD with its defaults; to hold a FOMOD
+  dialog open, start it with `vortex_dispatch` `start-install` ("Install and deploy"). On `now shows
 something else` or `Stale or unknown ref`, snapshot and click again. A
   Cancel answer ends `install` with exit 1 and `McpError: canceled by user`.
 
@@ -425,7 +427,8 @@ doodlebot up --installed --sandbox --rebuild-snapshot
 - The first start of a build and game creates its baseline; `/doodlebot:try` refreshes one on
   request (`up … --rebuild-snapshot`, then `down`). `doodlebot doctor` reports it as the advisory check `Sandbox baseline` (`present: <marker>` or
   `missing`), and lists `Legacy lease store` when `~/.vortex-ai/leases` from an older kit
-  exists. Advisory checks never make `doctor` exit 1.
+  exists. Advisory checks never make `doctor` exit 1. When `VORTEX_AI_PNPM` is set, it has a
+  `VORTEX_AI_PNPM` check, failing with the fix when the path names no file.
 
 ### One instance
 
@@ -593,11 +596,14 @@ It only reads and always exits 0. Each row is `{area, item, status, detail, next
 one of `ready`, `missing`, `blocked`, `advisory` and `info`; every missing or blocked row has
 `next`. Rows: the workspace (`versionInfo`); `doctor` for the installed target and the sandbox
 unless target or game flags are given (the login row replaces doctor's `Nexus login captured`);
-EGM, enabled in `<workspace>/.claude/settings.json` or `~/.claude/settings.json`, or listed in
-`~/.claude/plugins/installed_plugins.json`; this checkout (the session's Vortex checkout: its
+EGM at user scope only (enabled in `~/.claude/settings.json`, or a `user`-scope entry in
+`~/.claude/plugins/installed_plugins.json`; a project-scope install alone is `missing` with
+`next: install EGM at user scope`, since a Vortex session doesn't read the workspace's
+settings); this checkout (the session's Vortex checkout: its
 fetch remotes, branch and build, or `advisory` with the step that makes one outside a checkout);
-the Vortex clone older kits kept in the workspace as `advisory: old managed clone (no longer used)`
-with its size (`doodlebot clean --yes` removes it once the person agrees);
+the Vortex clone older kits kept in the workspace, as `advisory`: "Your Vortex clone from an
+older doodlebot (<path>, <n> worktrees): open Claude in it or one of its worktrees". Doodlebot
+never deletes a Vortex clone: `clean` refuses it, and any folder holding `.git`;
 the inventory's items (a store install with a registered copy is `info`) and the login
 (`next: /doodlebot:setup --login`); the copy folder (`next: doodlebot game folder <dir>`); each
 pending restore (`blocked`, `next: doodlebot game restore <gameId>`); the open kit gaps
@@ -737,9 +743,10 @@ checked, Learned; defined in `plugins/doodlebot/skills/try/SKILL.md`).
 `--args-file` avoids shell quoting (a PowerShell BOM is fine); keep credential-bearing ones private.
 
 The loop is snapshot, act, wait, inspect. A ref stays valid, across later snapshots, while its
-element is connected and shows the same role and accessible name. A reload, the element's removal
-or a recycled row (same element, new name: "The element for ref <r> now shows something else;
-take a new snapshot") ends it, and ref strings are never reused. Filter or scroll virtualized rows
+element is connected and shows the same role and accessible name in the same row (the closest
+`[role=row]` or `<tr>`, by its name or a hash of its text). A reload, the element's removal
+or a recycled row (same element, new name, or a row now showing another mod: "The element for
+ref <r> now shows something else; take a new snapshot") ends it, and ref strings are never reused. Filter or scroll virtualized rows
 into the DOM first. Check
 `activeDialogs` when an action seems blocked. Drive the instance from one client at a time;
 nothing serializes UI actions from separate clients.
@@ -822,8 +829,18 @@ doodlebot e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
 - `fixture mod` writes an archive with one file, `textures/<name>.txt` containing `<name>`; in
   the sandbox it deploys to `<gamePath>/Data/textures/<name>.txt`.
 - `fixture fomod` writes a FOMOD installer archive (`fomod/ModuleConfig.xml` with one install
-  step and one option, `<name> option`), so `install` opens Vortex's installer dialog and waits
-  for an answer: the check for driving a dialog while `install` runs.
+  step and one option, `<name> option`), so installing it opens Vortex's installer dialog.
+  `doodlebot install` does not leave that dialog open: its watcher (`autoAdvanceFomods`) takes
+  each step's defaults. To hold the dialog open, for example to check that refs survive
+  concurrent snapshots, start the install through Vortex's own action instead, in the
+  background (it returns when the install finishes):
+
+  ```powershell
+  # start-install.json: {"action":"start-install","args":["C:/fixtures/probe-fomod.zip","__CALLBACK__"]}
+  doodlebot call vortex_dispatch --args-file start-install.json
+  ```
+
+  Then drive the dialog with `snapshot` and `click --ref`; it stays open until it is answered.
 
 - `slow-download [--count <n>] [--seconds <n>] [--stagger <s>]` keeps real downloads in flight
   (throttled local files, no network or account) for work on the UI that reports them: the
@@ -913,9 +930,20 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 <checkout>`, or pass --stale-ok to launch it anyway."
   - No record (a build not made by `doodlebot build`, a failed one, or a renderer bundle rebuilt
     since) is a warning, not a refusal.
+  - The mode is compared too: a launch wants a development build, `--production` (or
+    `VORTEX_AI_PRODUCTION`) a production one. The other mode is stale: "The build of <HEAD short>
+    is a development build, and a production one is wanted. Run `doodlebot build --checkout
+<checkout> --production`, or pass --stale-ok to launch it anyway."
   - `--stale-ok` launches anyway and says so in the output
     (`warning: launching a stale build (--stale-ok): ...`).
-  - `source` skips install and build when the record matches and the outputs are present.
+  - `doodlebot test <suite>` makes the same checks before the suite starts (`suiteCheckout`):
+    the checkout is `--dev-dir`, else the session's; an unbuilt or non-Vortex one, missing
+    outputs and a stale record refuse there, never falling back to the installed Vortex. It
+    names the checkout to the suite as `DOODLEBOT_SUITE_CHECKOUT` (the suite's `loadConfig`
+    treats it as `--dev-dir`) and passes `--stale-ok`, before or after the suite name, on as
+    `DOODLEBOT_STALE_OK=1`. With `--release` no checkout is involved.
+  - `source` skips install and build when the record matches as a development build and the
+    outputs are present (`sourceBuildIsCurrent`).
 - **Which repository** (`source.ts`). `source --clone <dir>` finds the GitHub login (`VORTEX_AI_GITHUB_USER`,
   `gh api user`, git's `github.user`, a noreply email, then `user.name`) and the fork
   `<login>/Vortex`, or `VORTEX_AI_VORTEX_REPO=<owner>/<repo>`. Nexus-Mods/Vortex is always the
@@ -945,9 +973,9 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
     `doodlebot build --checkout <checkout>`, which puts back the `etc/` files the build rewrites,
     unless `--no-build`. It reports the checkout, branch, remotes, the exclude, whether it
     built, and the next step.
-  - The Vortex clone an earlier kit kept in the workspace is no longer used:
-    `check` reports it with its size, and `clean --yes` removes it once the person agrees
-    (never while a harness Vortex runs from it).
+  - The Vortex clone an earlier kit kept in the workspace (`OLD_CLONE_DIR`) can hold worktrees
+    and unpushed work: `check` reports it with its worktree count and says to open Claude in it
+    or one of its worktrees. Doodlebot never deletes it; `clean` refuses it.
 - **Branches start from upstream.** `source --branch <name>` fetches `upstream` and runs
   `git switch --no-track -c <name> upstream/<default branch>` (`cutWorkBranch`), never from the
   fork's default branch, which can carry its own work (doodlum's is `linux`). It refuses an
@@ -1442,22 +1470,22 @@ through a doodlebot pull request.
 
 ## Configuration and recovery
 
-| Variable                                   | Purpose/default                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------- |
-| `VORTEX_AI_EXE`                            | Installed Vortex executable, otherwise auto-detected                       |
-| `VORTEX_AI_INSTALLED`                      | `1` forces installed Vortex, including tests                               |
-| `VORTEX_AI_GAME_ID`, `VORTEX_AI_GAME_PATH` | Game and install path                                                      |
-| `VORTEX_AI_CACHE_DIR`                      | Profiles cache; default `harness/.cache` (only it uses the shared login)   |
-| `VORTEX_AI_GITHUB_USER`                    | GitHub login whose fork `source` looks for                                 |
-| `VORTEX_AI_VORTEX_REPO`                    | The fork as `owner/repo`; a pushable organisation fork for pushes          |
-| `VORTEX_AI_NEXUS_USER`                     | Nexus user name that `share` redacts (or `--nexus-user`)                   |
-| `VORTEX_AI_ARTIFACT_DIR`                   | Screenshots/reports; default `harness/.artifacts`                          |
-| `VORTEX_MCP_PORT`, `VORTEX_AI_CDP_PORT`    | MCP/CDP; default 3701/9222                                                 |
-| `VORTEX_MCP_TOKEN`                         | Bearer token shared by harness and MCP client                              |
-| `VORTEX_AI_NEXUS_API_KEY`                  | Optional legacy key; sandboxes need `--with-api-key`                       |
-| `VORTEX_AI_HEADLESS`                       | Hide window; screenshots may be blank                                      |
-| `VORTEX_AI_PNPM`                           | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx` |
-| `VORTEX_AI_KIT`                            | Set by `script`: the `file://` URL of `kit.ts`                             |
+| Variable                                   | Purpose/default                                                                                                                                                                   |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VORTEX_AI_EXE`                            | Installed Vortex executable, otherwise auto-detected                                                                                                                              |
+| `VORTEX_AI_INSTALLED`                      | `1` forces installed Vortex, including tests                                                                                                                                      |
+| `VORTEX_AI_GAME_ID`, `VORTEX_AI_GAME_PATH` | Game and install path                                                                                                                                                             |
+| `VORTEX_AI_CACHE_DIR`                      | Profiles cache; default `harness/.cache` (only it uses the shared login)                                                                                                          |
+| `VORTEX_AI_GITHUB_USER`                    | GitHub login whose fork `source` looks for                                                                                                                                        |
+| `VORTEX_AI_VORTEX_REPO`                    | The fork as `owner/repo`; a pushable organisation fork for pushes                                                                                                                 |
+| `VORTEX_AI_NEXUS_USER`                     | Nexus user name that `share` redacts (or `--nexus-user`)                                                                                                                          |
+| `VORTEX_AI_ARTIFACT_DIR`                   | Screenshots/reports; default `harness/.artifacts`                                                                                                                                 |
+| `VORTEX_MCP_PORT`, `VORTEX_AI_CDP_PORT`    | MCP/CDP; default 3701/9222                                                                                                                                                        |
+| `VORTEX_MCP_TOKEN`                         | Bearer token shared by harness and MCP client                                                                                                                                     |
+| `VORTEX_AI_NEXUS_API_KEY`                  | Optional legacy key; sandboxes need `--with-api-key`                                                                                                                              |
+| `VORTEX_AI_HEADLESS`                       | Hide window; screenshots may be blank                                                                                                                                             |
+| `VORTEX_AI_PNPM`                           | A pnpm of the Vortex checkout's pinned version, used instead of `pnpm dlx`. A path that names no file fails `doctor` and `check`, and `source` and `build` refuse it with the fix |
+| `VORTEX_AI_KIT`                            | Set by `script`: the `file://` URL of `kit.ts`                                                                                                                                    |
 
 Relative paths in these variables resolve against the workspace root (the shim's working
 directory), not the caller's directory. No variable names a Vortex checkout (`--dev-dir` or the

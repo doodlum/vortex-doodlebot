@@ -509,14 +509,20 @@ describe("skills", () => {
     const text = read(skillFile("doodlebot", "pr"));
     const uses = commandUses(text).map((use) => use.text);
     expect(uses).toContain("doodlebot push-branch --checkout <checkout>");
+    // U8: the preflight's default merge-base is right; no hard-coded --base.
     expect(uses).toContain(
-      "doodlebot pr-preflight --checkout <checkout> --base upstream/master --test <test> --revert <file>",
+      "doodlebot pr-preflight --checkout <checkout> --test <test> --revert <file>",
     );
+    expect(text).not.toContain("--base upstream/master");
     expect(uses.some((use) => use.startsWith("doodlebot pr-checks <number>"))).toBe(true);
     const flat = text.replace(/\s+/g, " ");
     // pr-from-session-branch: the PR's head is the session's branch, a draft by default, in
     // the fork or Nexus-Mods/Vortex as the person says, bound on Claude desktop.
     expect(flat).toContain("--head <fork owner>:<branch> --draft");
+    // U1: the PR's base is the upstream default branch name, in the fork too, never the fork's.
+    expect(flat).toContain("--base <upstream default>");
+    expect(flat).toContain("Never use the fork's own default branch");
+    expect(flat).toContain("refs/remotes/upstream/HEAD");
     expect(flat).toContain(
       "Open the pull request in your fork (<fork>), or against Nexus-Mods/Vortex?",
     );
@@ -536,15 +542,21 @@ describe("skills", () => {
       expect(index, phrase).toBeGreaterThan(-1);
       return index;
     };
-    // prototype-clean-tree: a worktree session first, then a clean tree, then the branch rule.
-    const worktree = at("ask the person to start a new worktree session");
+    // prototype-clean-tree (U2): refused only in the main checkout or a dirty tree; in a clean
+    // worktree any branch is fine and proto/<idea> is cut from the computed upstream default.
+    const worktree = at("In the main checkout, refuse");
     const clean = at("must print nothing. If it prints anything, refuse");
-    const branch = at("**A new `proto/<idea>` branch,** with no commits beyond upstream");
+    const upstreamDefault = at("refs/remotes/upstream/HEAD");
+    const branch = at("In a clean worktree any current branch is fine");
     expect(worktree).toBeLessThan(clean);
-    expect(clean).toBeLessThan(branch);
-    at("Only ever from the upstream default");
-    at("**Anything else** (a `feat/*` or `fix-*` branch, a `proto/*` branch with commits");
+    expect(clean).toBeLessThan(upstreamDefault);
+    expect(upstreamDefault).toBeLessThan(branch);
+    at("It always cuts from `upstream/<default>`");
     at("never changes the branch of the person's own checkout");
+    expect(text).not.toContain("upstream/master");
+    // U3: setup's ownership rule before every down.
+    at("Before every `doodlebot down`");
+    at("its `startedAt` is after this session's own `up`");
     const uses = commandUses(text).map((use) => use.text);
     expect(uses).toContain("doodlebot source --no-build --branch proto/<idea>");
     // prototype-loop: change, build, a try-style run with screenshots at testing.md's sizes, ask.

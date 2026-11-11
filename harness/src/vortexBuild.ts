@@ -38,6 +38,7 @@ import {
 } from "./productionMode";
 import { assertNoVortexRunningFrom } from "./runningVortex";
 import {
+  assertPnpmOverride,
   childEnv,
   missingBuildOutputs,
   nestedPath,
@@ -171,6 +172,7 @@ export async function buildCheckout(options: BuildOptions): Promise<BuildReport>
   const wanted = parsePnpmVersion(manifest.packageManager);
   const report = options.onProgress ?? ((): void => undefined);
   assertNoVortexRunningFrom(dir, "building it");
+  assertPnpmOverride();
   const pnpm = selectPnpmCommand(
     wanted,
     options.installedPnpm ?? (await installedPnpmVersion(dir)),

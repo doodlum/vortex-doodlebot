@@ -35,31 +35,43 @@ after which a feature starts as `feat/<topic>` from upstream with the prototype'
 
 The prototype never changes the branch of the person's own checkout.
 
-1. **A worktree session first.** `git -C <checkout> rev-parse --git-dir` and
+1. **A worktree, not the main checkout.** `git -C <checkout> rev-parse --git-dir` and
    `git -C <checkout> rev-parse --git-common-dir` print the same folder in the main checkout
-   and different folders in a worktree.
-   - **Claude desktop, in the main checkout:** ask the person to start a new worktree session of
-     this checkout on a new branch `proto/<idea>` (or on the upstream default branch), and to run
+   and different folders in a worktree. In the main checkout, refuse: prototyping there would
+   switch the person's own checkout to `proto/<idea>`.
+   - **Claude desktop:** ask the person to start a new worktree session of this checkout and run
      `/doodlebot:prototype <idea>` there. Stop.
-   - **Another agent, in the main checkout:** say that prototyping here would switch this
-     checkout to `proto/<idea>`, and offer a worktree instead:
-     `git -C <checkout> worktree add <dir> upstream/master`, then open the agent in `<dir>`.
-     Continue here only when the person says so.
+   - **Another agent:** offer a worktree, `git -C <checkout> worktree add <dir> upstream/<default>`
+     (step 3 says how to find `<default>`), then open the agent in `<dir>`. Stop.
 2. **A clean tree.** `git -C <checkout> status --porcelain` must print nothing. If it prints
    anything, refuse: the tree has someone's work in it. Say what it printed and stop.
-3. **The branch.** `git -C <checkout> symbolic-ref --short HEAD` names it (nothing in a detached
-   HEAD). `upstream/<default>` is `upstream/master` unless
-   `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` names another.
-   - **A new `proto/<idea>` branch,** with no commits beyond upstream
-     (`git -C <checkout> rev-list --count upstream/master..HEAD` prints `0`): continue.
-   - **The upstream default** (the branch `master`, or a detached HEAD at upstream's default,
-     as a desktop worktree session opened on an upstream base has): cut the branch with
-     `doodlebot source --no-build --branch proto/<idea>`. Only ever from the upstream default.
-   - **Anything else** (a `feat/*` or `fix-*` branch, a `proto/*` branch with commits, another
-     idea's branch): refuse. A prototype starts on a new `proto/*` branch or on the upstream
-     default; ask the person to start a new worktree session. Stop.
-4. **Prepared.** Run `/doodlebot:source`'s procedure (`${CLAUDE_PLUGIN_ROOT}/skills/source/SKILL.md`)
+3. **Upstream's default branch.** `<default>` is upstream's default branch name:
+   `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` without the `upstream/`
+   prefix (normally `master`). If that prints nothing, run
+   `git -C <checkout> remote set-head upstream --auto` and read it again. Never hard-code
+   `master`, and never use the fork's default branch (`origin`'s can be another branch).
+4. **The branch.** In a clean worktree any current branch is fine: a desktop worktree session
+   starts on a branch the app named (`claude/...`), a detached HEAD, or anything else.
+   - Already on `proto/<idea>` with no commits beyond upstream
+     (`git -C <checkout> rev-list --count upstream/<default>..HEAD` prints `0`): continue.
+   - Otherwise cut the branch: `doodlebot source --no-build --branch proto/<idea>`. It always
+     cuts from `upstream/<default>`, whatever the worktree was on. It refuses an existing
+     `proto/<idea>` branch: then ask the person for another `<idea>` name.
+   - The branch the session started on (an app-made `claude/...` branch) stays behind, unused.
+     Say so, and offer to delete it (`git -C <checkout> branch -D <it>`) only when it has no
+     commits of its own; never delete it without the person's yes.
+5. **Prepared.** Run `/doodlebot:source`'s procedure (`${CLAUDE_PLUGIN_ROOT}/skills/source/SKILL.md`)
    when the checkout is not installed and built: it takes minutes and several GB per worktree.
+
+## Before every `doodlebot down`
+
+Stop only a test Vortex **this session started**, by setup's ownership rule
+(`${CLAUDE_PLUGIN_ROOT}/skills/setup/SKILL.md`, "A running test Vortex"): read the instance
+record `~/.doodlebot/instance.json`; it is this session's only when its `sourceDir` is
+`<checkout>` and its `startedAt` is after this session's own `up`. When nothing is running,
+`down` is harmless. Otherwise another session started it, even from this checkout: never stop
+it. Wait for it to stop, or tell the person its pid, cache and build and ask them to stop it
+from the session that started it, and stop this round.
 
 ## The loop
 
@@ -67,7 +79,8 @@ Repeat until the person says it is enough. `<n>` counts the rounds from 1.
 
 1. **Change** Vortex's code for the idea, following the checkout's own rules. Keep the change as
    small as shows the idea; it is a sketch, not the feature.
-2. **Build.** Stop this session's test Vortex first (`doodlebot down`), then
+2. **Build.** Stop this session's test Vortex first (`doodlebot down`, after the check in
+   "Before every `doodlebot down`"), then
    `doodlebot build --checkout <checkout>` in the background with its log in
    `<workspace>/harness/.artifacts/runs/<UTC time>-build.log` ("Commands that block").
    A failed build is shown to the person with its first error; fix it and build again.
@@ -78,7 +91,7 @@ Repeat until the person says it is enough. `<n>` counts the rounds from 1.
    shows, and take screenshots at the sizes `${CLAUDE_PLUGIN_ROOT}/resources/testing.md` gives:
    `doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920x1080"`,
    plus `doodlebot screenshot --label <step>` at each moment worth showing. Copy them into the
-   run folder, then `doodlebot down`. Write the run report there.
+   run folder, then `doodlebot down` (after the same check). Write the run report there.
 4. **Show and ask.** Show the person the screenshots and what changed
    (`git -C <checkout> diff --stat`), say what worked and what did not, and ask what to change
    next, or whether it is enough.
@@ -132,7 +145,8 @@ mid-task: a missing capability is a kit gap, offered as doodlebot work afterward
 
 ## Branch and commit
 
-`proto/<idea>` in <checkout>, at <commit> (or "uncommitted"), from upstream/<default> at
+`proto/<idea>` in <checkout>, at <commit> (or "uncommitted"), from upstream/<default> (the
+name step 3 found) at
 <base commit>. Never shipped.
 
 ## Learned

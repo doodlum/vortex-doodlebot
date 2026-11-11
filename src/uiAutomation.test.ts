@@ -388,6 +388,26 @@ describe("ref lifecycle", () => {
     expect(resolveTarget({ ref: fresh }).getAttribute("aria-label")).toBe("Mod B");
   });
 
+  it("S3: refuses a held switch whose recycled row now shows another mod", () => {
+    const row = (mod: string) =>
+      `<tr><td>${mod}</td><td><button role="switch" aria-label="Enabled" aria-checked="true">` +
+      "</button><button>…</button></td></tr>";
+    setBody(`<table><tbody>${row("Mod A")}${row("Mod B")}</tbody></table>`);
+    const switches = () => flatten(snapshot().tree).filter((node) => node.role === "switch");
+    const [heldA, heldB] = switches().map((node) => node.ref);
+    // The controls are identical in every row; only the row tells them apart.
+    expect(heldA).not.toBe(heldB);
+    expect(switches().map((node) => node.ref)).toEqual([heldA, heldB]);
+    // The virtualised table scrolls: the first row element now shows Mod C, its switch untouched.
+    document.querySelector("td")!.textContent = "Mod C";
+    expect(() => resolveTarget({ ref: heldA! })).toThrow(
+      `The element for ref ${heldA!} now shows something else; take a new snapshot`,
+    );
+    expect(resolveTarget({ ref: heldB! }).closest("tr")?.textContent).toContain("Mod B");
+    const [freshA] = switches().map((node) => node.ref);
+    expect(freshA).not.toBe(heldA);
+  });
+
   it("refuses a held ref after its element is removed, even after another snapshot", () => {
     setBody("<button>Gone</button><button>Stays</button>");
     const held = snapshot().tree[0].ref;
@@ -677,6 +697,7 @@ describe("setViewport narrow widths", () => {
       configurable: true,
       get: () => Math.floor((windowSize[0] - 1) / zoom),
     });
+    delete (window as { __doodlebotKeptZoom?: unknown }).__doodlebotKeptZoom;
     setWebFrameForTests(frame);
   });
 
@@ -705,6 +726,18 @@ describe("setViewport narrow widths", () => {
     const reset = await setViewport({ width: 640, height: 720 }, { settleMs: 0, reset: true });
     expect(reset.emulated).toBe(false);
     expect(reset.zoomFactor).toBe(1.25);
+  });
+
+  it("zoom edge: an extension hot reload still restores the person's zoom", async () => {
+    await setViewport({ width: 640, height: 720 }, { settleMs: 0 });
+    expect(zoom).not.toBe(1.25);
+    // `doodlebot watch` reloads the extension: a fresh module in the same renderer.
+    vi.resetModules();
+    const reloaded = await import("./uiAutomation");
+    reloaded.setWebFrameForTests(frame);
+    expect((await reloaded.getViewport()).keptZoomFactor).toBe(1.25);
+    const normal = await reloaded.setViewport({ width: 1280, height: 720 }, { settleMs: 0 });
+    expect(normal.zoomFactor).toBe(1.25);
   });
 
   it("leaves the zoom alone at or above the minimum", async () => {

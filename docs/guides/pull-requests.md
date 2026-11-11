@@ -78,6 +78,10 @@ desktop app can show it, with its CI status, beside the session.
    it from your branch with `gh pr create`, as a draft unless you say otherwise. A pull request
    inside your fork lets you review the change there before it goes upstream.
 
+   Either way, the pull request's base is Nexus-Mods/Vortex's default branch name, normally
+   `master`, in your fork as well as upstream. It is never your fork's own default branch, which
+   can be another branch with work of its own (doodlum/Vortex's default branch is `linux`).
+
 8. In the Claude desktop app, the agent binds the pull request to the session if the app's PR
    bar did not pick it up. Whether the app can show a pull request opened against
    Nexus-Mods/Vortex from your fork is not yet established; the agent reports what happened.

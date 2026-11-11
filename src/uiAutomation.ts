@@ -80,17 +80,39 @@ function win(): Window {
  * later snapshots: `install`'s dialog watchers snapshot concurrently, and a ref
  * the agent holds must survive them.
  *
- * "Unchanged" is a fingerprint, the role and accessible name taken when the ref
- * was issued. This matters in Vortex: most of its lists are virtualised, so the
- * element behind a row is recycled in place as the user scrolls. Resolving a ref
- * whose element now shows something else is refused, never silently redirected to
- * a different mod. A snapshot that finds a recycled element gives it a new ref;
- * ref strings are never reused.
+ * "Unchanged" is a fingerprint taken when the ref was issued: the role, the
+ * accessible name, and the row the element sits in (the closest `[role=row]` or
+ * `<tr>`: its accessible name, else a short hash of its text). This matters in
+ * Vortex: most of its lists are virtualised, so the element behind a row is
+ * recycled in place as the user scrolls, and a row's controls (its enable switch,
+ * its "..." button) have the same role and name in every row. Resolving a ref
+ * whose element now shows something else, or sits in a row showing another mod,
+ * is refused, never silently redirected. A snapshot that finds a recycled element
+ * gives it a new ref; ref strings are never reused.
  */
 interface RefFingerprint {
   ref: string;
   role: string;
   name: string;
+  row: string;
+}
+
+/** FNV-1a, as 8 hex digits: enough to tell two rows' texts apart. */
+function shortHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** The row context of an element: its row's accessible name, else a hash of the row's text. */
+export function rowContext(el: Element): string {
+  const row = el.closest('[role="row"], tr');
+  if (row === null) return "";
+  const name = accessibleName(row);
+  return name !== "" ? `name:${name}` : `text:${shortHash(textOf(row))}`;
 }
 const fingerprints = new WeakMap<Element, RefFingerprint>();
 const refTable = new Map<string, Element>();
@@ -108,14 +130,15 @@ function beginRefGeneration(): void {
 
 function assignRef(el: Element, role: string, name: string): string {
   const known = fingerprints.get(el);
-  if (known !== undefined && known.role === role && known.name === name) {
+  const row = rowContext(el);
+  if (known !== undefined && known.role === role && known.name === name && known.row === row) {
     refTable.set(known.ref, el);
     return known.ref;
   }
   if (known !== undefined) refTable.delete(known.ref);
   refCounter += 1;
   const ref = `e${String(refCounter)}-${refSession}`;
-  fingerprints.set(el, { ref, role, name });
+  fingerprints.set(el, { ref, role, name, row });
   refTable.set(ref, el);
   return ref;
 }
@@ -144,7 +167,8 @@ export function resolveTarget(target: { ref?: string; selector?: string }): Elem
       known === undefined ||
       known.ref !== target.ref ||
       known.role !== roleOf(el) ||
-      known.name !== accessibleName(el)
+      known.name !== accessibleName(el) ||
+      known.row !== rowContext(el)
     ) {
       throw new Error(
         `The element for ref ${target.ref} now shows something else; take a new snapshot.`,
@@ -1101,10 +1125,12 @@ export interface WebFrameLike {
 
 let webFrameOverride: WebFrameLike | null | undefined;
 
-/** Tests only: substitute Electron's `webFrame` (null means unavailable, undefined restores). */
+/**
+ * Tests only: substitute Electron's `webFrame` (null means unavailable, undefined restores).
+ * The kept zoom on `window` is left alone, as a hot reload leaves it.
+ */
 export function setWebFrameForTests(frame: WebFrameLike | null | undefined): void {
   webFrameOverride = frame;
-  narrowZoom = undefined;
 }
 
 /**
@@ -1126,9 +1152,25 @@ function webFrame(): WebFrameLike | undefined {
 /**
  * The person's own zoom factor, kept while a narrow width is emulated by zoom. Read
  * once, when no narrow zoom is active, so a second narrow call can't keep the
- * emulated factor as the person's.
+ * emulated factor as the person's. It lives on `window`, not in this module: an
+ * extension hot reload (`doodlebot watch`) loads a fresh module into the same
+ * renderer, whose zoom is still the emulated one, and must still restore the
+ * person's factor.
  */
-let narrowZoom: { kept: number } | undefined;
+const KEPT_ZOOM = "__doodlebotKeptZoom";
+type KeptZoomWindow = { [KEPT_ZOOM]?: unknown };
+
+function keptZoom(): number | undefined {
+  const value = (globalThis as { window?: KeptZoomWindow }).window?.[KEPT_ZOOM];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function setKeptZoom(factor: number | undefined): void {
+  const w = (globalThis as { window?: KeptZoomWindow }).window;
+  if (w === undefined) return;
+  if (factor === undefined) delete w[KEPT_ZOOM];
+  else w[KEPT_ZOOM] = factor;
+}
 
 export async function getViewport(): Promise<{
   window: Viewport;
@@ -1144,7 +1186,7 @@ export async function getViewport(): Promise<{
     inner: { width: win().innerWidth, height: win().innerHeight },
     devicePixelRatio: win().devicePixelRatio,
     zoomFactor: webFrame()?.getZoomFactor() ?? null,
-    keptZoomFactor: narrowZoom?.kept ?? null,
+    keptZoomFactor: keptZoom() ?? null,
   };
 }
 
@@ -1185,9 +1227,10 @@ export async function setViewport(
   const frame = webFrame();
 
   const restoreZoom = async (): Promise<void> => {
-    if (narrowZoom === undefined) return;
-    frame?.setZoomFactor(narrowZoom.kept);
-    narrowZoom = undefined;
+    const kept = keptZoom();
+    if (kept === undefined) return;
+    frame?.setZoomFactor(kept);
+    setKeptZoom(undefined);
     await sleep(settleMs);
   };
 
@@ -1227,14 +1270,15 @@ export async function setViewport(
 
   // Measure at the person's own factor: the factor comes from the measured width, since
   // fractional scaling rounds (1023 px at 1.6 gave 639, not 640).
-  const kept = narrowZoom?.kept ?? frame.getZoomFactor();
-  if (narrowZoom !== undefined) {
+  const active = keptZoom();
+  const kept = active ?? frame.getZoomFactor();
+  if (active !== undefined) {
     frame.setZoomFactor(kept);
     await sleep(settleMs);
   }
   const innerAtKept = win().innerWidth;
   frame.setZoomFactor((kept * innerAtKept) / viewport.width);
-  narrowZoom = { kept };
+  setKeptZoom(kept);
   await sleep(settleMs);
   return result(true);
 }

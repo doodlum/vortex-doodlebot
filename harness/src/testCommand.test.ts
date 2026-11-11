@@ -1,12 +1,17 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { SUITE_CHECKOUT_ENV } from "./config";
 
 import { parseArgs } from "./cliArgs";
 import { REPO_ROOT } from "./paths";
 import { tsxCli } from "./processRunner";
+import { STALE_OK_ENV, checkoutBuildIdentity, writeBuildRecord } from "./productionMode";
 import { SUITES, UnknownSuiteError, suiteCommand, testCommand } from "./testCommand";
 
 const playwrightCli = createRequire(import.meta.url).resolve("@playwright/test/cli");
@@ -116,16 +121,106 @@ describe("doodlebot test", () => {
     ).rejects.toThrow(/Release 2\.9\.0 is not registered; run `doodlebot release get 2\.9\.0`/);
   });
 
-  it("--dev-dir before the suite makes that checkout the suite's session checkout", async () => {
-    const run = vi.fn(async () => 0);
-    const checkout = path.resolve("/vortex/worktree");
-    await testCommand(["core"], { "dev-dir": checkout }, [], { run });
-    expect(run).toHaveBeenCalledWith(
-      process.execPath,
-      [playwrightCli, "test", "--config", "harness/playwright.config.ts"],
-      { cwd: REPO_ROOT, env: { ...process.env, INIT_CWD: checkout } },
-    );
-  });
+  describe(
+    "S2: a source checkout is resolved and checked before the suite starts",
+    { timeout: 60_000 },
+    () => {
+      let root: string;
+      const git = (cwd: string, ...args: string[]): string =>
+        execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true }).trim();
+      /** A Vortex checkout; built means electron resolves, the outputs exist and a record matches. */
+      const vortexRepo = (dir: string, built: boolean): string => {
+        fs.mkdirSync(path.join(dir, "src", "main"), { recursive: true });
+        git(dir, "init", "-q", "-b", "master");
+        fs.writeFileSync(path.join(dir, "package.json"), '{"name":"@vortex/monorepo"}');
+        fs.writeFileSync(path.join(dir, "src", "main", "package.json"), '{"name":"@vortex/main"}');
+        fs.writeFileSync(path.join(dir, ".gitignore"), "node_modules/\nsrc/main/build/\n");
+        git(dir, "add", "-A");
+        git(dir, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qm", "init");
+        if (!built) return dir;
+        const electron = path.join(dir, "node_modules", "electron");
+        fs.mkdirSync(electron, { recursive: true });
+        fs.writeFileSync(
+          path.join(electron, "package.json"),
+          '{"name":"electron","main":"index.js"}',
+        );
+        fs.writeFileSync(path.join(electron, "index.js"), "module.exports = 'electron.exe';\n");
+        fs.mkdirSync(path.join(dir, "src", "main", "build"), { recursive: true });
+        for (const file of ["main.cjs", "renderer.js"])
+          fs.writeFileSync(path.join(dir, "src", "main", "build", file), "built");
+        writeBuildRecord(dir, checkoutBuildIdentity(dir)!, "development");
+        return dir;
+      };
+      const suiteArgs = [playwrightCli, "test", "--config", "harness/playwright.config.ts"];
+      beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), "test-command-"));
+        vi.stubEnv("VORTEX_AI_INSTALLED", "");
+        vi.stubEnv("VORTEX_AI_PRODUCTION", "");
+      });
+      afterEach(() => {
+        vi.unstubAllEnvs();
+        fs.rmSync(root, { recursive: true, force: true });
+      });
+
+      it("names a built --dev-dir to the suite explicitly", async () => {
+        const run = vi.fn(async () => 0);
+        const checkout = vortexRepo(path.join(root, "vortex"), true);
+        await testCommand(["core"], { "dev-dir": checkout }, [], { run, cwd: root });
+        expect(run).toHaveBeenCalledWith(process.execPath, suiteArgs, {
+          cwd: REPO_ROOT,
+          env: { ...process.env, [SUITE_CHECKOUT_ENV]: checkout },
+        });
+      });
+
+      it("refuses a --dev-dir that is not a checkout, and an unbuilt session checkout", async () => {
+        const run = vi.fn(async () => 0);
+        const plain = path.join(root, "plain");
+        fs.mkdirSync(plain);
+        await expect(
+          testCommand(["core"], { "dev-dir": plain }, [], { run, cwd: root }),
+        ).rejects.toThrow(`--dev-dir ${plain} is not a built Vortex checkout`);
+        const unbuilt = vortexRepo(path.join(root, "unbuilt"), false);
+        await expect(testCommand(["core"], {}, [], { run, cwd: unbuilt })).rejects.toThrow(
+          /This session's checkout .* is not built/,
+        );
+        expect(run).not.toHaveBeenCalled();
+      });
+
+      it("refuses a stale build unless --stale-ok, which is the kit's and passes on as a variable", async () => {
+        const run = vi.fn(async () => 0);
+        const checkout = vortexRepo(path.join(root, "vortex"), true);
+        fs.writeFileSync(path.join(checkout, "src", "main", "package.json"), '{"changed":1}');
+        await expect(testCommand(["core"], {}, [], { run, cwd: checkout })).rejects.toThrow(
+          /The build is from .* and the checkout has changed since/,
+        );
+        expect(run).not.toHaveBeenCalled();
+        const lines: string[] = [];
+        await testCommand(["core"], {}, ["--stale-ok", "--grep", "x"], {
+          run,
+          cwd: checkout,
+          write: (line) => lines.push(line),
+        });
+        expect(lines.join("\n")).toMatch(/^warning: launching a stale build \(--stale-ok\)/);
+        expect(run).toHaveBeenCalledWith(process.execPath, [...suiteArgs, "--grep", "x"], {
+          cwd: REPO_ROOT,
+          env: expect.objectContaining({
+            [SUITE_CHECKOUT_ENV]: expect.any(String),
+            [STALE_OK_ENV]: "1",
+          }),
+        });
+      });
+
+      it("refuses a build missing an output before the suite starts", async () => {
+        const run = vi.fn(async () => 0);
+        const checkout = vortexRepo(path.join(root, "vortex"), true);
+        fs.rmSync(path.join(checkout, "src", "main", "build", "renderer.js"));
+        await expect(
+          testCommand(["core"], { "dev-dir": checkout }, [], { run, cwd: root }),
+        ).rejects.toThrow(/is not fully built: src\/main\/build lacks renderer\.js/);
+        expect(run).not.toHaveBeenCalled();
+      });
+    },
+  );
 
   it("runs the suite from the workspace root with this process's environment", async () => {
     const run = vi.fn(async () => 7);

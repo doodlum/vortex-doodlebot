@@ -90,25 +90,29 @@ const CHECKOUT_TERMS = [
   ["VORTEX_AI", "DEV_DIR"].join("_"),
 ];
 /**
- * Designs record the history. `.gitignore` keeps an old clone out of `git status`; `check` and
- * `clean` (checkCommand.ts, diskUse.ts) still recognise one. The config and evidence tests assert
- * that a leftover variable is ignored.
+ * Designs record the history. `.gitignore` keeps an old clone out of `git status`. The config and
+ * evidence tests assert that a leftover variable is ignored.
  */
 const CHECKOUT_EXEMPT = new Set([
   ".gitignore",
-  "harness/src/checkCommand.ts",
-  "harness/src/checkCommand.test.ts",
-  "harness/src/diskUse.ts",
-  "harness/src/diskUse.test.ts",
   "harness/src/config.test.ts",
   "harness/src/evidence.test.ts",
 ]);
+/**
+ * The one line of code that may name the old clone: its path constant, which `check` imports to
+ * report it and `clean` imports to refuse it.
+ */
+const OLD_CLONE_LINE = {
+  file: "harness/src/paths.ts",
+  line: `export const OLD_CLONE_DIR = path.join(REPO_ROOT, "${CHECKOUT_TERMS[0]!}");`,
+};
 
 /** `file:line: term` for each retired checkout term in a file outside the exemptions. */
 function checkoutTermHits(file: string, text: string): string[] {
   if (file.startsWith("designs/") || CHECKOUT_EXEMPT.has(file)) return [];
   const hits: string[] = [];
   text.split(/\r?\n/).forEach((line, index) => {
+    if (file === OLD_CLONE_LINE.file && line === OLD_CLONE_LINE.line) return;
     for (const term of CHECKOUT_TERMS)
       if (line.includes(term)) hits.push(`${file}:${String(index + 1)}: ${term}`);
   });
@@ -198,8 +202,19 @@ describe("the agent companion", () => {
       `plugins/doodlebot/skills/try/SKILL.md:1: ${CHECKOUT_TERMS[2]!}`,
     ]);
     expect(checkoutTermHits("harness/src/config.ts", CHECKOUT_TERMS[1]!)).toHaveLength(1);
-    for (const exempt of ["designs/vortex-checkout.md", ".gitignore", "harness/src/diskUse.ts"])
+    for (const exempt of ["designs/vortex-checkout.md", ".gitignore", "harness/src/config.test.ts"])
       expect(checkoutTermHits(exempt, planted)).toEqual([]);
+    // T7: the code that recognises the old clone is not exempt as a whole file: only the one
+    // constant is, and a mention anywhere else in paths.ts, check or clean still fails.
+    const constant = `export const OLD_CLONE_DIR = path.join(REPO_ROOT, "${clone}");`;
+    expect(checkoutTermHits("harness/src/paths.ts", constant)).toEqual([]);
+    expect(checkoutTermHits("harness/src/paths.ts", `${constant}\n// ${clone}`)).toEqual([
+      `harness/src/paths.ts:2: ${clone}`,
+    ]);
+    for (const file of ["harness/src/diskUse.ts", "harness/src/checkCommand.ts"]) {
+      expect(checkoutTermHits(file, planted)).toHaveLength(1);
+      expect(checkoutTermHits(file, constant)).toHaveLength(1);
+    }
   });
 
   it("keeps removed files and package scripts removed", () => {

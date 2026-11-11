@@ -57,8 +57,7 @@ import {
   userFolderRoots,
   userFoldersOf,
 } from "./userFolders";
-import { checkBuildRecord } from "./productionMode";
-import { missingBuildOutputs } from "./source";
+import { STALE_OK_ENV, checkSourceBuild, launchMode } from "./productionMode";
 
 /**
  * Bumped when a change here makes previously-cached snapshots wrong (a different
@@ -244,22 +243,13 @@ export async function bootstrap(
   } else if (apiKey === ANONYMOUS)
     report("no API key configured; cached OAuth is restored automatically when available");
 
-  const checkout = config.target.kind === "dev" ? config.target.sourceDir : undefined;
-  const missing = checkout === undefined ? [] : missingBuildOutputs(checkout);
-  if (missing.length > 0)
-    throw new ConfigError(
-      `${checkout!} is not fully built: src/main/build lacks ${missing.join(", ")}. Vortex would ` +
-        `start and then fail at the first install. Build it: \`doodlebot build --checkout ${checkout!}\`` +
-        ` (or \`node build.mjs\` in its src/main).`,
-    );
-  // A stale build never runs silently (design 4.6): the checkout must still be what was built.
-  if (checkout !== undefined) {
-    const record = checkBuildRecord(checkout);
-    if (record.status === "stale") {
-      if (options.staleOk !== true) throw new ConfigError(record.message);
-      report(`warning: launching a stale build (--stale-ok): ${record.message}`);
-    } else if (record.status === "none") report(`warning: ${record.message}`);
-  }
+  // A source build launches only when built, and only as built (design 4.6).
+  if (config.target.kind === "dev" && config.target.sourceDir !== undefined)
+    checkSourceBuild(config.target.sourceDir, {
+      staleOk: options.staleOk === true || process.env[STALE_OK_ENV] === "1",
+      mode: launchMode(config.production),
+      report,
+    });
 
   fs.mkdirSync(config.cacheDir, { recursive: true });
   // A shared-login cache uses ~/.doodlebot/login directly; an older workspace's login moves there
@@ -369,9 +359,21 @@ async function launchProfile(
     removeInstanceDir(snapshot);
   }
 
+  // The disposable game keeps the files an earlier profile deployed. A fresh profile knows of no
+  // deployment, so Vortex asks "Purge files from different instance?" and the game never becomes
+  // active: the game folder is emptied before every fresh profile, the baseline's included.
+  const resetGame = (when: string): void => {
+    if (
+      options.preserveGameFixture !== true &&
+      resetDisposableGameData(config, isBethesdaSandbox(config) ? { keep: ["Fallout4.esm"] } : {})
+    )
+      report(`cleared the disposable game's deployed files ${when}`);
+  };
+
   const cold = !isUsableSnapshot(snapshot, apiKey, config.gameId);
   if (cold) {
     report("no usable snapshot — running a cold bootstrap (this happens once)");
+    resetGame("before building the baseline");
     await buildSnapshot(config, apiKey, snapshot, options);
     // The live dir was produced from an older snapshot; it must not survive.
     removeInstanceDir(live);
@@ -398,12 +400,7 @@ async function launchProfile(
     removeInstanceDir(live);
     fs.cpSync(snapshot, live, { recursive: true });
     // The reset profile has deployed nothing, so neither may its disposable game.
-    if (
-      options.preserveGameFixture !== true &&
-      resetDisposableGameData(config, isBethesdaSandbox(config) ? { keep: ["Fallout4.esm"] } : {})
-    ) {
-      report("cleared the disposable game's deployed files");
-    }
+    resetGame("for the reset profile");
   }
 
   // Both are idempotent, and both matter on the warm path, which does not go

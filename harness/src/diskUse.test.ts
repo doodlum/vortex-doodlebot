@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { markerFile } from "./bootstrap";
 import { updateContent } from "./content";
-import { MB, cleanCommand, planClean, type CleanDeps } from "./diskUse";
+import { MB, applyClean, cleanCommand, planClean, type CleanDeps } from "./diskUse";
 import type { InstanceRecord } from "./runningVortex";
 
 let root: string;
@@ -15,7 +15,6 @@ let deps: CleanDeps & {
   cacheDir: string;
   releasesDir: string;
   contentFile: string;
-  oldClone: string;
 };
 let running: InstanceRecord | undefined;
 const NOW = new Date("2026-11-10T12:00:00.000Z");
@@ -45,8 +44,6 @@ beforeEach(() => {
     cacheDir: path.join(root, "cache"),
     releasesDir: path.join(root, "releases"),
     contentFile: path.join(root, "content.json"),
-    // Never the workspace's own: a clean --yes here would delete it.
-    oldClone: path.join(root, "workspace", ".vortex-src"),
     now: () => NOW,
     running: () => running,
   };
@@ -173,32 +170,23 @@ describe("clean", () => {
     ]);
   });
 
-  it("lists the old managed clone whatever its age, and deletes it only with --yes", () => {
-    const file = write(path.join(deps.oldClone, "src", "main", "package.json"), 2048);
-    expect(planClean(30, deps)).toEqual([
-      expect.objectContaining({
-        path: deps.oldClone,
-        kind: "old-clone",
-        reason: expect.stringContaining("old managed clone (no longer used)"),
-      }),
-    ]);
-    expect(cleanCommand({}, deps).text).toContain("Nothing was deleted.");
+  it("never deletes a Vortex clone: an old workspace clone is not listed, and a git folder is refused", () => {
+    // Before this fix, clean listed the old clone (passed as `oldClone`) and --yes deleted it.
+    const oldClone = path.join(root, "workspace", "old-clone");
+    const file = write(path.join(oldClone, "src", "main", "package.json"), 2048);
+    write(path.join(oldClone, ".git", "HEAD"), "ref: refs/heads/master\n");
+    const withClone = { ...deps, oldClone } as CleanDeps;
+    expect(planClean(0, withClone)).toEqual([]);
+    expect(cleanCommand({ yes: true }, withClone).text).toBe(
+      "Nothing to clean (older than 30 days).",
+    );
     expect(fs.existsSync(file)).toBe(true);
-    // A harness Vortex running from it keeps it.
-    running = {
-      pid: 1,
-      startedAt: NOW.toISOString(),
-      cacheDir: path.join(root, "other-cache"),
-      userDataDir: path.join(root, "other-cache", "live"),
-      mcpPort: 3701,
-      sourceDir: deps.oldClone,
-    };
-    expect(planClean(30, deps)).toEqual([]);
-    running = undefined;
-    expect(cleanCommand({ yes: true }, deps).text).toContain("Deleted 1 item(s).");
-    expect(fs.existsSync(deps.oldClone)).toBe(false);
+    // Even a planned item that is a checkout is refused at delete time.
+    expect(() =>
+      applyClean([{ path: oldClone, kind: "release", bytes: 0, reason: "x" }], deps),
+    ).toThrow(/a git checkout/);
+    expect(fs.existsSync(file)).toBe(true);
   });
-
   it("refuses a bad --older-than and reports nothing to clean", () => {
     expect(() => cleanCommand({ "older-than": "soon" }, deps)).toThrow(/--older-than/);
     expect(cleanCommand({ "older-than": "7" }, deps).text).toBe(

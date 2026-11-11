@@ -94,7 +94,7 @@ color or fidelity.
 ## Rules
 
 - **Never assert on a doodlebot `ref` in a Vortex test.** A ref names an element only while it
-  shows the same role and name; a test asserts on what the element shows.
+  shows the same role and name in the same row; a test asserts on what the element shows.
 - **Assert a direction, not an exact number,** for anything the OS clamps (window sizes).
 - **Do not silently skip a criterion.** Report an unavoidable external blocker separately.
 - **Wheel and focus:** a native wheel needs real input (`realWheel()` in the harness);

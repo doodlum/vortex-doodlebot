@@ -1356,7 +1356,7 @@ const uiTargetSchema = {
     .describe(
       "Element ref from a ui_snapshot (e.g. 'e42-1a2b3c4d'). A ref stays valid, across later " +
         "snapshots, while its element is connected and still shows the same role and accessible " +
-        "name; otherwise it throws rather than silently resolving to a different element, which " +
+        "name in the same table row; otherwise it throws rather than silently resolving to a different element, which " +
         "matters because Vortex's mod/plugin tables are virtualised and recycle rows in place.",
     ),
   selector: z
@@ -1391,7 +1391,8 @@ function registerUiReadTools(server: McpServer, api: IExtensionApi): void {
         "check it first when a click appears to do nothing, since a modal is the most common " +
         "reason. A ref stays valid across later snapshots (including concurrent ones, such as " +
         "install's dialog watchers) while its element is connected and shows the same role and " +
-        "accessible name. A recycled element is refused with 'The element for ref <r> now shows " +
+        "accessible name in the same row (a row's switch or '...' button is told apart by its " +
+        "row). A recycled element is refused with 'The element for ref <r> now shows " +
         "something else; take a new snapshot', and a snapshot gives it a new ref; ref strings " +
         "are never reused.",
       inputSchema: z.object({

@@ -17,7 +17,7 @@ import {
   NEEDS_CHECKOUT,
   extensionRoot,
   findInstalledVortex,
-  sessionCheckout,
+  vortexCheckoutOf,
   type HarnessConfig,
 } from "./config";
 import { KNOWN_GAMES, findGamePath, steamLibraryRoots } from "./gameSetup";
@@ -27,6 +27,7 @@ import { authCacheFile } from "./instance";
 import { checkLoginAcl, loginState, usesSharedLogin } from "./login";
 import { SEVEN_ZIP_HINT, find7Zip } from "./releaseFetch";
 import { readContent } from "./content";
+import { pnpmOverrideProblem } from "./source";
 
 export interface Check {
   name: string;
@@ -63,7 +64,7 @@ export async function runDoctor(
 
   checks.push(checkApiKey(config));
   checks.push(
-    checkoutCheck("checkout" in options ? options.checkout : sessionCheckout(callerCwd())),
+    checkoutCheck("checkout" in options ? options.checkout : vortexCheckoutOf(callerCwd())),
   );
   checks.push(
     options.targetError === undefined ? checkVortex(config) : targetFailure(options.targetError),
@@ -75,6 +76,8 @@ export async function runDoctor(
   checks.push(checkCapturedLogin(config));
   checks.push(checkLoginFolder(path.join(options.homeDir ?? os.homedir(), ".doodlebot", "login")));
   checks.push(checkSevenZip());
+  const pnpm = checkPnpmOverride();
+  if (pnpm !== undefined) checks.push(pnpm);
   const lease = checkLegacyLeaseStore(options.homeDir ?? os.homedir());
   if (lease !== undefined) checks.push(lease);
   checks.push(await checkRunning(config));
@@ -110,6 +113,27 @@ function checkSandboxBaseline(config: HarnessConfig, skipGame: boolean): Check {
     detail: present ? `present: ${markerFile(snapshot)}` : "missing",
     fix: `doodlebot up ${skipGame ? "--no-game" : "--sandbox"} (the first start builds it), then doodlebot down`,
   };
+}
+
+/**
+ * `VORTEX_AI_PNPM`, only when it is set: a path that names no file is a failing check with the
+ * fix, since `source` and `build` refuse it (otherwise only "The system cannot find the path
+ * specified" said so).
+ */
+export function checkPnpmOverride(
+  override: string | undefined = process.env.VORTEX_AI_PNPM,
+  exists?: (file: string) => boolean,
+): Check | undefined {
+  if (override === undefined || override.trim() === "") return undefined;
+  const problem = pnpmOverrideProblem(override, exists);
+  return problem === undefined
+    ? { name: "VORTEX_AI_PNPM", ok: true, detail: override.trim() }
+    : {
+        name: "VORTEX_AI_PNPM",
+        ok: false,
+        detail: problem,
+        fix: "Fix or remove the VORTEX_AI_PNPM line in harness/.env (or the environment)",
+      };
 }
 
 /** 7-Zip, which `release get` needs to extract a release without running its installer. */

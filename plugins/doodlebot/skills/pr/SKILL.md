@@ -47,8 +47,9 @@ passed on the change.
      a docs/designs file here fails the preflight.
 2. **Stop the test Vortex** if this session runs one from that checkout: `doodlebot down`.
 3. **Preflight**, with the revert check:
-   `doodlebot pr-preflight --checkout <checkout> --base upstream/master --test <test> --revert <file>`.
-   It prints PASS, WARN, FAIL or SKIP per check and exits 1 on a FAIL or INCONCLUSIVE.
+   `doodlebot pr-preflight --checkout <checkout> --test <test> --revert <file>`.
+   Leave `--base` out: the default, the merge-base with upstream's default branch, is the right
+   base. It prints PASS, WARN, FAIL or SKIP per check and exits 1 on a FAIL or INCONCLUSIVE.
    - **Design kept out** FAILs when any docs/designs file is in the diff or in a commit of the
      branch. Move it to `designs/<topic>` and drop it from the branch (ask before rewriting
      history).
@@ -81,8 +82,14 @@ passed on the change.
    2. **Ask where the PR goes:** "Open the pull request in your fork (<fork>), or against
       Nexus-Mods/Vortex?" A PR inside the fork reviews the change before it goes upstream.
    3. **Open it from the session's branch**, as a draft unless the person says otherwise:
-      `gh pr create --repo <fork or Nexus-Mods/Vortex> --base <its default branch> --head <fork owner>:<branch> --draft --title <title> --body-file <description>`
+      `gh pr create --repo <fork or Nexus-Mods/Vortex> --base <upstream default> --head <fork owner>:<branch> --draft --title <title> --body-file <description>`
       (without `--draft` only when they say so).
+      - `<upstream default>` is **Nexus-Mods/Vortex's default branch name**, normally `master`:
+        `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` without the
+        `upstream/` prefix. Use it in both cases, a PR in the fork and one against
+        Nexus-Mods/Vortex. Never use the fork's own default branch: a fork's default can be
+        another branch entirely (doodlum/Vortex's is `linux`), and a PR against it would carry
+        that branch's work.
    4. **On Claude desktop, bind it.** When the app's PR tools are available and the PR bar did
       not pick the PR up, bind it to this session with them (`bind_pr`, given the PR's URL), so the app shows its CI status and Auto-fix. A PR into the fork binds, because the
       fork is `origin`; whether one into Nexus-Mods/Vortex binds is not established: report

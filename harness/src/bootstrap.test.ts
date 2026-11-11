@@ -486,6 +486,30 @@ describe("real copied game preservation", () => {
   );
 });
 
+describe("live-A: a cold bootstrap's disposable game", () => {
+  it("is emptied before the baseline is built, not only after", async () => {
+    const config = fakeConfig();
+    config.gamePath = path.join(config.cacheDir, "game");
+    const deployed = path.join(config.gamePath, "Data", "from-an-earlier-profile.esp");
+    fs.mkdirSync(path.dirname(deployed), { recursive: true });
+    fs.writeFileSync(deployed, "deployed by a profile this baseline never knew");
+    fs.writeFileSync(authCacheFile(config), "null");
+    const seenAtColdLaunch: boolean[] = [];
+    const normalLaunch = vi.mocked(launchVortex).getMockImplementation()!;
+    vi.mocked(launchVortex).mockImplementationOnce(async (options) => {
+      seenAtColdLaunch.push(fs.existsSync(deployed));
+      return normalLaunch(options);
+    });
+    const progress: string[] = [];
+    const result = await bootstrap(config, { fresh: true, onProgress: (m) => progress.push(m) });
+    expect(seenAtColdLaunch).toEqual([false]);
+    expect(progress).toContain(
+      "cleared the disposable game's deployed files before building the baseline",
+    );
+    await result.instance.stop();
+  });
+});
+
 describe("captureLogin", () => {
   it("promotes the working directory and records that a login was captured", async () => {
     const config = fakeConfig();

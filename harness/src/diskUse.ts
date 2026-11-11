@@ -6,11 +6,11 @@
  * - in run, QA and benchmark folders under `harness/.artifacts` older than `--older-than` days
  *   (default 30), every file of 1 MB or more except `report.md`;
  * - under `harness/.cache`, baseline snapshots and nested caches not used for that long;
- * - releases in `~/.doodlebot/releases` that `content.json` no longer names;
- * - the old managed clone `<workspace>/.vortex-src`, which nothing uses any more (whatever its age).
+ * - releases in `~/.doodlebot/releases` that `content.json` no longer names.
  *
  * It never touches a registered game copy, any `oauth-*.json` or `login-*` folder, a pending
- * restore's backup, or the cache of the running harness Vortex.
+ * restore's backup, the cache of the running harness Vortex, or a Vortex clone: not the old
+ * workspace clone, and no folder holding a `.git` entry.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -23,8 +23,8 @@ import {
   CONTENT_FILE,
   DEFAULT_ARTIFACT_DIR,
   DEFAULT_CACHE_DIR,
+  OLD_CLONE_DIR,
   RELEASES_DIR,
-  REPO_ROOT,
   normalizedPath,
 } from "./paths";
 import { runningVortex, type InstanceRecord } from "./runningVortex";
@@ -41,7 +41,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface CleanItem {
   /** What is deleted: a folder or a file. */
   path: string;
-  kind: "evidence" | "cache" | "release" | "old-clone";
+  kind: "evidence" | "cache" | "release";
   bytes: number;
   reason: string;
   /** For evidence: the files deleted inside a kept folder (reports and small files stay). */
@@ -53,8 +53,6 @@ export interface CleanDeps {
   cacheDir?: string;
   releasesDir?: string;
   contentFile?: string;
-  /** The old managed clone (default `<workspace>/.vortex-src`). */
-  oldClone?: string;
   now?: () => Date;
   running?: () => InstanceRecord | undefined;
 }
@@ -91,6 +89,7 @@ function protectedPaths(deps: CleanDeps): { paths: string[]; why: string }[] {
   const content = readContent(deps.contentFile ?? CONTENT_FILE);
   const running = (deps.running ?? runningVortex)();
   return [
+    { paths: [OLD_CLONE_DIR], why: "a Vortex clone" },
     ...content.games.map((copy) => ({ paths: [copy.path], why: "a registered game copy" })),
     ...content.pendingRestores.map((pending) => ({
       paths: [pending.backupDir],
@@ -110,6 +109,9 @@ function protectedPaths(deps: CleanDeps): { paths: string[]; why: string }[] {
         ]),
   ];
 }
+
+/** A folder that is a git checkout or worktree (a `.git` folder or file inside it). */
+const holdsGit = (target: string): boolean => fs.existsSync(path.join(target, ".git"));
 
 const isLogin = (file: string): boolean =>
   /^(?:oauth-.*\.json|login-.*)$/i.test(path.basename(file));
@@ -242,20 +244,6 @@ function releaseItems(deps: CleanDeps, guards: { paths: string[]; why: string }[
     }));
 }
 
-/** The old managed clone, when it is there and no running Vortex uses it. */
-function oldCloneItems(deps: CleanDeps, guards: { paths: string[]; why: string }[]): CleanItem[] {
-  const dir = deps.oldClone ?? path.join(REPO_ROOT, ".vortex-src");
-  if (!fs.existsSync(dir) || protection(dir, guards) !== undefined) return [];
-  return [
-    {
-      path: dir,
-      kind: "old-clone",
-      bytes: folderBytes(dir) ?? 0,
-      reason: "old managed clone (no longer used); a branch with unpushed work goes with it",
-    },
-  ];
-}
-
 /** What `clean` would delete. */
 export function planClean(olderThanDays: number, deps: CleanDeps = {}): CleanItem[] {
   if (!Number.isFinite(olderThanDays) || olderThanDays < 0)
@@ -266,7 +254,6 @@ export function planClean(olderThanDays: number, deps: CleanDeps = {}): CleanIte
     ...evidenceItems(deps, cutoff, guards),
     ...cacheItems(deps, cutoff, guards),
     ...releaseItems(deps, guards),
-    ...oldCloneItems(deps, guards),
   ];
 }
 
@@ -275,9 +262,11 @@ export function applyClean(items: CleanItem[], deps: CleanDeps = {}): void {
   const guards = protectedPaths(deps);
   for (const item of items) {
     for (const target of item.files ?? [item.path]) {
-      const why = protection(target, guards);
-      if (why !== undefined || isLogin(target))
-        throw new ConfigError(`Refusing to delete ${target}: ${why ?? "a login"}.`);
+      const why =
+        protection(target, guards) ??
+        (isLogin(target) ? "a login" : undefined) ??
+        (holdsGit(target) ? "a git checkout" : undefined);
+      if (why !== undefined) throw new ConfigError(`Refusing to delete ${target}: ${why}.`);
       fs.rmSync(target, { recursive: true, force: true });
     }
   }

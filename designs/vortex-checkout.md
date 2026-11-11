@@ -82,7 +82,12 @@ callerCwd() })`.
 - **`VORTEX_AI_DEV_DIR` is removed.** A value left over from the old worktree advice would
   quietly send commands to another tree. Its two internal users change:
   - `evidence run --runtime` (`evidence.ts` set it for its child) passes `--dev-dir <checkout>`
-    and runs the child from the checkout, with `INIT_CWD` set to it;
+    to a doodlebot child, the one mechanism (review: `INIT_CWD` is no longer rewritten);
+  - `doodlebot test` resolves the checkout (`--dev-dir`, else the session's) itself, refuses an
+    unbuilt or non-Vortex one and a stale build (unless `--stale-ok`) before the suite starts,
+    and names it to the suite explicitly (`DOODLEBOT_SUITE_CHECKOUT`), which the suite's
+    `loadConfig` treats as `--dev-dir`. An unbuilt session checkout is never swapped for the
+    installed Vortex, by any resolver;
   - the measure skill builds each side with `--dev-dir`.
 
   The messages in `doctor.ts` and `config.ts` that name the variable are reworded.
@@ -98,8 +103,10 @@ callerCwd() })`.
   - `doctor`'s "Vortex source" row, which becomes "This checkout";
   - `.gitignore` keeps `.vortex-src/`, so an existing user's old clone doesn't appear in
     doodlebot's `git status`.
-  - `check` reports an old `.vortex-src` as `advisory: old managed clone (no longer used)` with
-    the size. `clean` removes it only with `--yes`, after the person agrees.
+  - `check` reports an old `.vortex-src` as advisory: "Your Vortex clone from an older
+    doodlebot (<path>, <n> worktrees): open Claude in it or one of its worktrees", with no
+    delete offer. **Doodlebot never deletes a Vortex clone** (review S1: it can hold worktrees
+    and unpushed work): `clean` doesn't list it, and refuses it and any folder holding `.git`.
 - **The QA catalogue:** `qa check`'s spec diff and `vortexE2e.commit` read the session's
   checkout. With none, `qa check` validates the entries, skips the spec diff and says so.
 
@@ -186,11 +193,15 @@ A Vortex session reads Vortex's `CLAUDE.md` and `AGENTS.md`, not doodlebot's. So
   is never ambiguous.
 - **`doodlebot design-branch <topic> --file <draft>`:**
   1. creates or updates `designs/<topic>` from the session branch's upstream base, in a
-     temporary worktree. It reuses `prPush.ts`'s temp-worktree code; the session's checkout
-     never switches;
+     temporary worktree. It reuses `prPush.ts`'s temp-worktree code (which removes only its own
+     worktree, never `git worktree prune`); the session's checkout never switches. It fetches
+     the fork's `designs/<topic>` first and builds on the newer of the local branch and
+     `origin/designs/<topic>`, refusing diverged copies, and refuses while another worktree has
+     `designs/<topic>` checked out;
   2. copies the draft from `.doodlebot/egm/` to `docs/designs/<topic>.md` and commits it as
      `docs(design): <topic>`;
-  3. pushes it to the fork after the push check;
+  3. pushes the commit to the fork after the push check, and moves the local branch only once
+     the push succeeded, so it is never left moved but not pushed;
   4. prints the link at the commit: `<fork>/blob/<sha>/docs/designs/<topic>.md`.
 
   The approved revision is the commit the person approved. The PR description links that SHA.
@@ -220,7 +231,8 @@ A Vortex session reads Vortex's `CLAUDE.md` and `AGENTS.md`, not doodlebot's. So
   - `HEAD`;
   - a hash of the working-tree changes, tracked and untracked (`git ls-files --cached --others
 --exclude-standard`, reusing `evidence.ts`'s identity code);
-  - the build mode.
+  - the build mode, compared too: a launch wants a development build, `--production` a
+    production one, and the other mode is stale with that reason.
 
   File times are not used: `git switch` and worktree creation rewrite them.
 
@@ -233,7 +245,8 @@ A Vortex session reads Vortex's `CLAUDE.md` and `AGENTS.md`, not doodlebot's. So
   - **No record** (a build not made by `doodlebot build`): a warning, not a refusal.
   - **`--stale-ok`** (a boolean flag) launches anyway and says so in the run report.
 - **Callers:** `prototype` and `try` run `doodlebot build` before `up`, so their normal path
-  never hits the refusal.
+  never hits the refusal. `doodlebot test` makes the same check (missing outputs, then the
+  record) before a suite starts, with `--stale-ok` passed on to it.
 
 ### 4.7 `/doodlebot:prototype <idea>`
 
@@ -243,11 +256,14 @@ A ninth command, the owner's choice.
   1. On Claude desktop, the skill first asks the person to start a new worktree session
      (`proto/<idea>`) and run `/doodlebot:prototype` there. It never switches the branch of the
      owner's current checkout.
-  2. In the session's checkout, `prototype` refuses a dirty tree, and refuses a branch that is
-     not a new `proto/*` branch or the upstream default.
-  3. When the session is on the upstream default (a desktop worktree session opened on an
-     upstream base), `doodlebot source --branch proto/<idea>` cuts the branch. When it is already
-     on a new `proto/<idea>` branch with no commits beyond upstream, the step is skipped.
+  2. `prototype` refuses only in the main checkout or a dirty tree. In a clean worktree any
+     current branch is accepted (a desktop session starts on an app-named `claude/...` branch).
+  3. `doodlebot source --no-build --branch proto/<idea>` cuts the branch, always from
+     `upstream/<default>`, where `<default>` is computed from `refs/remotes/upstream/HEAD`, never
+     hard-coded. When it is already on a new `proto/<idea>` branch with no commits beyond
+     upstream, the step is skipped. Before any `down` it applies setup's ownership rule (the
+     instance record's `sourceDir` is this checkout and its `startedAt` is after this session's
+     launch); otherwise it waits or tells the person.
   4. `/doodlebot:source` prepares the checkout if needed. The cost is install and build.
 - **Loop,** until the person says it's enough:
   1. the agent changes Vortex's code for the idea;
@@ -283,7 +299,8 @@ A ninth command, the owner's choice.
     `Emulation.setDeviceMetricsOverride`, which ends when its session detaches.
   - It returns `{ requested, actual, zoomFactor, cssWidth, emulated, reason? }`.
   - **The person's own zoom is kept.** When no narrow zoom is active, it reads `getZoomFactor()`
-    and keeps it. A second narrow call doesn't overwrite the kept value.
+    and keeps it. A second narrow call doesn't overwrite the kept value. It is kept on `window`
+    (`__doodlebotKeptZoom`), not in the module, so an extension hot reload still restores it.
   - **The factor** is computed from the measured width: `kept × innerWidth at the kept factor /
 requestedWidth`. The spike's 1023 px at 1.6 gave 639, not 640.
   - Any later `ui_set_viewport` at or above the minimum, and `reset: true`, restore the kept
@@ -311,8 +328,11 @@ already in this branch).
 - **Reusing a ref per element is unsafe:** virtualised rows are recycled in place.
 - **The fix:**
   - a `WeakMap<Element, { ref, role, name }>` kept across generations;
-  - resolving a ref checks that the element is connected **and** that its role and accessible
-    name still match the fingerprint taken when the ref was issued;
+  - resolving a ref checks that the element is connected **and** that its role, accessible
+    name and row (the closest `[role=row]` or `<tr>`: its accessible name, else a short hash of
+    its text) still match the fingerprint taken when the ref was issued. The row is there
+    because a mod row's switch and "..." button have the same role and name in every row
+    (review S3);
   - a mismatch is refused with "The element for ref <r> now shows something else; take a new
     snapshot";
   - ref strings are still never reused.
@@ -387,7 +407,7 @@ Each step updates its own tests, manuals and site pages and runs `pnpm run docs:
      description);
    - `entryStore.ts`, `gapCommand.ts`, `knowledgeCommand.ts` and their tests;
    - a FOMOD fixture generator, `doodlebot fixture fomod --out <zip>` (a `fomod/ModuleConfig.xml`
-     with one step, so `install` opens its dialog), in `fixtureCommand.ts` with its test;
+     with one step, so installing it opens its dialog; `install` advances it with its defaults, and `vortex_dispatch` `start-install` holds it open), in `fixtureCommand.ts` with its test;
    - `share.ts`, `share.test.ts`.
 8. **Every remaining `.vortex-src` mention:**
    - the skills try, setup, qa, pr, investigate and fix;
@@ -400,30 +420,31 @@ Each step updates its own tests, manuals and site pages and runs `pnpm run docs:
    - `scripts/documentation-map.json`.
 
    Then the ban in `plugins.test.ts` and `companion.test.ts`, which exempts `designs/*.md`,
-   `.gitignore`, and the `check`/`clean` code that recognises the old clone.
+   `.gitignore`, the tests that assert the absence, and one line of code: the `OLD_CLONE_DIR`
+   constant in `paths.ts` that `check` and `clean` import.
 
 **QA catalogue:** no entry guards doodlebot's own files. The catalogue guards Vortex source, and
 this change doesn't touch Vortex.
 
 ## 7. Acceptance criteria
 
-| Id                              | Criterion                                                                                                                          | Proof                                                                                                                                                                                                                                    | Negative control                                                                                          |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `checkout-from-cwd`             | Run from a Vortex checkout or a worktree of it, commands use it                                                                    | Unit test with a temp repo and `git worktree add`; live: `doodlebot check` and `up` from a worktree of the owner's Vortex clone                                                                                                          | From a non-Vortex folder, `build` refuses with the advice                                                 |
-| `dev-dir-env-ignored`           | A leftover `VORTEX_AI_DEV_DIR` doesn't redirect a session in a checkout; `evidence run --runtime` still reaches its source runtime | Unit tests, including an evidence-runtime child                                                                                                                                                                                          | With `--dev-dir`, the named checkout is used                                                              |
-| `git-status-clean`              | After `source` and `build`, the checkout's `git status --porcelain` is empty                                                       | Live in a worktree                                                                                                                                                                                                                       | A raw `pnpm run build` in the same worktree, observed once: `git status` shows the rewritten `etc/` files |
-| `upstream-refused-if-elsewhere` | `source` refuses when `upstream` isn't Nexus-Mods/Vortex, and changes nothing                                                      | Unit test                                                                                                                                                                                                                                | A correct `upstream` passes                                                                               |
-| `exclude-shared`                | After `source`, files under `.doodlebot/` stay out of `git add -A` in every worktree of the checkout                               | Unit test: two worktrees, `git add -A`, `git diff --cached --name-only` has no `.doodlebot/`                                                                                                                                             | Without the exclude, they are staged                                                                      |
-| `stale-build-refused`           | `up` refuses a build whose record doesn't match the checkout, naming a changed file                                                | Unit tests: an edit after the build; a `git switch` (times rewritten, identity changed); `--stale-ok`. Live: build, edit a tracked file, `up` refuses, build, `up` succeeds                                                              | A matching record launches; no record warns                                                               |
-| `pr-from-session-branch`        | `pr` pushes the session's branch and opens the PR from it; refuses `proto/*` and a `docs/designs/` file in the diff                | Unit tests with injected git and gh. Live (needs the owner's go-ahead to open a draft PR in doodlum/Vortex): reported "not tested" until run                                                                                             | A clean feature branch passes                                                                             |
-| `design-branch`                 | `design-branch` commits the draft on `designs/<topic>` without switching the session's checkout, and prints the SHA link           | Unit test with a temp repo and worktree                                                                                                                                                                                                  | The session's branch and status are unchanged                                                             |
-| `prototype-clean-tree`          | `prototype` refuses a dirty tree and a branch other than a new `proto/*` or the upstream default                                   | Skill text test plus the CLI's `source --branch` refusal test                                                                                                                                                                            | A clean fresh worktree proceeds                                                                           |
-| `prototype-loop`                | `prototype` builds, runs and ends with a summary and the brainstorm lines                                                          | Live round on the 2.8 source in a worktree: idea "show the mod count in the Mods toolbar"; screenshot; summary written                                                                                                                   | —                                                                                                         |
-| `viewport-narrow`               | `ui_set_viewport` 640x720 gives a renderer `innerWidth` of 640 (zoom), and a normal size restores zoom 1                           | Live on 2.8.0, sandbox, matrix 640x720, 800x720, then 1280x720 to restore: `innerWidth` read with `eval` after each                                                                                                                      | The base kit (`a4fcfa5`) on the same build: 640 leaves `innerWidth` at about 1023                         |
-| `refs-stable`                   | A held ref survives a concurrent snapshot while its element is unchanged; a recycled element is refused                            | jsdom tests: two generations; a row whose name changes. Live on 2.8.0: `install` of a `doodlebot fixture fomod` archive in the background (its dialog stays open), snapshot, a second snapshot, click the held ref, check the DOM target | The base kit (`a4fcfa5`) on the same 2.8.0 build gives "Stale or unknown ref"                             |
-| `gap-json`                      | `gap list --json` has each field at the top level                                                                                  | Unit test asserting `command` and `status` values                                                                                                                                                                                        | The base shows them only under `fields`                                                                   |
-| `share-issues-disabled`         | With issues disabled, `share` creates nothing, prints the text and the reason, and exits 2                                         | Unit test with injected gh; live `gh repo view --json hasIssuesEnabled` (false today)                                                                                                                                                    | With issues enabled, it proceeds as today                                                                 |
-| `no-vortex-src`                 | No code, skill or doc outside the exemptions names `.vortex-src` or `VORTEX_AI_SOURCE_DIR`                                         | The ban test                                                                                                                                                                                                                             | A planted mention fails the test                                                                          |
+| Id                              | Criterion                                                                                                                             | Proof                                                                                                                                                                                                                                                                                                                                                                                                 | Negative control                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `checkout-from-cwd`             | Run from a Vortex checkout or a worktree of it, commands use it                                                                       | Unit test with a temp repo and `git worktree add`; live: `doodlebot check` and `up` from a worktree of the owner's Vortex clone                                                                                                                                                                                                                                                                       | From a non-Vortex folder, `build` refuses with the advice                                                 |
+| `dev-dir-env-ignored`           | A leftover `VORTEX_AI_DEV_DIR` doesn't redirect a session in a checkout; `evidence run --runtime` still reaches its source runtime    | Unit tests, including an evidence-runtime child                                                                                                                                                                                                                                                                                                                                                       | With `--dev-dir`, the named checkout is used                                                              |
+| `git-status-clean`              | After `source` and `build`, the checkout's `git status --porcelain` is empty                                                          | Live in a worktree                                                                                                                                                                                                                                                                                                                                                                                    | A raw `pnpm run build` in the same worktree, observed once: `git status` shows the rewritten `etc/` files |
+| `upstream-refused-if-elsewhere` | `source` refuses when `upstream` isn't Nexus-Mods/Vortex, and changes nothing                                                         | Unit test                                                                                                                                                                                                                                                                                                                                                                                             | A correct `upstream` passes                                                                               |
+| `exclude-shared`                | After `source`, files under `.doodlebot/` stay out of `git add -A` in every worktree of the checkout                                  | Unit test: two worktrees, `git add -A`, `git diff --cached --name-only` has no `.doodlebot/`                                                                                                                                                                                                                                                                                                          | Without the exclude, they are staged                                                                      |
+| `stale-build-refused`           | `up` refuses a build whose record doesn't match the checkout, naming a changed file                                                   | Unit tests: an edit after the build; a `git switch` (times rewritten, identity changed); `--stale-ok`. Live: build, edit a tracked file, `up` refuses, build, `up` succeeds                                                                                                                                                                                                                           | A matching record launches; no record warns                                                               |
+| `pr-from-session-branch`        | `pr` pushes the session's branch and opens the PR from it; refuses `proto/*` and a `docs/designs/` file in the diff                   | Unit tests with injected git and gh. Live (needs the owner's go-ahead to open a draft PR in doodlum/Vortex): reported "not tested" until run                                                                                                                                                                                                                                                          | A clean feature branch passes                                                                             |
+| `design-branch`                 | `design-branch` commits the draft on `designs/<topic>` without switching the session's checkout, and prints the SHA link              | Unit test with a temp repo and worktree                                                                                                                                                                                                                                                                                                                                                               | The session's branch and status are unchanged                                                             |
+| `prototype-clean-tree`          | `prototype` refuses a dirty tree and the main checkout; in a clean worktree it cuts `proto/<idea>` from upstream, whatever the branch | Skill text test plus the CLI's `source --branch` refusal test                                                                                                                                                                                                                                                                                                                                         | A clean fresh worktree proceeds                                                                           |
+| `prototype-loop`                | `prototype` builds, runs and ends with a summary and the brainstorm lines                                                             | Live round on the 2.8 source in a worktree: idea "show the mod count in the Mods toolbar"; screenshot; summary written                                                                                                                                                                                                                                                                                | —                                                                                                         |
+| `viewport-narrow`               | `ui_set_viewport` 640x720 gives a renderer `innerWidth` of 640 (zoom), and a normal size restores zoom 1                              | Live on 2.8.0, sandbox, matrix 640x720, 800x720, then 1280x720 to restore: `innerWidth` read with `eval` after each                                                                                                                                                                                                                                                                                   | The base kit (`a4fcfa5`) on the same build: 640 leaves `innerWidth` at about 1023                         |
+| `refs-stable`                   | A held ref survives a concurrent snapshot while its element is unchanged; a recycled element or row is refused                        | jsdom tests: two generations; a row whose name changes; two rows with identical switches, one recycled. Live on 2.8.0: a `doodlebot fixture fomod` archive installed with `doodlebot call vortex_dispatch` `start-install` in the background (`install` advances a FOMOD with its defaults, so it cannot hold the dialog open), snapshot, a second snapshot, click the held ref, check the DOM target | The base kit (`a4fcfa5`) on the same 2.8.0 build gives "Stale or unknown ref"                             |
+| `gap-json`                      | `gap list --json` has each field at the top level                                                                                     | Unit test asserting `command` and `status` values                                                                                                                                                                                                                                                                                                                                                     | The base shows them only under `fields`                                                                   |
+| `share-issues-disabled`         | With issues disabled, `share` creates nothing, prints the text and the reason, and exits 2                                            | Unit test with injected gh; live `gh repo view --json hasIssuesEnabled` (false today)                                                                                                                                                                                                                                                                                                                 | With issues enabled, it proceeds as today                                                                 |
+| `no-vortex-src`                 | No code, skill or doc outside the exemptions names `.vortex-src` or `VORTEX_AI_SOURCE_DIR`                                            | The ban test                                                                                                                                                                                                                                                                                                                                                                                          | A planted mention fails the test                                                                          |
 
 **Live gate prerequisites:**
 

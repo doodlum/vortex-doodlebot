@@ -8,10 +8,12 @@ round after round, until you have seen enough to design it.
 
 - [Set up doodlebot](../get-started/set-up.md), and have a Vortex checkout; see
   [Work on Vortex source](source-development.md).
-- In the Claude desktop app, start a **new worktree session** of your checkout on a new branch
-  `proto/<idea>`, or on the upstream default branch. The prototype never switches the branch of
-  the checkout you work in. In another agent, make a worktree yourself
-  (`git -C <checkout> worktree add <dir> upstream/master`) and open the agent there.
+- In the Claude desktop app, start a **new worktree session** of your checkout; whatever branch
+  the app gives it is fine. The prototype never switches the branch of your main checkout, and
+  refuses to run there. In another agent, make a worktree yourself from upstream's default
+  branch (`git -C <checkout> worktree add <dir> upstream/<default>`, where `<default>` is what
+  `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` names, normally `master`)
+  and open the agent there.
 - The worktree must be clean. Each worktree needs its own install and build, which takes
   minutes and several GB; the agent runs `/doodlebot:source` for it.
 
@@ -29,14 +31,17 @@ a `proto/*` branch.
    `<idea>` is a short name, such as `mod-count-in-toolbar`; describe the idea in the same
    message.
 
-2. The agent checks the session: a worktree, a clean tree, and a new `proto/<idea>` branch or
-   the upstream default, from which it cuts `proto/<idea>`. Anything else is refused, with the
-   reason.
+2. The agent checks the session: a worktree, not your main checkout, and a clean tree; either
+   refusal comes with the reason. It then cuts `proto/<idea>` from upstream's default branch
+   with `doodlebot source --no-build --branch proto/<idea>`, whatever branch the worktree was
+   on. The branch the app made for the session stays behind, unused; the agent offers to delete
+   it when it has no commits of its own.
 3. Each round, the agent:
    1. changes Vortex's code for the idea;
    2. rebuilds the worktree;
    3. starts a test Vortex on that build, goes to where the idea shows, and takes screenshots at
-      several window sizes;
+      several window sizes. It stops only a test Vortex this session started; one another
+      session started is left running, and the agent waits or tells you;
    4. shows you the screenshots and what changed, and asks what to change next.
 4. Say when it is enough. The agent asks before committing the prototype on `proto/<idea>`; the
    commit stays local and is never pushed.

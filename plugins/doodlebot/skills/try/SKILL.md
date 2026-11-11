@@ -84,11 +84,14 @@ over the choice, recorded as their choice.
 Only one test Vortex runs on the machine. It uses its own profile.
 
 1. `doodlebot status` with the chosen flags.
-2. If MCP is `answering`, run `doodlebot call automation_status`. **Reuse** it only when its
-   `userDataDir` lies under this cache (`VORTEX_AI_CACHE_DIR`, by default
-   `<workspace>/harness/.cache`) and it is the build you chose. Otherwise it belongs to another
-   session or build: never run `doodlebot down` on an instance another session started from
-   another checkout. Wait, or tell the person, and stop.
+2. If MCP is `answering`, run `doodlebot call automation_status` and read the instance record
+   `~/.doodlebot/instance.json` (`pid`, `cacheDir`, `startedAt`, and `sourceDir` for a source
+   build or `exe` for a release). **Reuse** it only when its `userDataDir` lies under this cache
+   (`VORTEX_AI_CACHE_DIR`, by default `<workspace>/harness/.cache`), its `sourceDir` or `exe`
+   is the build you chose, and its `startedAt` is after this session's own launch of it. An
+   instance of the same build that another session started earlier is not yours, even from the
+   same checkout. Otherwise it belongs to another session or build: never run `doodlebot down`
+   on it. Wait, or tell the person, and stop.
 3. Otherwise start it **in the background** ("Commands that block"):
    `doodlebot up <build flags> <game flags>`, adding `--fresh` when the person asked for a
    clean profile or the run must not inherit earlier state, and `--rebuild-snapshot` when they
@@ -96,7 +99,9 @@ Only one test Vortex runs on the machine. It uses its own profile.
    running from <checkout>" or "Your own Vortex is running" is reported as is: the kit never
    closes the person's Vortex, and neither do you.
 4. Read the `up` log's `target:` line: it must be the build you chose.
-5. **Stop** with `doodlebot down` when the run is done, if you started the instance. It prints
+5. **Stop** with `doodlebot down` when the run is done, only if you started the instance (the
+   ownership rule in step 2: the record's `sourceDir` or `exe` is your build and its `startedAt`
+   is after your launch). It prints
    which checkout it stops and restores a game copy's user folders. `Vortex exited cleanly.` or
    `Nothing is running.` is fine; an instance that did not exit is reported, never killed.
 
