@@ -11,6 +11,9 @@ import {
   cloneVortex,
   cutWorkBranch,
   fetchRemotes,
+  formatPrepared,
+  isNexusUpstream,
+  prepareCheckout,
   missingBuildOutputs,
   nestedPath,
   needsShell,
@@ -184,6 +187,147 @@ describe("cloning Vortex with and without a fork", { timeout: 120_000 }, () => {
   });
 });
 
+describe("preparing the session's checkout", { timeout: 120_000 }, () => {
+  let root: string;
+  let upstream: string;
+  let checkout: string;
+  const built: string[] = [];
+  const quiet = {
+    install: async () => undefined,
+    runBuild: async (dir: string) => {
+      built.push(dir);
+      return { exitCode: 0 };
+    },
+  };
+  beforeEach(() => {
+    built.length = 0;
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-prepare-"));
+    const work = path.join(root, "work");
+    fs.mkdirSync(path.join(work, "src", "main"), { recursive: true });
+    git(work, "init", "-q", "-b", "master");
+    git(work, "config", "user.email", "t@example.test");
+    git(work, "config", "user.name", "T");
+    fs.writeFileSync(path.join(work, "package.json"), '{"name":"@vortex/monorepo"}\n');
+    git(work, "add", "-A");
+    git(work, "commit", "-q", "-m", "upstream");
+    upstream = path.join(root, "upstream.git");
+    git(root, "clone", "-q", "--bare", work, upstream);
+    checkout = path.join(root, "checkout");
+    git(root, "clone", "-q", "-o", "upstream", upstream, checkout);
+    git(checkout, "config", "user.email", "t@example.test");
+    git(checkout, "config", "user.name", "T");
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const exclude = (): string =>
+    path.join(
+      path.resolve(checkout, git(checkout, "rev-parse", "--git-common-dir")),
+      "info",
+      "exclude",
+    );
+  const read = (file: string): string => (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "");
+
+  it("upstream-refused-if-elsewhere: refuses and changes nothing", async () => {
+    git(checkout, "remote", "set-url", "upstream", "https://github.com/someone/Vortex.git");
+    const before = { remotes: git(checkout, "remote", "-v"), exclude: read(exclude()) };
+    await expect(
+      prepareCheckout({
+        checkout,
+        upstreamUrl: upstream,
+        addUpstream: true,
+        exclude: true,
+        branch: "fix/x",
+        ...quiet,
+      }),
+    ).rejects.toThrow(
+      `The remote upstream of ${checkout} is https://github.com/someone/Vortex.git, not Nexus-Mods/Vortex. Doodlebot changed nothing.`,
+    );
+    expect({ remotes: git(checkout, "remote", "-v"), exclude: read(exclude()) }).toEqual(before);
+    expect(git(checkout, "branch", "--list", "fix/x")).toBe("");
+    expect(built).toEqual([]);
+  });
+
+  it("upstream-refused-if-elsewhere (control): a correct upstream passes and builds", async () => {
+    const prepared = await prepareCheckout({ checkout, upstreamUrl: upstream, ...quiet });
+    expect(prepared).toMatchObject({ upstream: "present", origin: "absent", build: "built" });
+    expect(built).toEqual([checkout]);
+    expect(isNexusUpstream("https://github.com/Nexus-Mods/Vortex.git")).toBe(true);
+    expect(isNexusUpstream("git@github.com:Nexus-Mods/Vortex.git")).toBe(true);
+    expect(isNexusUpstream("https://github.com/doodlum/Vortex.git")).toBe(false);
+  });
+
+  it("adds a missing upstream only with --add-upstream, and reports a fork as origin", async () => {
+    git(checkout, "remote", "rename", "upstream", "origin");
+    git(checkout, "remote", "set-url", "origin", path.join(root, "fork.git"));
+    const asked = await prepareCheckout({ checkout, upstreamUrl: upstream, build: false });
+    expect(asked.upstream).toBe("missing");
+    expect(asked.origin).toBe("fork");
+    expect(formatPrepared(asked)).toContain("doodlebot source --add-upstream");
+    expect(git(checkout, "remote")).toBe("origin");
+    const added = await prepareCheckout({
+      checkout,
+      upstreamUrl: upstream,
+      addUpstream: true,
+      build: false,
+    });
+    expect(added.upstream).toBe("added");
+    expect(git(checkout, "remote", "get-url", "upstream")).toBe(upstream);
+    expect(git(checkout, "rev-parse", "upstream/master")).toBe(
+      git(upstream, "rev-parse", "master"),
+    );
+  });
+
+  it("exclude-shared: after --exclude, .doodlebot/ stays out of git add -A in every worktree", async () => {
+    const other = path.join(root, "worktree");
+    git(checkout, "worktree", "add", "-q", "-b", "other", other);
+    const stage = (dir: string): string[] => {
+      fs.mkdirSync(path.join(dir, ".doodlebot", "egm"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".doodlebot", "egm", "brief.md"), "# Brief\n");
+      git(dir, "add", "-A");
+      const staged = git(dir, "diff", "--cached", "--name-only").split("\n").filter(Boolean);
+      git(dir, "reset", "-q");
+      return staged;
+    };
+    // Without the exclude, they are staged.
+    expect(stage(checkout)).toContain(".doodlebot/egm/brief.md");
+    const asked = await prepareCheckout({ checkout, upstreamUrl: upstream, build: false });
+    expect(asked.exclude).toBe("missing");
+    expect(formatPrepared(asked)).toContain("doodlebot source --exclude");
+
+    const prepared = await prepareCheckout({
+      checkout: other,
+      upstreamUrl: upstream,
+      exclude: true,
+      build: false,
+    });
+    expect(prepared.exclude).toBe("added");
+    for (const dir of [checkout, other])
+      expect(stage(dir).filter((file) => file.startsWith(".doodlebot/"))).toEqual([]);
+    expect(git(checkout, "status", "--porcelain")).toBe("");
+    // Once is enough: a second run finds it and adds nothing.
+    const again = await prepareCheckout({
+      checkout,
+      upstreamUrl: upstream,
+      exclude: true,
+      build: false,
+    });
+    expect(again.exclude).toBe("present");
+    expect(read(exclude()).match(/\.doodlebot\//g)).toHaveLength(1);
+  });
+
+  it("reports a failed build with the build command as the next step", async () => {
+    const prepared = await prepareCheckout({
+      checkout,
+      upstreamUrl: upstream,
+      install: async () => undefined,
+      runBuild: async () => ({ exitCode: 1 }),
+    });
+    expect(prepared.build).toBe("failed");
+    expect(formatPrepared(prepared)).toContain(
+      `Next: fix the build, then \`doodlebot build --checkout ${checkout}\`.`,
+    );
+  });
+});
 it("finds every worker main's build script bundles that a build left out", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-build-"));
   try {

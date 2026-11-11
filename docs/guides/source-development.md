@@ -37,10 +37,17 @@ Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot sourc
    /doodlebot:source
    ```
 
-2. The agent runs `doodlebot source`, which installs Vortex's dependencies with its pinned pnpm
-   and builds the checkout.
+2. The agent runs `doodlebot source`. It checks the remotes: `upstream` must be
+   Nexus-Mods/Vortex, and if it points anywhere else, `source` stops and changes nothing.
+3. If `upstream` is missing, or doodlebot's `.doodlebot/` folder is not yet kept out of Git, the
+   agent asks you once: "May I add Nexus-Mods/Vortex as `upstream`, and add `.doodlebot/` to this
+   checkout's shared `info/exclude`?" On a yes it runs `doodlebot source --add-upstream
+--exclude`. The exclude file is shared by every worktree of the checkout, so nothing
+   doodlebot writes in any of them reaches a commit.
+4. `source` installs Vortex's dependencies with its pinned pnpm and builds the checkout. The
+   build puts back the `etc/` files it rewrites, so `git status` stays clean.
 
-3. The agent makes a branch for your work, for example
+5. The agent makes a branch for your work, for example
    `doodlebot source --branch fix-download-panel`.
 
 The expected result: a built checkout on a new branch.

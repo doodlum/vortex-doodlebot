@@ -897,9 +897,22 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
     (`gh repo fork Nexus-Mods/Vortex --remote` adds it as `origin` and renames nothing).
   - `source --update` fetches every remote of the session's checkout (`git fetch --all --prune`)
     and runs `git remote set-head upstream --auto`. It works on an upstream-only clone.
-  - `source` then installs (`pnpm install --frozen-lockfile` with the checkout's pinned pnpm)
-    and runs `doodlebot build --checkout <checkout>`, unless `--no-build`, and reports the
-    checkout, branch, remotes, whether it built, and the next step.
+- **Preparing the session's checkout** (`prepareCheckout`). `doodlebot source` changes only
+  what is missing and was asked for, and reports the rest:
+  - `upstream` must be Nexus-Mods/Vortex (https or ssh). Pointing anywhere else, `source`
+    refuses before changing anything (`The remote upstream of <dir> is <url>, not
+Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fetched only
+    with `--add-upstream`; otherwise the report says so.
+  - `origin` is reported as the person's fork, Nexus-Mods/Vortex itself, or absent; the push
+    check (`prPush.ts`) is unchanged.
+  - `--exclude` appends `.doodlebot/` to `$(git rev-parse --git-common-dir)/info/exclude`, the
+    file every worktree of the checkout shares, so doodlebot's per-worktree folder
+    (`<checkout>/.doodlebot/`, EGM's artifacts) never reaches a commit; it is added once. The
+    skill asks the person one question before `--add-upstream` and `--exclude`.
+  - Then it installs (`pnpm install --frozen-lockfile` with the checkout's pinned pnpm) and runs
+    `doodlebot build --checkout <checkout>`, which puts back the `etc/` files the build rewrites,
+    unless `--no-build`. It reports the checkout, branch, remotes, the exclude, whether it
+    built, and the next step.
   - An old managed clone `<workspace>/.vortex-src` from an earlier kit is no longer used:
     `check` reports it with its size, and `clean --yes` removes it once the person agrees
     (never while a harness Vortex runs from it).

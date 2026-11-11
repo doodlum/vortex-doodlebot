@@ -234,8 +234,12 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          touches game copies, the login, pending restores or the running
                          instance
   source                 Prepare this session's Vortex checkout (the one holding the folder
-                         you run doodlebot in, or --dev-dir): check upstream, install
-                         and build it
+                         you run doodlebot in, or --dev-dir): refuse an upstream remote
+                         that is not Nexus-Mods/Vortex (changing nothing), report origin,
+                         install with its pinned pnpm and build it; reports the rest
+    --add-upstream       Add Nexus-Mods/Vortex as upstream when it is missing
+    --exclude            Add .doodlebot/ to $(git rev-parse --git-common-dir)/info/exclude,
+                         which every worktree of the checkout shares
     --clone <dir>        Clone your fork (origin) and Nexus-Mods/Vortex (upstream) into
                          <dir>, outside the workspace; without a fork, clone upstream alone
                          (enough to build and test; pushing needs a fork). No default
@@ -973,6 +977,8 @@ async function main(): Promise<number> {
         }
         const prepared = await prepareCheckout({
           checkout,
+          addUpstream: flags["add-upstream"] === true,
+          exclude: flags.exclude === true,
           update: flags.update === true,
           ...(typeof flags.branch === "string" ? { branch: flags.branch } : {}),
           build: flags.build !== false && flags["no-build"] !== true,

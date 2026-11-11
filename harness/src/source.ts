@@ -481,11 +481,52 @@ export async function remotesOf(dir: string): Promise<Record<string, string>> {
   return remotes;
 }
 
+/** A URL that names Nexus-Mods/Vortex on GitHub (https or ssh, with or without `.git`). */
+export function isNexusUpstream(url: string, expected: string = UPSTREAM_URL): boolean {
+  return (
+    url === expected ||
+    /^(?:https?:\/\/|ssh:\/\/git@|git@)github\.com[/:]Nexus-Mods\/Vortex(?:\.git)?\/?$/i.test(url)
+  );
+}
+
+/** The folder doodlebot keeps per worktree, kept out of every commit by the exclude. */
+export const DOODLEBOT_FOLDER = ".doodlebot/";
+
+/**
+ * The exclude file every worktree of the checkout shares:
+ * `$(git rev-parse --git-common-dir)/info/exclude`.
+ */
+export async function sharedExcludeFile(dir: string): Promise<string> {
+  const common = await tryExec("git", ["-C", dir, "rev-parse", "--git-common-dir"]);
+  if (common === undefined) throw new ConfigError(`${dir} is not a git checkout.`);
+  return path.join(path.resolve(dir, common), "info", "exclude");
+}
+
+/** Whether the shared exclude already keeps `.doodlebot/` out. */
+export function excludes(file: string): boolean {
+  try {
+    return fs
+      .readFileSync(file, "utf8")
+      .split(/\r?\n/)
+      .some((line) =>
+        ["/.doodlebot/", ".doodlebot/", ".doodlebot", "/.doodlebot"].includes(line.trim()),
+      );
+  } catch {
+    return false;
+  }
+}
+
 /** What `source` did to the session's checkout, and what it found. */
 export interface PreparedCheckout {
   checkout: string;
   branch: string | undefined;
   remotes: Record<string, string>;
+  /** `upstream`: present, added now (`--add-upstream`), or missing. */
+  upstream: "present" | "added" | "missing";
+  /** `origin`: the person's fork, Nexus-Mods/Vortex itself, or absent. */
+  origin: "fork" | "upstream" | "absent";
+  /** `.doodlebot/` in the shared exclude: already, added now (`--exclude`), or not. */
+  exclude: "present" | "added" | "missing";
   /** `--branch`: the branch cut, and what from. */
   cut?: { branch: string; from: string };
   /** Whether install and build ran, were skipped (`--no-build`), or failed. */
@@ -496,6 +537,10 @@ export interface PreparedCheckout {
 
 export interface PrepareOptions {
   checkout: string;
+  /** `--add-upstream`: add Nexus-Mods/Vortex as `upstream` when it is missing. */
+  addUpstream?: boolean;
+  /** `--exclude`: add `.doodlebot/` to the exclude every worktree shares. */
+  exclude?: boolean;
   /** `--update`: fetch every remote first. */
   update?: boolean;
   /** `--branch <name>`: cut a work branch from upstream. */
@@ -506,23 +551,78 @@ export interface PrepareOptions {
   install?: (dir: string) => Promise<void>;
   /** Builds the checkout (`doodlebot build --checkout <dir>`); resolves to its exit code. */
   runBuild?: (dir: string) => Promise<{ exitCode: number }>;
+  /** The Nexus repository's clone URL (tests use a local one). */
+  upstreamUrl?: string;
   onProgress?: (message: string) => void;
 }
 
 /**
- * `doodlebot source` in the session's checkout: fetch (`--update`), cut a branch (`--branch`),
- * then install and build it. It changes only what was asked and reports the rest.
+ * `doodlebot source` in the session's checkout (design 4.2). It changes only what is missing and
+ * was asked for, and reports the rest:
+ *
+ * 1. `upstream` must be Nexus-Mods/Vortex. Pointing anywhere else, it refuses before changing
+ *    anything. Missing, it is added only with `--add-upstream` (the skill asks the person first).
+ * 2. `.doodlebot/` goes into the exclude every worktree shares only with `--exclude` (asked too).
+ * 3. `--update` fetches every remote, `--branch` cuts a branch from upstream.
+ * 4. Install with the checkout's pinned pnpm, then `doodlebot build --checkout <dir>`.
  */
 export async function prepareCheckout(options: PrepareOptions): Promise<PreparedCheckout> {
   const report = options.onProgress ?? ((): void => undefined);
   const dir = options.checkout;
+  const upstreamUrl = options.upstreamUrl ?? UPSTREAM_URL;
   const notes: string[] = [];
+
+  const current = await remoteUrl(dir, "upstream");
+  if (current !== undefined && !isNexusUpstream(current, upstreamUrl))
+    throw new ConfigError(
+      `The remote upstream of ${dir} is ${current}, not ${UPSTREAM}. Doodlebot changed nothing. ` +
+        `Branches start from upstream, so point it at ${UPSTREAM_URL} yourself ` +
+        "(`git remote set-url upstream <url>`) or rename that remote, then run `doodlebot source` again.",
+    );
+  const excludeFile = await sharedExcludeFile(dir);
+
+  let upstream: PreparedCheckout["upstream"] = current === undefined ? "missing" : "present";
+  if (upstream === "missing" && options.addUpstream === true) {
+    assertNoVortexRunningFrom(dir, "changing its remotes");
+    report(`adding ${UPSTREAM} as upstream`);
+    await runStreaming("git", ["-C", dir, "remote", "add", "upstream", upstreamUrl], {
+      label: "Configuring Vortex upstream",
+    });
+    await runStreaming("git", ["-C", dir, "fetch", "upstream"], { label: "Fetching upstream" });
+    await tryExec("git", ["-C", dir, "remote", "set-head", "upstream", "--auto"]);
+    upstream = "added";
+  } else if (upstream === "missing")
+    notes.push(
+      `There is no upstream remote. With the person's yes, \`doodlebot source --add-upstream\` adds ${UPSTREAM}; branches start from it.`,
+    );
+
+  let exclude: PreparedCheckout["exclude"] = excludes(excludeFile) ? "present" : "missing";
+  if (exclude === "missing" && options.exclude === true) {
+    fs.mkdirSync(path.dirname(excludeFile), { recursive: true });
+    const before = fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, "utf8") : "";
+    const separator = before === "" || before.endsWith("\n") ? "" : "\n";
+    fs.appendFileSync(excludeFile, `${separator}${DOODLEBOT_FOLDER}\n`);
+    report(`added ${DOODLEBOT_FOLDER} to ${excludeFile} (every worktree of this checkout)`);
+    exclude = "added";
+  } else if (exclude === "missing")
+    notes.push(
+      `${DOODLEBOT_FOLDER} is not excluded. With the person's yes, \`doodlebot source --exclude\` adds it to ${excludeFile}, which every worktree shares.`,
+    );
+
   if (options.update === true) await fetchRemotes(dir, report);
   const remotes = await remotesOf(dir);
-  if (remotes.origin === undefined) notes.push(NO_FORK_NOTE);
+  const origin: PreparedCheckout["origin"] =
+    remotes.origin === undefined
+      ? "absent"
+      : isNexusUpstream(remotes.origin, upstreamUrl)
+        ? "upstream"
+        : "fork";
+  if (origin !== "fork") notes.push(NO_FORK_NOTE);
+
   let cut: PreparedCheckout["cut"];
   if (options.branch !== undefined)
     cut = await cutWorkBranch(dir, options.branch, { onProgress: report });
+
   let build: PreparedCheckout["build"] = "skipped";
   if (options.build !== false) {
     if (options.runBuild === undefined) throw new ForkError("prepareCheckout needs runBuild.");
@@ -536,6 +636,9 @@ export async function prepareCheckout(options: PrepareOptions): Promise<Prepared
     checkout: dir,
     branch: await tryExec("git", ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"]),
     remotes,
+    upstream,
+    origin,
+    exclude,
     ...(cut === undefined ? {} : { cut }),
     build,
     notes,
@@ -547,10 +650,16 @@ export function formatPrepared(prepared: PreparedCheckout): string {
   const remotes = Object.entries(prepared.remotes)
     .map(([name, url]) => `${name} ${url}`)
     .join(", ");
+  const origin = {
+    fork: "origin is your fork",
+    upstream: `origin is ${UPSTREAM} itself`,
+    absent: "no origin",
+  }[prepared.origin];
   return [
     `Checkout: ${prepared.checkout}`,
     `Branch:   ${prepared.branch ?? "unknown"}${prepared.cut === undefined ? "" : ` (cut from ${prepared.cut.from})`}`,
-    `Remotes:  ${remotes === "" ? "none" : remotes}`,
+    `Remotes:  ${remotes === "" ? "none" : remotes} (upstream ${prepared.upstream}; ${origin})`,
+    `Exclude:  ${DOODLEBOT_FOLDER} ${prepared.exclude === "missing" ? "not excluded" : `excluded (${prepared.exclude})`}`,
     `Build:    ${
       prepared.build === "built"
         ? "built"
