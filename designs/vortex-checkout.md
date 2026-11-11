@@ -204,6 +204,10 @@ A Vortex session reads Vortex's `CLAUDE.md` and `AGENTS.md`, not doodlebot's. So
      have been PRs inside the fork (doodlum/Vortex#22 and #23);
   4. `gh pr create` from the session's branch, as a draft unless the person says otherwise;
   5. on Claude desktop, bind it with the app's PR tools if the PR bar didn't pick it up.
+- **`doodlebot push-branch`** (added during implementation):
+  - pushes the session's branch with `-u` after the fork check;
+  - refuses `proto/*`, `designs/*`, the default branch and a detached HEAD;
+  - the pr skill pushes only through it, so the refusals are in code, not only in skill text.
 - **Refusals:** `pr` refuses a `proto/*` branch. `pr-preflight` FAILs when the diff contains a
   `docs/designs/` file.
 - **Not documented, verified live:** how the desktop app binds a PR into another repository
