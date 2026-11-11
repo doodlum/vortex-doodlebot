@@ -16,7 +16,6 @@ Use [Your first session](../get-started/first-session.md) for your first test, [
 - `click`
 - `collection`
 - `deploy`
-- `design-branch`
 - `doctor`
 - `down`
 - `e2e`

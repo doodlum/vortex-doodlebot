@@ -66,6 +66,7 @@ beforeEach(() => {
     },
     userSettingsFile: settings,
     installedPluginsFile: path.join(root, "installed_plugins.json"),
+    workspaceRecordFile: path.join(root, "workspace.json"),
     source: () => ({
       dir: path.join(root, "vortex"),
       remotes: { upstream: "https://github.com/Nexus-Mods/Vortex.git" },
@@ -86,6 +87,20 @@ const row = (rows: CheckRow[], item: string): CheckRow | undefined =>
   rows.find((r) => r.item === item);
 
 describe("doodlebot check", () => {
+  it("reports the Vortex session note ready only when link recorded this workspace", async () => {
+    const item = "Vortex session note";
+    expect(row(await checkRows(deps), item)).toMatchObject({
+      status: "missing",
+      next: "doodlebot link",
+    });
+    fs.writeFileSync(path.join(root, "workspace.json"), JSON.stringify({ workspace: "C:/other" }));
+    expect(row(await checkRows(deps), item)?.detail).toContain("not this workspace");
+    fs.writeFileSync(path.join(root, "workspace.json"), JSON.stringify({ workspace: root }));
+    const ready = row(await checkRows(deps), item);
+    expect(ready?.status).toBe("ready");
+    expect(ready?.detail).toContain("restart after installing or updating the plugin");
+    expect(ready?.detail).toContain("trust it in /hooks");
+  });
   it("prints one row per item: ready, missing with the exact next command, or blocked", async () => {
     const rows = await checkRows(deps);
     expect(row(rows, "doodlebot")).toMatchObject({ status: "ready", area: "workspace" });

@@ -1,0 +1,16 @@
+{
+  "description": "Tells a session opened in a Vortex checkout that doodlebot can prove the change (designs/vortex-session-context.md)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-note.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

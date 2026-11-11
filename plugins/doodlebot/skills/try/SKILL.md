@@ -61,6 +61,13 @@ release when none is installed.
 `doodlebot release get <version>` downloads only official releases, checks the published
 SHA-256 and never runs the installer. A release without a published digest is **blocked**.
 
+**A source build must be prepared.** For the session's checkout, check it first:
+`doodlebot check --json` (its `this checkout` row is `ready`), or `doodlebot source --where`
+plus the build state. When it is not ready, run "Prepare this checkout"
+(`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) before starting: it asks the person one
+question when remotes or the exclude are missing, then installs and builds. A checkout the
+person names with `--dev-dir` is theirs to build; one that is not built is reported, not built.
+
 **The content** (design 4.5). Write down what the scenario **needs**, as kinds: `sandbox` (the
 fake game), `sandbox:fallout4` (the fake Fallout 4: plugins, LOOT, masters), `game` (any game
 the kit may manage), `game:<id>` (a registered copy of that game), `collection`,

@@ -6,12 +6,11 @@ issue and report platform and checks. Its approximate 400-line/10-file guidance 
 substitute for assessing blast radius; discuss large or multi-extension work with maintainers
 before implementing it. The person submitting must understand every line.
 
-A feature or refactor PR implements an approved EGM design. The design lives on the sibling
-branch `designs/<topic>` in the person's fork, as `docs/designs/<topic>.md` committed
-`docs(design): <topic>` by `doodlebot design-branch`, never on the feature branch. The PR is
-opened from the session's own branch (`doodlebot push-branch`, then `gh pr create`), and its
-description links the design at the commit the person approved, so the PR never carries it.
-`pr-preflight` FAILs on a docs/designs file in the diff and on a `proto/*` branch.
+A feature or refactor PR implements an approved EGM design. As EGM intends, the design is a
+project file, `docs/designs/<topic>.md`, committed `docs(design): <topic>` on the work branch
+after the person approved it, so it travels in the PR with the code. The PR is opened from the
+session's own branch (`doodlebot push-branch`, then `gh pr create`). `pr-preflight` FAILs on a
+`proto/*` branch.
 
 ## Never publish an untested change
 
@@ -65,8 +64,7 @@ Link the issue or user report. Label uncertainty instead of inventing a version 
 The resulting behavior and the relevant implementation decisions.
 
 Design: the design's Overview and acceptance criteria, verbatim, then
-"Design approved by <owner> on <date>; design at
-<fork>/blob/<approved designs/<topic> commit>/docs/designs/<topic>.md". Or "None" for a bug fix, documentation
+"Design approved by <owner> on <date>: `docs/designs/<topic>.md`". Or "None" for a bug fix, documentation
 or test-only change without a design.
 
 ## Behaviour changes
@@ -144,7 +142,7 @@ issue, criteria, scope, exact revision and primary sources before the author's d
 
 ```text
 Review <neutral issue> at head <sha>, base <sha>.
-Design: <docs/designs/<topic>.md at its approved designs/<topic> commit>, or none.
+Design: <docs/designs/<topic>.md in the PR>, or none.
 You did not author it. Allowed: read, scoped checks, and <authorized test Vortex actions>.
 No production edits or publication. Constraints: <scope, including any read-only checkout>.
 

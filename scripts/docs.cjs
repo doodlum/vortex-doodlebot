@@ -131,8 +131,8 @@ const PLUGIN = "doodlebot";
 const COMMAND_GROUPS = [
   {
     title: "Set up and run the test Vortex",
-    description: "Install, check, sign in and update the companion, and prepare the Vortex source.",
-    commands: ["setup", "source"],
+    description: "Install, check, sign in and update the companion, or clone a Vortex checkout.",
+    commands: ["setup"],
   },
   {
     title: "Work on Vortex",

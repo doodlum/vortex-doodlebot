@@ -9,3 +9,5 @@ Approved and in-progress designs for changes to doodlebot itself. Vortex designs
   use cases approved by the owner, implemented, target `doodlebot`.
 - [Doodlebot in your Vortex checkout, and /doodlebot:prototype](vortex-checkout.md): draft,
   target `doodlebot`.
+- [A Vortex session knows doodlebot can prove the change](vortex-session-context.md): draft,
+  target `doodlebot`.

@@ -109,9 +109,19 @@ Show the table to the person grouped as printed, then act only on these, each wi
    offer to delete it, and do so only on a yes.
 6. **A running test Vortex** that another session started from another checkout: never stop it.
 
-Everything else MISSING is reported with its next step, not done: `doodlebot source` is
-`/doodlebot:source`, the login is `--login`, a game copy is `doodlebot game copy <gameId>`
-(it copies gigabytes; ask first). A sandbox baseline is built by the first `/doodlebot:try`.
+Everything else MISSING is reported with its next step, not done: an unprepared or unbuilt
+checkout is prepared by the first `/doodlebot:try` on the source build (or `fix`, `qa`,
+`prototype`), which runs "Prepare this checkout" (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`);
+offer to run that procedure now if the person wants it ready. The login is `--login`, a game
+copy is `doodlebot game copy <gameId>` (it copies gigabytes; ask first). A sandbox baseline is
+built by the first `/doodlebot:try`.
+
+**No checkout yet.** When the `this checkout` row says the session is not in a Vortex checkout
+and the person wants to work on Vortex's code, ask which folder to clone into (there is no
+default; it must be outside `<workspace>`). On an answer, run `doodlebot source --clone <dir>`
+in the background with its output in `<workspace>/harness/.artifacts/runs/<UTC time>-clone.log`
+(it finds the person's fork, or clones Nexus-Mods/Vortex alone), then tell them: "Open Claude
+in <dir>. The first `/doodlebot:try` on your build (or `fix`, `qa`, `prototype`) prepares it."
 
 ## Mode `--login`: sign in to Nexus Mods
 
@@ -190,5 +200,6 @@ port, so `doodlebot status` answering is only a liveness hint.
 
 Tell the person, in a few lines: the mode run, the workspace and version, the status table's
 MISSING and BLOCKED rows with their next steps, and what you did with their yes. Suggest what
-to try next: `/doodlebot:try` to see Vortex do something, `/doodlebot:source` before working on
-Vortex's code, `--login` only for Nexus collections.
+to try next: `/doodlebot:try` to see Vortex do something (in a Vortex checkout it prepares the
+checkout on the way), `/doodlebot:fix` or `/doodlebot:prototype` to work on Vortex's code,
+`--login` only for Nexus collections.

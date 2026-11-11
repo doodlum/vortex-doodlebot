@@ -214,6 +214,28 @@ Sources: [Codex developer commands](https://learn.chatgpt.com/docs/developer-com
 [Codex plugins](https://learn.chatgpt.com/docs/plugins) and
 [Codex on Windows](https://learn.chatgpt.com/docs/windows/windows-app).
 
+## What a Vortex session knows
+
+The plugin carries one hook that runs when a session starts. When you open the session in a
+Vortex checkout or one of its worktrees, it gives the agent a short note:
+
+- doodlebot is set up, and where its workspace is;
+- a Vortex change isn't finished when it compiles and its unit tests pass, so the agent offers to
+  show it working with `/doodlebot:try` or `/doodlebot:qa`;
+- acceptance criteria are written as things a running Vortex shows, with links to what doodlebot
+  can observe.
+
+In any other folder the hook says nothing. It only reads, and writes nothing into your checkout.
+It finds the workspace through `~/.doodlebot/workspace.json`, which `doodlebot link` writes during
+[setup](set-up.md). Before setup, the note says to run `/doodlebot:setup`.
+
+- **Claude Code and the Claude desktop app** load plugin hooks when they start. Restart after
+  you install or update the plugin.
+- **Codex** runs a plugin's hook only after you trust it, in `/hooks` or the app's
+  Settings → Hooks, and asks again after an update that changes it.
+
+`/doodlebot:setup --check` reports the note on its "Vortex session note" row.
+
 ## What's next
 
 [Set up doodlebot](set-up.md).

@@ -39,13 +39,15 @@ with `icon`) and a Codex manifest (`.codex-plugin/plugin.json`, `"skills": "./sk
 icon is `plugins/doodlebot/assets/icon.png` (512×512, rendered from `icon.svg`). Claude Code
 ignores `icon` at load time; Codex shows it in its plugin picker.
 
-Nine commands, one per use case (designs/companion-simplified.md, 4.1, and `prototype` from
-designs/vortex-checkout.md, 4.7):
+Eight commands, one per use case (designs/companion-simplified.md, 4.1, and `prototype` from
+designs/vortex-checkout.md, 4.7). There is no command that prepares the checkout (owner decision
+2026-11-11): `try` on a source build, `fix`, `qa` and `prototype` run "Prepare this checkout",
+`plugins/doodlebot/resources/checkout.md`, on the way when `doodlebot check --json` says it is
+not ready, and `setup --check` clones one (`source --clone <dir>`) when there is none.
 
 | Group (`docs/reference/commands.md`) | Skill (`plugins/doodlebot/skills/<name>/SKILL.md`) | Use case and what it replaced                                                                                     |
 | ------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Set up and run the test Vortex       | `setup`                                            | U0. Modes `setup`, `--check` (`doodlebot check`), `--login`, `--update [<ref>]`; was setup, login, update, status |
-|                                      | `source`                                           | U3–U5. Prepare the session's checkout, `--clone <dir>`, `--branch`, a PR's branch for QA                          |
 | Work on Vortex                       | `try`                                              | U1, U7. Content choice, starts and stops the test Vortex, the run report; was drive, start, stop, baseline        |
 |                                      | `prototype`                                        | U13. A worktree session on a new `proto/<idea>`: change, build, run, screenshots, ask; summary; never shipped     |
 |                                      | `investigate`                                      | U2. An issue report on the user's version; changes no code                                                        |
@@ -56,6 +58,17 @@ designs/vortex-checkout.md, 4.7):
 
 Agents: `plugins/doodlebot/agents/vortex-runtime-goldfish.md` and `vortex-driver.md`. The
 groups are `COMMAND_GROUPS` in `scripts/docs.cjs`; every skill must be in exactly one.
+
+Hook: `plugins/doodlebot/hooks/hooks.json` runs `session-note.cjs` on `SessionStart`, and no other
+event (`designs/vortex-session-context.md`). In a Vortex checkout or worktree (git top level whose
+`package.json` is `@vortex/monorepo`) it adds a note of under 2,000 characters: the workspace,
+that a change is proved with `/doodlebot:try` or `/doodlebot:qa` before it is called done, and the
+references for writing observable criteria. Elsewhere it prints nothing. It reads only the hook
+input and `~/.doodlebot/workspace.json` (`doodlebot link` writes it), starts no process and
+writes nothing. There is deliberately no `SubagentStart` hook: its context reaches every subagent,
+including EGM's Goldfish reviewers, which must see only what they are given. Claude Code loads
+plugin hooks at start (restart after installing or updating); Codex runs them only once trusted.
+Tests: `harness/src/sessionNote.test.ts`.
 
 - Every command's report ends with a **Learned** section (4.9): lessons recorded, noted or
   removed, kit gaps recorded with `doodlebot gap add`, catalogue entries proposed, or "nothing".
@@ -107,17 +120,17 @@ caller's directory; kit defaults resolve against the workspace root. Everything 
 the shim may not exist (CI, evidence receipts, a fresh clone), run `node bin/doodlebot.cjs …`
 from the workspace root.
 
-| Command                           | What it does                                                                                                                                                          |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                                    |
-| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`                      |
-| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build`            |
-| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                                    |
-| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`); `fixture fomod` writes a one-step FOMOD installer                   |
-| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`               |
-| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                                          |
-| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `note`, `share`, `path` ("Knowledge") |
-| `doodlebot gap <sub>`             | Kit gaps in `~/.doodlebot/gaps.md`: `add`, `list`, `close`, `share` ("Knowledge")                                                                                     |
+| Command                           | What it does                                                                                                                                                                                             |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                                                                       |
+| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`; records the workspace in `~/.doodlebot/workspace.json` |
+| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build`                                               |
+| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                                                                       |
+| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`); `fixture fomod` writes a one-step FOMOD installer                                                      |
+| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`                                                  |
+| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                                                                             |
+| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `note`, `share`, `path` ("Knowledge")                                    |
+| `doodlebot gap <sub>`             | Kit gaps in `~/.doodlebot/gaps.md`: `add`, `list`, `close`, `share` ("Knowledge")                                                                                                                        |
 
 - `link` writes no `.ps1` and spawns no `npm`. Without `--bin-dir` it takes the first of these
   that is on the PATH and writable: `npm_config_prefix` (its `bin` outside Windows); on Windows
@@ -887,8 +900,9 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
 - Responsive checks: each relevant state with its own label, width and height, real sizes after OS
   clamping, and a visual review against any design (`plugins/doodlebot/resources/testing.md`
   has the state matrix).
-- `doodlebot source` (`/doodlebot:source`) prepares the session's checkout (`--update`,
-  `--no-build`, `--where`, `--branch <name>`), and `source --clone <dir>` makes a new one; make
+- `doodlebot source` prepares the session's checkout (`--update`, `--no-build`, `--where`,
+  `--branch <name>`); the plugin's commands run it through
+  `plugins/doodlebot/resources/checkout.md` when they need a build. And `source --clone <dir>` makes a new one; make
   your changes on a branch of it, or in a checkout passed with `--dev-dir`. `up` defaults to the
   session's checkout. Select `--installed`, `--release <version>`, `--exe <path>` or
   `--dev-dir <path>` explicitly for reproducible checks. See "Vortex source, forks and sessions".
@@ -902,7 +916,7 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   the session's checkout; then `--release`, `--installed` or `--exe`, otherwise the installed
   Vortex or a registered release. A target flag puts its build in front of the checkout. No
   environment variable names a checkout; one left in a shell by an older kit is ignored.
-  - `build`, `source` (except `--clone`), `design-branch`, `push-branch` and `pr-preflight` need a checkout
+  - `build`, `source` (except `--clone`), `push-branch` and `pr-preflight` need a checkout
     (`--checkout`, `--dev-dir` or the session's); outside one they refuse with "Open Claude in a
     Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`)."
   - `up`, `bootstrap` and `setup` in an unbuilt checkout refuse with "This session's checkout
@@ -950,7 +964,9 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   remote **`upstream`**.
   - It clones into the folder the person names (resolved against the caller's folder), never
     into the workspace and never over a folder with something in it. There is no default folder.
-    It ends with "Open Claude in <dir> and run `/doodlebot:source`."
+    It ends with "Open Claude in <dir>. The first command that needs a build there
+    (/doodlebot:try, fix, qa or prototype) prepares it." `setup --check` runs it when the
+    session is in no checkout and the person names a folder.
   - With a fork: `git clone -o origin <fork>`, then `upstream` is added and fetched.
   - Without one (or with an unknown login): `git clone -o upstream`, no `origin`. Building,
     trying, QA and measuring need nothing more; it prints that pushing needs a fork
@@ -972,7 +988,8 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
     the checkout, which Vortex's `.gitignore` does not cover: a worktree made there would show
     in the main checkout's `git status` and `git add -A`. Each line is added once; the report's
     `exclude` field is about `.doodlebot/`, and a note names a missing `.claude/worktrees/`. The
-    skill asks the person one question before `--add-upstream` and `--exclude`.
+    procedure (`plugins/doodlebot/resources/checkout.md`) asks the person one question before
+    `--add-upstream` and `--exclude`.
   - Then it installs (`pnpm install --frozen-lockfile` with the checkout's pinned pnpm) and runs
     `doodlebot build --checkout <checkout>`, which puts back the `etc/` files the build rewrites,
     unless `--no-build`. It reports the checkout, branch, remotes, the exclude, whether it
@@ -994,7 +1011,7 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
   its own worktree (`git -C <checkout> worktree add <dir> <branch>`, a Claude desktop session
   with Worktree on, in `<checkout>/.claude/worktrees/`, or a Codex app worktree, in
   `$CODEX_HOME/worktrees` on a detached HEAD), each opened in its worktree, which is then that session's checkout; each needs its
-  own `/doodlebot:source` (install and build). Each worktree is a full build of several GB. Editing, building, unit tests and `ci`
+  own install and build, which the first command that needs it runs (`resources/checkout.md`). Each worktree is a full build of several GB. Editing, building, unit tests and `ci`
   run in parallel; anything that runs Vortex (`up`, `test core`, the checks) runs one at a time
   on the machine ("One instance"). A session never runs `down` on an instance another session
   started from another checkout: it waits, or tells the person.
@@ -1050,12 +1067,10 @@ Doodlebot has no design command of its own.
   `designs/SITEMAP.md`; this version implements `designs/companion-simplified.md` and
   `designs/vortex-checkout.md`.
 
-- A Vortex design lives on the sibling branch `designs/<topic>` in the person's fork, as
-  `docs/designs/<topic>.md` committed `docs(design): <topic>` by `doodlebot design-branch`
-  (below), never on the feature branch. The approved revision is the commit the person
-  approved, and the PR links it; `pr-preflight` FAILs when a docs/designs file is in the PR's
-  diff or commits. (The plural `designs/` avoids the `design/<topic>` tags earlier versions
-  pushed to forks; those are left alone.)
+- A Vortex design is a project file, as EGM intends: EGM's draft step saves it as
+  `docs/designs/<topic>.md` in the checkout, and after the person's approval it is committed
+  `docs(design): <topic>` on the work branch, so it travels in the PR with the code. Only EGM's
+  scratch work goes in the excluded `.doodlebot/egm` (`plugins/doodlebot/resources/egm.md`).
 - The tests that prove the change go in the same Vortex branch
   (`plugins/doodlebot/resources/testing.md`), and `/doodlebot:qa --design <file>` checks each
   acceptance criterion with its negative control from a fresh profile.
@@ -1128,18 +1143,8 @@ receipt cannot certify a later commit. Verify the actual final commit for public
   first.
 - `doodlebot push-branch [--checkout <dir>]` (`prPush.ts`, `pushSessionBranch`) pushes the
   session's branch to `origin` with `-u`, only after the fork check (`checkPushRemote`). It
-  refuses a detached HEAD, a `proto/*` branch (a prototype is never shipped), a `designs/*`
-  branch and the default branch.
-- `doodlebot design-branch <topic> --file <draft> [--checkout <dir>] [--base <ref>]`
-  (`designBranch`) commits the draft as `docs/designs/<topic>.md` on `designs/<topic>`
-  (`docs(design): <topic>`) in a temporary worktree (`withTempWorktree`), so the session's
-  branch and `git status` never change. The branch continues from its local head, else
-  `origin/designs/<topic>`, else the merge-base of `HEAD` and `--base` (default
-  `upstream/<default branch>`); an unchanged draft makes no commit. The fork check runs before
-  anything is committed; then it pushes the branch and prints
-  `https://github.com/<fork>/blob/<sha>/docs/designs/<topic>.md`, the link the PR description
-  uses for the approved revision. It refuses a missing draft, a bad topic and running on
-  `designs/<topic>` itself.
+  refuses a detached HEAD, a `proto/*` branch (a prototype is never shipped) and the
+  default branch.
 - **The fork check** reads every push URL (`git remote get-url --push --all origin`, which
   `pushurl` and `pushInsteadOf` change) and refuses unless each is the fork it verified:
   `origin fetches from <fork> but pushes to <url>`.
@@ -1157,7 +1162,6 @@ receipt cannot certify a later commit. Verify the actual final commit for public
 | Dispatchers of reducers  | WARN: each changed reducer's action creator, its calls and type-string uses                                                                                              |
 | Revert check             | Branch failure or a reverted pass is FAIL; a reverted failure is INCONCLUSIVE until its intended assertion is inspected                                                  |
 | Measurements in comments | WARN for timing or size figures in added comments                                                                                                                        |
-| Design kept out          | FAIL when any `docs/designs/` file is in the diff or in a commit of the range (designs live on `designs/<topic>`)                                                        |
 | Branch                   | FAIL when the head is a `proto/*` branch, checked out or named with `--head`: a prototype is never shipped                                                               |
 | PR description           | With `--pr <n>`: FAIL on a non-Conventional or >72-char title, missing section, "Not run", no head sha                                                                   |
 

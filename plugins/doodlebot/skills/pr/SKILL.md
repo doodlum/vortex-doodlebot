@@ -48,16 +48,13 @@ passed on the change.
      ported (`${CLAUDE_PLUGIN_ROOT}/resources/egm.md`, "After approval"). Stop.
    - It is not `master` or the upstream default, and its changes are committed: preflight reads
      the committed head. `<topic>` names the work (the branch name without `fix-` or `feat/`).
-   - The design is not on this branch. It lives on `designs/<topic>` (`doodlebot design-branch`);
-     a docs/designs file here fails the preflight.
+   - With a design, it is committed on this branch as `docs/designs/<topic>.md` (EGM's place for
+     an approved design) and travels in the pull request.
 2. **Stop the test Vortex** if this session runs one from that checkout: `doodlebot down`.
 3. **Preflight**, with the revert check:
    `doodlebot pr-preflight --checkout <checkout> --test <test> --revert <file>`.
    Leave `--base` out: the default, the merge-base with upstream's default branch, is the right
    base. It prints PASS, WARN, FAIL or SKIP per check and exits 1 on a FAIL or INCONCLUSIVE.
-   - **Design kept out** FAILs when any docs/designs file is in the diff or in a commit of the
-     branch. Move it to `designs/<topic>` and drop it from the branch (ask before rewriting
-     history).
    - **Branch** FAILs on a `proto/*` branch.
    - Read every WARN list (callers outside the diff, readers of changed state, reducer
      dispatchers) and say in the description how each was checked.
@@ -68,10 +65,9 @@ passed on the change.
    and its results (never "Not run"), the reported scenario before and after (from the run
    reports), and the doodlebot footer at the end. With a design, add:
    - the design's Overview and acceptance criteria, verbatim;
-   - "Design approved by <owner> on <date>; design at
-     <fork>/blob/<sha>/docs/designs/<topic>.md", where `<sha>` is the `designs/<topic>` commit
-     holding the text the person approved (the link `doodlebot design-branch` printed for that
-     revision). Never link a revision the person has not approved.
+   - "Design approved by <owner> on <date>: `docs/designs/<topic>.md`", naming the file in this
+     pull request. Never claim an approval the person has not given, and never describe a
+     revision they have not approved.
 
    Save it as `<workspace>/harness/.artifacts/pr/<topic>.md` and show it to the person.
 
@@ -80,8 +76,8 @@ passed on the change.
       `<branch>` to `origin` (with `-u`) only after `gh` shows `origin` is the person's own fork
       of `Nexus-Mods/Vortex` (or the `VORTEX_AI_VORTEX_REPO` fork they can push to). It refuses
       an absent `origin`, `Nexus-Mods/Vortex` itself, someone else's fork, an `origin` whose push
-      URL (`pushurl` or `pushInsteadOf`) is not that fork, a `proto/*` branch, a `designs/*`
-      branch and the default branch. Without a fork, offer
+      URL (`pushurl` or `pushInsteadOf`) is not that fork, a `proto/*` branch and the
+      default branch. Without a fork, offer
       `gh repo fork Nexus-Mods/Vortex --remote` and run it only when the person agrees. Never
       push by hand to any remote.
    2. **Ask where the PR goes:** "Open the pull request in your fork (<fork>), or against

@@ -104,7 +104,7 @@ describe("EGM resources", () => {
     const review = fences.find((lines) => lines[0]!.startsWith("/egm:egm-review-loop "));
     expect(review?.[1]).toBe("EGM artifact directory: .doodlebot/egm");
     for (const argument of [
-      "TargetFile: <draft>",
+      "TargetFile: <design>",
       "SemanticTarget: full file",
       "Reviewers: [<workspace>/plugins/doodlebot/resources/vortex_runtime.md]",
       '"<workspace>/plugins/doodlebot/resources/vortex-change-standard.md"',
@@ -112,10 +112,10 @@ describe("EGM resources", () => {
       "Dispatch: Direct Dispatch with subagent type doodlebot:vortex-runtime-goldfish",
     ])
       expect(review?.[0]).toContain(argument);
-    // Designs live on designs/<topic>, never on the feature branch.
-    expect(egm).toContain("`designs/<topic>`");
-    expect(egm).toContain("`doodlebot design-branch <topic> --file <draft>`");
-    expect(egm).toContain("never commit it on the feature branch");
+    // As EGM intends, the approved design is a project file on the work branch.
+    expect(egm).toContain("`<checkout>/docs/designs/<topic>.md`");
+    expect(egm).toContain("commit `<design>`");
+    expect(egm).not.toContain("design-branch");
   });
 
   it("points doodlebot's own AGENTS.md and the fix, pr and prototype skills at the resource", () => {

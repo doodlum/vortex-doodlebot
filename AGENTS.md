@@ -54,13 +54,15 @@ longer belongs to Vortex or Electron is cleared as stale. The older record
 
 To work on Vortex's own code, open the session in a Vortex checkout or one of its worktrees:
 doodlebot uses the session's Vortex checkout (the git top level of the folder it runs in), or one
-named with `--dev-dir <dir>`. `/doodlebot:source` prepares it (the `upstream` remote, the
-`.doodlebot/` exclude, install and build). Without a checkout, `doodlebot source --clone <dir>`
+named with `--dev-dir <dir>`. The commands that need it built (`try` on a source build, `fix`,
+`qa`, `prototype`) prepare it on the way with `doodlebot source`, following
+`plugins/doodlebot/resources/checkout.md` (the `upstream` remote and the `.doodlebot/` exclude
+after the person's yes, install and build). Without a checkout, `doodlebot source --clone <dir>`
 clones **your** GitHub fork into `<dir>` (as `origin`, beside Nexus-Mods/Vortex as `upstream`);
 without a fork it clones upstream alone, which is enough to build and test. Make a branch from
 `upstream` for each piece of work (`doodlebot source --branch <name>`). The kit pushes only to your own fork
-(`doodlebot push-branch` for the session's branch, which `/doodlebot:pr` opens the PR from, and
-`doodlebot design-branch <topic> --file <draft>` for a design). The kit never searches the filesystem
+(`doodlebot push-branch` for the session's branch, which `/doodlebot:pr` opens the PR from; an
+approved design is committed on that branch as `docs/designs/<topic>.md`, as EGM intends). The kit never searches the filesystem
 for a Vortex checkout. Building, installing, patching, reverting or recording evidence in the
 checkout a running harness Vortex was launched from refuses with
 "A harness Vortex is running from <checkout> (pid N); run `doodlebot down` before <action>."

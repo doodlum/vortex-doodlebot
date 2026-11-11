@@ -40,7 +40,6 @@ prepares a sandbox test profile.
 | You ask                                      | Command                  |
 | -------------------------------------------- | ------------------------ |
 | "Set up doodlebot" / "What can I test here?" | `/doodlebot:setup`       |
-| "Get me the Vortex source"                   | `/doodlebot:source`      |
 | "Try X in Vortex" / "Does X work?"           | `/doodlebot:try`         |
 | "Prototype this idea"                        | `/doodlebot:prototype`   |
 | "Find out why this is broken"                | `/doodlebot:investigate` |
@@ -50,7 +49,9 @@ prepares a sandbox test profile.
 | "Ship it"                                    | `/doodlebot:pr`          |
 
 Features start with a design in EGM (`/egm:*`, which you type yourself), then
-`/doodlebot:qa --design <file>`. In Codex the commands are skills with the same names.
+`/doodlebot:qa --design <file>`. In Codex the commands are skills with the same names. To work
+on Vortex's own code, open your agent in your Vortex checkout: the commands that need it built
+prepare it on the way, and `/doodlebot:setup` clones one when you have none.
 
 **[Read the documentation](https://doodlum.github.io/vortex-doodlebot/)** for setup, your first
 session, and guides to each command.

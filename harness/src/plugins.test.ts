@@ -29,9 +29,10 @@ const PLUGINS: Record<string, PluginSpec> = {
     displayName: "Doodlebot",
     description:
       "The agent companion for Vortex: try things in a test Vortex, prototype ideas, investigate and fix bugs, QA pull requests and releases, and measure builds.",
-    // The eight commands of designs/companion-simplified.md 4.1, one per use case, and the
-    // ninth, prototype (designs/vortex-checkout.md 4.7).
-    skills: ["setup", "source", "try", "investigate", "fix", "qa", "measure", "pr", "prototype"],
+    // The commands of designs/companion-simplified.md 4.1, one per use case, with prototype
+    // (designs/vortex-checkout.md 4.7) and without source (owner decision 2026-11-11: the
+    // commands that need a built checkout prepare it themselves).
+    skills: ["setup", "try", "investigate", "fix", "qa", "measure", "pr", "prototype"],
     shortDescription: "The agent companion for Vortex",
     capabilities: [
       "Try things in a test Vortex",
@@ -49,7 +50,7 @@ const PLUGINS: Record<string, PluginSpec> = {
 };
 const ICON = "./assets/icon.png";
 
-/** The commands the eight replaced (design 4.1); no text may name them as commands. */
+/** Removed commands (design 4.1, and source); no text may name them as commands. */
 const REMOVED_SKILLS = [
   "login",
   "baseline",
@@ -61,6 +62,8 @@ const REMOVED_SKILLS = [
   "ui-test",
   "compare",
   "design",
+  // Owner decision 2026-11-11: preparing the checkout is a step of try, fix, qa and prototype.
+  "source",
 ];
 
 /** Skills that run only when the person asks (`disable-model-invocation: true`). */
@@ -158,8 +161,8 @@ function commandUses(markdown: string): { text: string; command: string; word?: 
 }
 
 const REPO_SEGMENT = /(^|\/)(harness|designs)\//;
-/** Vortex branch names that look like a repository path: a design's sibling branch. */
-const BRANCH_NAME = /^designs\/(?:<topic>|\*)$/;
+/** Vortex's own design folder, where EGM saves a Vortex design: not a doodlebot path. */
+const VORTEX_DESIGNS = /^(?:<checkout>\/)?docs\/designs\//;
 
 /**
  * Code tokens holding a repository path (a `harness/` or `designs/` segment)
@@ -184,7 +187,7 @@ function pathTokenViolations(markdown: string): string[] {
       token = token.replace(/\\/g, "/");
       if (
         REPO_SEGMENT.test(token) &&
-        !BRANCH_NAME.test(token) &&
+        !VORTEX_DESIGNS.test(token) &&
         !token.startsWith("<workspace>/") &&
         !token.startsWith("${CLAUDE_PLUGIN_ROOT}/")
       )
@@ -386,6 +389,25 @@ describe("skills", () => {
     expect(uses).toContain("doodlebot update --ref <ref>");
   });
 
+  it("prepares the checkout inside the commands that need a build, and setup clones one", () => {
+    const procedure = read("plugins/doodlebot/resources/checkout.md");
+    expect(procedure).toMatch(/^# Prepare this checkout$/m);
+    const uses = commandUses(procedure).map((use) => use.text);
+    expect(uses).toContain("doodlebot source --where");
+    expect(uses).toContain("doodlebot source --no-build");
+    expect(uses).toContain("doodlebot source --no-build --add-upstream --exclude");
+    expect(uses).toContain("doodlebot source");
+    for (const skill of ["try", "fix", "qa", "prototype"]) {
+      const text = read(skillFile("doodlebot", skill));
+      expect(text, skill).toContain("${CLAUDE_PLUGIN_ROOT}/resources/checkout.md");
+      expect(text, skill).toContain("doodlebot check --json");
+    }
+    const setup = read(skillFile("doodlebot", "setup"));
+    expect(setup).toContain("**No checkout yet.**");
+    expect(commandUses(setup).map((use) => use.text)).toContain("doodlebot source --clone <dir>");
+    expect(setup).toContain("${CLAUDE_PLUGIN_ROOT}/resources/checkout.md");
+  });
+
   it("names the legacy lease store in the setup skill", () => {
     const setup = read(skillFile("doodlebot", "setup"));
     expect(setup).toContain("Legacy lease store");
@@ -527,9 +549,9 @@ describe("skills", () => {
       "Open the pull request in your fork (<fork>), or against Nexus-Mods/Vortex?",
     );
     expect(flat).toContain("`bind_pr`");
-    // The design is linked at its approved commit on designs/<topic>, never carried.
-    expect(flat).toContain("Design approved by <owner> on <date>");
-    expect(flat).toContain("<fork>/blob/<sha>/docs/designs/<topic>.md");
+    // The approved design travels in the pull request, as EGM intends.
+    expect(flat).toContain("Design approved by <owner> on <date>: `docs/designs/<topic>.md`");
+    expect(text).not.toContain("design-branch");
     expect(flat).toContain("**A `proto/*` branch is refused**");
     expect(text).not.toMatch(/pr-branch|(?<!\/)pr\/<topic>|design\/<topic>/);
   });
@@ -746,8 +768,10 @@ describe("workspace paths in plugin skills and agents", () => {
     expect(pathTokenViolations("`doodlebot test core harness/src/tests/a.spec.ts`")).toEqual([]);
     expect(pathTokenViolations("`doodlebot up harness/src/tests/a.spec.ts`")).toHaveLength(1);
     expect(pathTokenViolations("See harness/AGENTS.md in prose.")).toEqual([]);
-    // A design's sibling branch is a Vortex branch name, not a doodlebot path.
-    expect(pathTokenViolations("`designs/<topic>` and `designs/*`")).toEqual([]);
+    // A Vortex design's file is in the Vortex checkout, not a doodlebot path.
+    expect(
+      pathTokenViolations("`docs/designs/<topic>.md` and `<checkout>/docs/designs/x.md`"),
+    ).toEqual([]);
     expect(pathTokenViolations("`designs/x.md`")).toHaveLength(1);
   });
 

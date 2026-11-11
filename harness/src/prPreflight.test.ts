@@ -1316,7 +1316,7 @@ describe("--revert-hunk on a git checkout", { timeout: 60_000 }, () => {
   });
 });
 
-describe("pr-preflight keeps designs and prototypes out", { timeout: 60_000 }, () => {
+describe("pr-preflight carries designs and keeps prototypes out", { timeout: 60_000 }, () => {
   let repo: string;
 
   beforeEach(() => {
@@ -1345,15 +1345,13 @@ describe("pr-preflight keeps designs and prototypes out", { timeout: 60_000 }, (
       ...(head === undefined ? {} : { head }),
     });
     return {
-      design: report.checks.find((c) => c.id === "design")!,
       branch: report.checks.find((c) => c.id === "branch")!,
       passed: report.passed,
     };
   };
 
   it("passes a clean feature branch", async () => {
-    const { design, branch, passed } = await checks();
-    expect(design).toMatchObject({ status: "pass", details: [] });
+    const { branch, passed } = await checks();
     expect(branch).toMatchObject({
       status: "pass",
       summary: "feat/zoom is not a prototype branch",
@@ -1361,27 +1359,14 @@ describe("pr-preflight keeps designs and prototypes out", { timeout: 60_000 }, (
     expect(passed).toBe(true);
   });
 
-  it("FAILs on any docs/designs/ file in the diff, and on a commit that carried one", async () => {
+  it("passes a design committed on the branch, as EGM intends", async () => {
     write(repo, "docs/designs/zoom.md", "# Zoom\n");
     run(repo, "add", ".");
-    run(repo, "commit", "-q", "-m", "chore: notes");
-    const inDiff = await checks();
-    expect(inDiff.design.status).toBe("fail");
-    expect(inDiff.design.details).toContain("in the diff: docs/designs/zoom.md");
-    expect(inDiff.design.summary).toContain("doodlebot design-branch <topic> --file <draft>");
-    expect(inDiff.passed).toBe(false);
-
-    // Removed again: the diff is clean, but the PR's commits still carry it.
-    run(repo, "rm", "-q", "docs/designs/zoom.md");
-    run(repo, "commit", "-q", "-m", "chore: drop notes");
-    const inCommit = await checks();
-    expect(inCommit.design.status).toBe("fail");
-    expect(inCommit.design.details).toEqual([
-      expect.stringMatching(/^[0-9a-f]{7} chore: drop notes: docs\/designs\/zoom\.md$/),
-      expect.stringMatching(/^[0-9a-f]{7} chore: notes: docs\/designs\/zoom\.md$/),
-    ]);
+    run(repo, "commit", "-q", "-m", "docs(design): zoom");
+    const { branch, passed } = await checks();
+    expect(branch.status).toBe("pass");
+    expect(passed).toBe(true);
   });
-
   it("FAILs on a proto/* head, checked out or named with --head", async () => {
     run(repo, "branch", "-q", "proto/zoom");
     run(repo, "checkout", "-q", "proto/zoom");

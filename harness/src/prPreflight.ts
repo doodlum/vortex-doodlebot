@@ -34,7 +34,6 @@ import {
   type CheckoutIdentity,
 } from "./evidence";
 import { UPSTREAM, childEnv } from "./source";
-import { DESIGNS_DIR } from "./prPush";
 import { REPO_ROOT } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -42,16 +41,7 @@ const execFileAsync = promisify(execFile);
 export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "inconclusive";
 
 export interface CheckResult {
-  id:
-    | "size"
-    | "callers"
-    | "state"
-    | "dispatch"
-    | "revert"
-    | "comments"
-    | "design"
-    | "branch"
-    | "description";
+  id: "size" | "callers" | "state" | "dispatch" | "revert" | "comments" | "branch" | "description";
   title: string;
   status: CheckStatus;
   summary: string;
@@ -2400,7 +2390,6 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
   }
 
   checks.push(commentCheck(files));
-  checks.push(await designCheck(dir, files, mergeBase, headSha));
   checks.push(await branchCheck(dir, options.head));
 
   if (options.pr !== undefined) {
@@ -2447,58 +2436,6 @@ async function runPreflightInside(options: PreflightOptions): Promise<PreflightR
     passed:
       kitUnchanged &&
       checks.every((check) => check.status !== "fail" && check.status !== "inconclusive"),
-  };
-}
-
-/** Each commit of `range` with its subject and the files it touches. */
-async function commitsIn(
-  dir: string,
-  range: string,
-): Promise<{ sha: string; subject: string; files: string[] }[]> {
-  const shas = (await git(dir, ["rev-list", range])).split("\n").filter(Boolean);
-  return Promise.all(
-    shas.map(async (sha) => ({
-      sha,
-      subject: (await git(dir, ["log", "-1", "--format=%s", sha])).trim(),
-      files: (await git(dir, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha]))
-        .split("\n")
-        .filter(Boolean),
-    })),
-  );
-}
-
-/**
- * The design stays out of a Vortex PR: it lives on the sibling branch `designs/<topic>`
- * (`doodlebot design-branch`). FAIL when any `docs/designs/` file is in the diff, or in a commit
- * of the range (a commit that adds and later removes one still carries it into the PR).
- */
-export async function designCheck(
-  dir: string,
-  files: FileDiff[],
-  mergeBase: string,
-  headSha: string,
-): Promise<CheckResult> {
-  const isDesign = (file: string | undefined): boolean =>
-    file !== undefined && file.startsWith(DESIGNS_DIR);
-  const details: string[] = [];
-  for (const file of files)
-    if (isDesign(file.newPath) || isDesign(file.oldPath))
-      details.push(`in the diff: ${file.newPath ?? file.oldPath ?? file.path}`);
-  for (const commit of await commitsIn(dir, `${mergeBase}..${headSha}`)) {
-    const touched = commit.files.filter(isDesign);
-    if (touched.length > 0)
-      details.push(`${commit.sha.slice(0, 7)} ${commit.subject}: ${touched.join(", ")}`);
-  }
-  return {
-    id: "design",
-    title: "Design kept out of the PR",
-    status: details.length > 0 ? "fail" : "pass",
-    summary:
-      details.length > 0
-        ? `the branch changes ${DESIGNS_DIR}; a design goes on designs/<topic> ` +
-          "(`doodlebot design-branch <topic> --file <draft>`), never on the PR's branch"
-        : `no ${DESIGNS_DIR} file in the diff or its commits`,
-    details,
   };
 }
 

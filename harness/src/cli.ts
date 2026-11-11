@@ -89,7 +89,7 @@ import {
 import { sourceBuildIsCurrent } from "./productionMode";
 import { gapCommand } from "./gapCommand";
 import { IssuesDisabledError } from "./share";
-import { designBranchCommand, pushSessionBranch } from "./prPush";
+import { pushSessionBranch } from "./prPush";
 
 /** Commands that launch Vortex: an unbuilt session checkout refuses instead of falling back. */
 const LAUNCHES = new Set(["up", "bootstrap", "setup"]);
@@ -179,12 +179,14 @@ function clientFor(config: HarnessConfig): VortexMcpClient {
 
 const HELP = `doodlebot — the agent companion for Vortex: automation for stock Vortex and Vortex development
 
-Used from Claude Code or Codex through the doodlebot plugin, whose nine commands
-(/doodlebot:setup, source, try, prototype, investigate, fix, qa, measure and pr) run these.
+Used from Claude Code or Codex through the doodlebot plugin, whose eight commands
+(/doodlebot:setup, try, prototype, investigate, fix, qa, measure and pr) run these.
 
 The companion itself
   version [--json]       This workspace's version, commit and path
   link [--bin-dir <dir>] Write the doodlebot shims into a folder on the PATH
+                         and record this workspace in ~/.doodlebot/workspace.json, which
+                         the plugin's SessionStart hook reads
   update --ref <ref>     Move this workspace to a tag or branch of origin, then install
                          and build (refuses while a harness Vortex runs or with local changes)
 
@@ -263,20 +265,10 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
     --branch <name>      Cut a new work branch from upstream/<default branch>
     --no-build           Skip install and build
     --where              Print the session's checkout
-  design-branch <topic> --file <draft>
-                         Commit the draft as docs/designs/<topic>.md on the sibling branch
-                         designs/<topic> (docs(design): <topic>), in a temporary worktree:
-                         the session's branch and files never change. The branch continues
-                         from its own head, else the fork's, else the merge-base of HEAD and
-                         the base. Pushes it to origin only after gh shows origin is your own
-                         fork of Nexus-Mods/Vortex (or the VORTEX_AI_VORTEX_REPO fork you can
-                         push to), and prints <fork>/blob/<sha>/docs/designs/<topic>.md
-    --checkout <dir>     Vortex checkout (default: this session's)
-    --base <ref>         Base for a new branch (default: upstream/<default branch>)
   push-branch            Push the session's branch (the one /doodlebot:pr opens the PR from)
                          to origin with -u, after the same fork check. Refuses a detached
-                         HEAD, a proto/* prototype branch (never shipped), a designs/* branch
-                         and the default branch
+                         HEAD, a proto/* prototype branch (never shipped) and the default
+                         branch
     --checkout <dir>     Vortex checkout (default: this session's)
   pr-checks <pr>         Diagnose current GitHub checks and their failed steps
     --repo <owner/name>  Repository to inspect (default: Nexus-Mods/Vortex)
@@ -292,8 +284,8 @@ Game copies and released builds (registered in ~/.doodlebot/content.json)
                          Newly produced JSON reporter output, required for test counts
   pr-preflight           Mechanical checks on a Vortex branch before pushing: size,
                          callers outside the diff, revert check (negative control),
-                         measurements in comments, design kept out (no docs/designs/ file),
-                         branch (a proto/* branch fails), PR description
+                         measurements in comments, branch (a proto/* branch fails), PR
+                         description
     --checkout <dir>     Vortex checkout (default: this session's)
     --base <ref>         Base to diff from (default: upstream/master, via merge-base)
     --head <ref>         Compare this ref without checking it out (no revert check)
@@ -436,7 +428,7 @@ Target and isolation (repeat the same flags for all commands)
 
 Without a target flag: this session's Vortex checkout (the git top level holding the folder you
 run doodlebot in, when its package.json is @vortex/monorepo; a worktree counts), otherwise the
-installed Vortex. build, source (except --clone), design-branch, push-branch and pr-preflight
+installed Vortex. build, source (except --clone), push-branch and pr-preflight
 need a checkout:
 outside one they refuse.
 Relative paths you type are yours: they resolve against the directory you run doodlebot in.
@@ -607,15 +599,6 @@ async function main(): Promise<number> {
   if (command === "push-branch") {
     const { branch, fork } = pushSessionBranch(checkoutFlag(flags));
     log(`pushed ${branch} to ${fork}`);
-    return 0;
-  }
-
-  if (command === "design-branch") {
-    const result = designBranchCommand(positional, flags, {
-      checkout: checkoutFlag(flags),
-      onProgress: (message) => log(`  ${message}`),
-    });
-    log(result);
     return 0;
   }
 
@@ -1013,7 +996,9 @@ async function main(): Promise<number> {
           });
           if (!source.hasFork) log(`  ${NO_FORK_NOTE}`);
           log("");
-          log(`Open Claude in ${source.dir} and run \`/doodlebot:source\`.`);
+          log(
+            `Open Claude in ${source.dir}. The first command that needs a build there (/doodlebot:try, fix, qa or prototype) prepares it.`,
+          );
           return 0;
         }
 

@@ -427,7 +427,7 @@ export async function cloneVortex(
   if (fs.existsSync(dir) && fs.readdirSync(dir).length > 0)
     throw new ConfigError(
       `${dir} already exists and is not empty. Name a new folder, or open Claude in that ` +
-        "checkout and run `/doodlebot:source`.",
+        "checkout: the commands that need a build there prepare it.",
     );
 
   const fork = await (options.resolveRepo ?? resolveVortexRepo)();

@@ -20,7 +20,7 @@ round after round, until you have seen enough to design it.
     is what `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` names, normally
     `master`) and open the agent there.
 - The worktree must be clean. Each worktree needs its own install and build, which takes
-  minutes and several GB; the agent runs `/doodlebot:source` for it.
+  minutes and several GB; the prototype prepares the worktree itself before its first build.
 
 A prototype is never shipped. Nothing in it is reviewed or approved, and `/doodlebot:pr` refuses
 a `proto/*` branch.

@@ -51,7 +51,7 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
    It checks types, lint, formatting, documentation, the QA catalogue (`doodlebot qa check`),
    unit tests and the extension build. It does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
    to its design: the manifests and icon, every skill's frontmatter, every plugin resource a
-   skill names, both agents running on Sonnet, exactly the nine commands with a Learned section
+   skill names, both agents running on Sonnet, exactly the eight commands with a Learned section
    in each report, and no text naming a removed command. Tests that would reach GitHub (sharing,
    pushing) use a stand-in for `gh`; none of them publishes anything.
 
@@ -85,7 +85,10 @@ DOM helpers. Put harness tests next to the code in `harness/src/*.test.ts`, and 
 as `install` refusing an unquoted path with a space, belongs in `harness/src/cliArgs.test.ts`.
 A rule about Git state runs on real temporary repositories: `harness/src/source.test.ts` checks
 that `doodlebot source --exclude` keeps `.doodlebot/` and the Claude desktop app's
-`.claude/worktrees/` out of `git add -A`.
+`.claude/worktrees/` out of `git add -A`, and `harness/src/prPreflight.test.ts` checks that a
+design committed on a work branch passes the preflight while a `proto/*` branch fails it. The plugin's
+SessionStart hook is a plain script; `harness/src/sessionNote.test.ts` runs it as Claude Code does,
+with the hook input on stdin, in temporary Vortex and non-Vortex repositories.
 
 ```powershell
 pnpm exec vitest run harness/src/perfSummary.test.ts
