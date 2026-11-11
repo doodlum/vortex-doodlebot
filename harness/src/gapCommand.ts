@@ -16,6 +16,7 @@ import path from "node:path";
 import {
   type Entry,
   findEntry,
+  flatEntry,
   guardValues,
   newId,
   oneLine,
@@ -72,6 +73,8 @@ export const defaultIsAncestor = (commit: string, kit: string, root = REPO_ROOT)
   }).status === 0;
 
 const readGaps = (file: string): Gap[] => readEntries(file, GAP_FIELDS);
+/** A gap for `--json`: `command`, `status` and the other fields at the top level. */
+export const flatGap = (gap: Gap) => flatEntry(gap, GAP_FIELDS);
 const writeGaps = (file: string, gaps: Gap[]): void => writeEntries(file, HEADER, gaps, GAP_FIELDS);
 
 const sameGap = (gap: Gap, command: string, title: string): boolean =>
@@ -251,13 +254,13 @@ export function gapCommand(
         deps,
       );
       return json
-        ? JSON.stringify({ outcome: result.outcome, gap: result.gap }, null, 2)
+        ? JSON.stringify({ outcome: result.outcome, gap: flatGap(result.gap) }, null, 2)
         : result.message;
     }
     case "list": {
       // JSON always holds every gap, closed ones too, so an agent can match before adding.
       const gaps = readGaps(file);
-      if (json) return JSON.stringify(gaps, null, 2);
+      if (json) return JSON.stringify(gaps.map(flatGap), null, 2);
       const shown =
         flags.all === true ? gaps : gaps.filter((gap) => (gap.fields.status ?? "open") === "open");
       if (shown.length === 0) return `No open kit gaps (${file}).`;
@@ -274,7 +277,7 @@ export function gapCommand(
       if (!id) throw new ConfigError("gap close needs a gap id.");
       const gap = closeGap(id, { by: text("by"), wontfix: flags.wontfix === true }, deps);
       return json
-        ? JSON.stringify(gap, null, 2)
+        ? JSON.stringify(flatGap(gap), null, 2)
         : gap.fields.status === "wontfix"
           ? `closed ${gap.id} as wontfix: it is not raised again`
           : `closed ${gap.id}, fixed by ${gap.fields.by!}`;

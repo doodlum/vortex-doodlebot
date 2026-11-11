@@ -1387,7 +1387,12 @@ doodlebot gap share <id> [--yes] [--print] [--include-third-party]
   `What happened`, `Workaround used` (default `none`), `Blocked`, `Kit` (the `doodlebot version`
   commit), `Seen`, `Count`, `Status` (`open`, `closed`, `wontfix`), `Closed`, `Fixed by`.
 - The same gap is the same `Command` and title (case-insensitive). `gap list --json` lists
-  every gap, closed ones too, so an agent reuses a title before adding. An add that matches an
+  every gap, closed ones too, so an agent reuses a title before adding. Each JSON gap has `id`,
+  `title`, every field at the top level (`command`, `needed`, `happened`, `workaround`,
+  `blocked`, `kit`, `seen`, `count`, `status`, `closed`, `by`, `thirdParty`, `issue`; `null`
+  when absent) and `notes`; there is no `fields` object. `knowledge list --json` and a local
+  match of `knowledge search --json` give a lesson the same way (`area`, `symptom`, `cause`,
+  `remedy`, `scope`, `evidence`, `vortex`, `seen`, `thirdParty`, `issue`). An add that matches an
   open gap updates `Seen`, `Kit` and `Count`; a `wontfix` gap records nothing
   (`rejected by the owner on <date>`); a gap closed `--by <commit>` re-opens only when
   `git merge-base --is-ancestor <commit> <Kit>` succeeds in the workspace (the fix did not
@@ -1418,6 +1423,10 @@ GitHub issue on `doodlum/vortex-doodlebot`, which the maintainer turns into a ch
   a second share of the same id is refused.
 - `--print` gives only the text, without `gh`, to paste by hand. Without `gh`, `--yes` fails
   with that advice.
+- Before any search or create, it reads `gh repo view doodlum/vortex-doodlebot --json
+hasIssuesEnabled`. When issues are disabled it prints the text and "Issues are disabled on
+  doodlum/vortex-doodlebot; the owner can enable them, or share this text another way", creates
+  nothing and exits 2 (`IssuesDisabledError`). When `gh` can't say, `--yes` fails.
 
 `plugins/doodlebot/resources/knowledge.md` is the procedure. Before acting, `try`,
 `investigate` and `fix` search for the symptom or area, and treat every match as a lead to

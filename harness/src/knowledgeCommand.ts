@@ -11,7 +11,9 @@ import path from "node:path";
 
 import {
   type Entry,
+  type FlatEntry,
   findEntry,
+  flatEntry,
   guardValues,
   newId,
   oneLine,
@@ -48,12 +50,13 @@ const INPUT: Field[] = [...REQUIRED, "thirdParty"];
 const flagName = (key: string): string => (key === "thirdParty" ? "third-party" : key);
 
 export type Lesson = Entry<Field>;
-export interface Match {
-  source: "local" | "shared";
-  id?: string;
-  title: string;
-  text: string;
-}
+/** A search match. A local lesson's match also carries its fields at the top level. */
+export type Match =
+  | ({ source: "local"; text: string } & FlatEntry<Field>)
+  | { source: "shared"; id?: undefined; title: string; text: string };
+
+/** A lesson for `--json`: `area`, `symptom` and the other fields at the top level. */
+export const flatLesson = (lesson: Lesson): FlatEntry<Field> => flatEntry(lesson, FIELDS);
 
 const HEADER =
   "# Local doodlebot knowledge\n\n" +
@@ -181,15 +184,14 @@ export function searchKnowledge(
     return terms.every((term) => lower.includes(term));
   };
   const local = readLessons(files.local ?? KNOWLEDGE_FILE)
-    .map((lesson) => ({
-      source: "local" as const,
-      id: lesson.id,
-      title: lesson.title,
+    .map((lesson): Match => ({
+      source: "local",
+      ...flatLesson(lesson),
       text: renderEntry(lesson, FIELDS).trim(),
     }))
     .filter((match) => holds(match.text));
   const shared = sharedSections(files.shared ?? SHARED_KNOWLEDGE_FILE)
-    .map((section) => ({ source: "shared" as const, ...section }))
+    .map((section): Match => ({ source: "shared", ...section }))
     .filter((match) => holds(match.text));
   return [...local, ...shared];
 }
@@ -227,12 +229,12 @@ export function knowledgeCommand(
         local,
       );
       return json
-        ? JSON.stringify(lesson, null, 2)
+        ? JSON.stringify(flatLesson(lesson), null, 2)
         : `added ${lesson.id}: ${lesson.title} (${local})`;
     }
     case "list": {
       const lessons = readLessons(local);
-      if (json) return JSON.stringify(lessons, null, 2);
+      if (json) return JSON.stringify(lessons.map(flatLesson), null, 2);
       return lessons.length === 0
         ? `No local lessons yet (${local}).`
         : lessons.map((lesson) => `${lesson.id}  ${lesson.title}`).join("\n");
@@ -247,7 +249,7 @@ export function knowledgeCommand(
       if (!id) throw new ConfigError("knowledge note needs an id and the note's text.");
       const lesson = noteLesson(id, words.join(" "), local);
       return json
-        ? JSON.stringify(lesson, null, 2)
+        ? JSON.stringify(flatLesson(lesson), null, 2)
         : `noted ${lesson.id}: ${lesson.notes[lesson.notes.length - 1]!}`;
     }
     case "share": {

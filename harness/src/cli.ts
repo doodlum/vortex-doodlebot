@@ -87,6 +87,7 @@ import {
 } from "./source";
 import { checkBuildRecord } from "./productionMode";
 import { gapCommand } from "./gapCommand";
+import { IssuesDisabledError } from "./share";
 import { designBranchCommand, pushSessionBranch } from "./prPush";
 
 /** Commands that launch Vortex: an unbuilt session checkout refuses instead of falling back. */
@@ -355,8 +356,11 @@ Knowledge (lessons verified on this machine, in ~/.doodlebot/knowledge.md)
                          Record a lesson whose cause you checked (never credentials)
   knowledge note <id> <text>   Append a dated note, e.g. "does not hold on <version>"
   knowledge list [--json] | knowledge remove <id> | knowledge path
+                         --json (list, search): each lesson's fields at the top level
   knowledge share <id>   Print the redacted lesson for a GitHub issue on
-                         doodlum/vortex-doodlebot; publishes nothing without --yes
+                         doodlum/vortex-doodlebot; publishes nothing without --yes. When
+                         the repository has issues disabled, prints the text and the
+                         reason, creates nothing and exits 2
     --yes                Publish (after the person confirmed the printed text); an open
                          issue with the same title gets a comment instead
     --print              Only the text, to paste into an issue by hand (no gh)
@@ -369,7 +373,8 @@ Kit gaps (what the kit should have done and didn't, in ~/.doodlebot/gaps.md)
                          Same command and title: counts it again; a wontfix gap is not
                          recorded; a gap closed --by a commit re-opens only when this kit
                          contains that commit
-  gap list [--all] [--json]    Open gaps (--all: closed too; --json always lists all)
+  gap list [--all] [--json]    Open gaps (--all: closed too; --json always lists all, each
+                               gap's fields at the top level: command, status, ...)
   gap close <id> --by <commit> | --wontfix
   gap share <id> [--yes] [--print] [--include-third-party]   As knowledge share
 
@@ -575,14 +580,16 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  if (command === "knowledge") {
-    log(knowledgeCommand(positional, flags));
-    return 0;
-  }
-
-  if (command === "gap") {
-    log(gapCommand(positional, flags));
-    return 0;
+  if (command === "knowledge" || command === "gap") {
+    try {
+      log(command === "gap" ? gapCommand(positional, flags) : knowledgeCommand(positional, flags));
+      return 0;
+    } catch (err) {
+      // share on a repository without issues: the text and the reason on stdout, exit 2.
+      if (!(err instanceof IssuesDisabledError)) throw err;
+      log(err.output);
+      return err.exitCode;
+    }
   }
 
   if (command === "push-branch") {
