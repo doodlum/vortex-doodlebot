@@ -277,11 +277,13 @@ A ninth command, the owner's choice.
     `webFrame.setZoomFactor(minimumWidth / requestedWidth)`.
   - The CSS viewport is then the requested width. The zoom persists with no CDP session, unlike
     `Emulation.setDeviceMetricsOverride`, which ends when its session detaches.
-  - It returns `{ requested, actual, zoomFactor, cssWidth }`.
-  - **The person's own zoom is kept.** Before the first change it reads `getZoomFactor()` and
-    keeps it. The narrow factor is computed relative to it: `kept × minimumWidth /
-requestedWidth`. Any later `ui_set_viewport` at or above the minimum, and `reset: true`,
-    restore the kept factor, not 1.
+  - It returns `{ requested, actual, zoomFactor, cssWidth, emulated, reason? }`.
+  - **The person's own zoom is kept.** When no narrow zoom is active, it reads `getZoomFactor()`
+    and keeps it. A second narrow call doesn't overwrite the kept value.
+  - **The factor** is computed from the measured width: `kept × innerWidth at the kept factor /
+requestedWidth`. The spike's 1023 px at 1.6 gave 639, not 640.
+  - Any later `ui_set_viewport` at or above the minimum, and `reset: true`, restore the kept
+    factor, not 1.
   - **Screenshots** at that zoom show the narrow layout, at a higher `devicePixelRatio`: the
     spike measured 2 to 3.2. `getViewport` reports both.
 - **Callers:** `responsive` uses it for narrow widths. `responsiveSweep`'s `finally` restores the
