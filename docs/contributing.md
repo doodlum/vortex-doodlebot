@@ -26,7 +26,7 @@ the checkout once.
 | Path                 | What it is                                                          |
 | -------------------- | ------------------------------------------------------------------- |
 | `plugins/doodlebot/` | The plugin: its skills, agents, resources and icon                  |
-| `bin/`               | The `doodlebot` entry point and the updater                         |
+| `bin/`               | The `doodlebot` entry point and the updater (`update.test.ts`)      |
 | `src/`               | The Vortex extension: the MCP server exposing Vortex's state and UI |
 | `harness/src/`       | The CLI, launcher, fixtures and helpers                             |
 | `harness/src/tests/` | Playwright tests and performance checks against a real Vortex       |

@@ -120,17 +120,17 @@ caller's directory; kit defaults resolve against the workspace root. Everything 
 the shim may not exist (CI, evidence receipts, a fresh clone), run `node bin/doodlebot.cjs …`
 from the workspace root.
 
-| Command                           | What it does                                                                                                                                                                                             |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                                                                       |
-| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`; records the workspace in `~/.doodlebot/workspace.json` |
-| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build`                                               |
-| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                                                                       |
-| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`); `fixture fomod` writes a one-step FOMOD installer                                                      |
-| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`                                                  |
-| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                                                                             |
-| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `note`, `share`, `path` ("Knowledge")                                    |
-| `doodlebot gap <sub>`             | Kit gaps in `~/.doodlebot/gaps.md`: `add`, `list`, `close`, `share` ("Knowledge")                                                                                                                        |
+| Command                           | What it does                                                                                                                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `doodlebot version [--json]`      | `doodlebot <version> (<commit>[, modified]) at <workspace>`; `--json` prints `{version, commit, dirty, workspace}`                                                                                            |
+| `doodlebot link [--bin-dir <d>]`  | Writes `doodlebot.cmd` (Windows) and an extensionless `doodlebot` script into a folder on the PATH; prints `shim: <path>` and `on PATH: yes\|no`; records the workspace in `~/.doodlebot/workspace.json`      |
+| `doodlebot update --ref <ref>`    | Handled by `bin/update.cjs` before tsx loads: moves the workspace to a tag or branch of origin, then `pnpm install --frozen-lockfile` and `pnpm run build`; writes `~/.doodlebot/workspace.json` when missing |
+| `doodlebot test <suite> [args…]`  | Runs a Playwright suite or check script from the workspace root; `doodlebot test --list` lists them (`harness/src/testCommand.ts`)                                                                            |
+| `doodlebot fixture mod --out <z>` | Writes a mod archive with one file, `textures/<name>.txt` (`--name`, default `automation-probe`); `fixture fomod` writes a one-step FOMOD installer                                                           |
+| `doodlebot log`                   | The running instance's `<userDataDir>/vortex.log`, filtered: `--level info\|warn\|error` (default `warn`), `--tail <n>` (50), `--since <ISO>`, `--json`                                                       |
+| `doodlebot perf-summary`          | Medians, ranges and verdicts from performance-check evidence (`harness/src/perfSummary.ts`; "Opt-in checks")                                                                                                  |
+| `doodlebot knowledge <sub>`       | Lessons verified on this machine in `~/.doodlebot/knowledge.md`: `add`, `search` (also reads `KNOWLEDGE.md`), `list`, `remove`, `note`, `share`, `path` ("Knowledge")                                         |
+| `doodlebot gap <sub>`             | Kit gaps in `~/.doodlebot/gaps.md`: `add`, `list`, `close`, `share` ("Knowledge")                                                                                                                             |
 
 - `link` writes no `.ps1` and spawns no `npm`. Without `--bin-dir` it takes the first of these
   that is on the PATH and writable: `npm_config_prefix` (its `bin` outside Windows); on Windows

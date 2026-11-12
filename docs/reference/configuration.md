@@ -131,18 +131,18 @@ instead of installing the first part of a split one, which can name another file
 
 ## Files doodlebot keeps
 
-| Path                                           | Contents                                                                          |
-| ---------------------------------------------- | --------------------------------------------------------------------------------- |
-| `~/.doodlebot/instance.json`                   | The record of the running test Vortex                                             |
-| `~/.doodlebot/workspace.json`                  | The workspace `doodlebot link` recorded, read by the plugin's SessionStart hook   |
-| `~/.doodlebot/content.json`                    | Registered game copies and releases, pending restores                             |
-| `~/.doodlebot/releases/`                       | Official releases extracted by `release get`                                      |
-| `<workspace>/harness/.cache`                   | Test profiles, baselines and saved logins                                         |
-| `<workspace>/harness/.artifacts`               | Run reports, benchmark reports, designs and other outputs                         |
-| `<workspace>/harness/qa/`                      | The QA catalogue, checked in                                                      |
-| `<workspace>/harness/.env`                     | Optional private local configuration                                              |
-| `<workspace>/dist/`                            | The built doodlebot extension                                                     |
-| `<checkout's git folder>/doodlebot-build.json` | What `doodlebot build` built; `up` refuses a build the checkout no longer matches |
+| Path                                           | Contents                                                                                           |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `~/.doodlebot/instance.json`                   | The record of the running test Vortex                                                              |
+| `~/.doodlebot/workspace.json`                  | The workspace `doodlebot link` (or `update`, when missing) recorded, read by the SessionStart hook |
+| `~/.doodlebot/content.json`                    | Registered game copies and releases, pending restores                                              |
+| `~/.doodlebot/releases/`                       | Official releases extracted by `release get`                                                       |
+| `<workspace>/harness/.cache`                   | Test profiles, baselines and saved logins                                                          |
+| `<workspace>/harness/.artifacts`               | Run reports, benchmark reports, designs and other outputs                                          |
+| `<workspace>/harness/qa/`                      | The QA catalogue, checked in                                                                       |
+| `<workspace>/harness/.env`                     | Optional private local configuration                                                               |
+| `<workspace>/dist/`                            | The built doodlebot extension                                                                      |
+| `<checkout's git folder>/doodlebot-build.json` | What `doodlebot build` built; `up` refuses a build the checkout no longer matches                  |
 
 Git ignores these paths in the workspace, but logs, screenshots and reports still need a privacy
 check before you share them. See [Security and privacy](../security.md).

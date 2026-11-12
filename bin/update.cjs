@@ -152,7 +152,32 @@ function update(root, ref, run = defaultRun, deps = {}) {
   }
   step("pnpm", ["install", "--frozen-lockfile"], true);
   step("pnpm", ["run", "build"], true);
+  const recorded = recordWorkspace(stateDir, root);
   log(`Updated ${root} to ${ref}; dependencies installed and the extension built.`);
+  if (recorded !== undefined) log(`workspace record: ${recorded}`);
+}
+
+/**
+ * Write `doodlebot link`'s record of the workspace (`workspace.json`, read by the plugin's
+ * SessionStart hook) when there is none. A shim from a doodlebot older than the record works but
+ * never wrote it, and setup skips `link` while the shim works, so without this the hook keeps
+ * saying doodlebot is not set up. A record naming another workspace is left alone: that one was
+ * linked on purpose. Returns the file written, or undefined.
+ */
+function recordWorkspace(stateDir, root) {
+  const file = path.join(stateDir, "workspace.json");
+  if (fs.existsSync(file)) {
+    try {
+      const record = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, ""));
+      if (record !== null && typeof record === "object" && typeof record.workspace === "string")
+        return undefined;
+    } catch {
+      // Unreadable: replace it below.
+    }
+  }
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify({ workspace: root }, null, 2)}\n`);
+  return file;
 }
 
 module.exports = { update, parseUpdateArgs, defaultRun };

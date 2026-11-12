@@ -177,6 +177,31 @@ describe("update command sequence", () => {
     ]);
   });
 
+  it("records the workspace for the SessionStart hook when nothing is recorded", () => {
+    const { run } = recorder();
+    update(root, "v2.0.0", run, { stateDir, ...quiet });
+    const file = path.join(stateDir, "workspace.json");
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ workspace: root });
+  });
+
+  it("replaces an unreadable record but keeps one naming another workspace", () => {
+    const file = path.join(stateDir, "workspace.json");
+    fs.writeFileSync(file, "{not json");
+    update(root, "v2.0.0", recorder().run, { stateDir, ...quiet });
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ workspace: root });
+    fs.writeFileSync(file, JSON.stringify({ workspace: "C:/other" }));
+    update(root, "v2.0.0", recorder().run, { stateDir, ...quiet });
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ workspace: "C:/other" });
+  });
+
+  it("records nothing when the update fails", () => {
+    const failing = recorder((cmd, args) => (cmd === "pnpm" && args[0] === "run" ? 1 : 0));
+    expect(() => update(root, "v2.0.0", failing.run, { stateDir, ...quiet })).toThrow(
+      /pnpm run build failed/,
+    );
+    expect(fs.existsSync(path.join(stateDir, "workspace.json"))).toBe(false);
+  });
+
   it("fails on a ref that is neither, and stops on a failed step", () => {
     const missing = recorder((_cmd, args) => (args[0] === "ls-remote" ? 2 : 0));
     expect(() => update(root, "nope", missing.run, { stateDir, ...quiet })).toThrow(

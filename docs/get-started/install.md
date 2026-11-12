@@ -227,7 +227,9 @@ Vortex checkout or one of its worktrees, it gives the agent a short note:
 
 In any other folder the hook says nothing. It only reads, and writes nothing into your checkout.
 It finds the workspace through `~/.doodlebot/workspace.json`, which `doodlebot link` writes during
-[setup](set-up.md). Before setup, the note says to run `/doodlebot:setup`.
+[setup](set-up.md). Before setup, the note says to run `/doodlebot:setup`. A workspace linked by
+an older doodlebot has a working `doodlebot` command but no record; `/doodlebot:setup` or
+`/doodlebot:setup --update` writes it.
 
 - **Claude Code and the Claude desktop app** load plugin hooks when they start. Restart after
   you install or update the plugin.
