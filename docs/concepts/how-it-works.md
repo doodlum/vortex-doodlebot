@@ -49,7 +49,10 @@ The extension works with a stock, released Vortex. Nothing in doodlebot needs a 
 ## Versions and updates
 
 The plugins and the workspace each have a version. Every command except `/doodlebot:setup` first
-runs `doodlebot version --json`, which reports the workspace's version, commit and folder. If
+runs `doodlebot version --json`, which reports the workspace's version, commit and folder.
+A failed lookup triggers read-only command preflight: missing shims, sandbox access denial
+and runtime execution failures need different remedies. A recorded workspace and absolute
+shim help a fresh context recover the command without another installation. If
 the plugin's version differs, the agent suggests `/doodlebot:setup --update`.
 
 `/doodlebot:setup --update` runs `doodlebot update --ref v<plugin version>`, falling back to `main` when

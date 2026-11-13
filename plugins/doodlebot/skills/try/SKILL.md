@@ -15,16 +15,16 @@ save time", "Commands that block" and "The report procedure".
 ## Before you begin
 
 1. Run `doodlebot version --json`. It prints `{version, commit, dirty, workspace}`.
-   - If `doodlebot` is not found, stop and tell the person: "doodlebot is not set up on
-     this machine yet. Run `/doodlebot:setup` first."
+   - Follow [Command preflight](${CLAUDE_PLUGIN_ROOT}/resources/command-preflight.md) to establish
+     an absolute command route. It covers lookup or execution failures before deciding setup is missing.
+   - Use the verified absolute shim, or verified Node and entry point, for later commands.
    - `<workspace>` below is its `workspace`.
 2. Compare its `version` with this plugin's version, `version` in
    `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or
    `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this `SKILL.md`).
    If they differ, say so and suggest `/doodlebot:setup --update`, then continue.
-3. `<shim>` is the absolute path of the `doodlebot` command: on Windows the first line
-   ending in `.cmd` that `where.exe doodlebot` prints (never PowerShell's `where`, which is
-   `Where-Object`); elsewhere `command -v doodlebot`.
+3. Keep `<shim>` and any `<prefix-args>` from the absolute command route verified above; the preflight also covers
+   `where.exe doodlebot` (Windows) and `command -v doodlebot` (elsewhere).
 4. Search what doodlebot knows: `doodlebot knowledge search <area words>` (both
    `<workspace>/KNOWLEDGE.md` and this machine's lessons). Treat every match as a lead to
    recheck, as `${CLAUDE_PLUGIN_ROOT}/resources/knowledge.md` says, and note in the report
@@ -37,7 +37,8 @@ save time", "Commands that block" and "The report procedure".
 - **A scenario, or a report:** run "The report procedure".
   - **Claude Code:** delegate it to the subagent `doodlebot:vortex-driver` (Sonnet). Give it a
     complete brief: the scenario in the person's words, the build and game flags and why they
-    were chosen (below), `<workspace>`, `<shim>`, the run folder, whether it starts and stops
+    were chosen (below), `<workspace>`, `<shim>` and `<prefix-args>` (the complete verified command
+    route), the run folder, whether it starts and stops
     the instance, and what counts as done. Wait for it, check its report exists, and read it.
     **Record the kit gaps it proposes:** the driver cannot. For each proposed gap in its
     Learned section, `doodlebot gap list --json` (reuse a matching title), then
@@ -163,11 +164,11 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
 
    ```powershell
    $log = "<workspace>/harness/.artifacts/runs/<UTC time>-<command>.log"
-   $p = Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+   $p = Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
    $p.Id
    ```
 
-   In Bash: `nohup <shim> <args> > <log> 2>&1 & echo $!`.
+   In Bash: `nohup <shim> <prefix-args> <args> > <log> 2>&1 & echo $!`.
 
 2. Check every 10 seconds whether the pid still runs (`Get-Process -Id <pid>`,
    `kill -0 <pid>`). A command is done when its process has exited and its log has its success

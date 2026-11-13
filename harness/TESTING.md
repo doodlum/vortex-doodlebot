@@ -4,6 +4,12 @@ Test the contracts doodlebot owns: safe isolation, startup and shutdown, credent
 MCP transport, UI actions, and evidence from real installation and deployment. A Vortex
 feature regression is useful evidence for that feature, but is not a universal kit gate.
 
+Command discovery is covered by `harness/src/commandProbe.test.ts`: an unreadable shim
+hidden from PATH lookup remains inaccessible, unexpected errors remain errors, and a fresh
+process recovers a recorded shim without launching it or writing state. `linkCommand.test.ts`
+checks that linking persists the absolute shim alongside the workspace. These tests need no
+Vortex, account or network.
+
 ## Fast gate
 
 Cold setup regressions: `pnpm exec vitest run harness/src/bootstrap.test.ts` requires installed

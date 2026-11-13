@@ -14,16 +14,16 @@ deterministic summary. Without `--b` there is no verdict.
 ## Before you begin
 
 1. Run `doodlebot version --json`. It prints `{version, commit, dirty, workspace}`.
-   - If `doodlebot` is not found, stop and tell the person: "doodlebot is not set up on
-     this machine yet. Run `/doodlebot:setup` first."
+   - Follow [Command preflight](${CLAUDE_PLUGIN_ROOT}/resources/command-preflight.md) to establish
+     an absolute command route. It covers lookup or execution failures before deciding setup is missing.
+   - Use the verified absolute shim, or verified Node and entry point, for later commands.
    - `<workspace>` below is its `workspace`.
 2. Compare its `version` with this plugin's version, `version` in
    `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or
    `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this `SKILL.md`).
    If they differ, say so and suggest `/doodlebot:setup --update`, then continue.
-3. `<shim>` is the absolute path of the `doodlebot` command: on Windows the first line
-   ending in `.cmd` that `where.exe doodlebot` prints (never PowerShell's `where`);
-   elsewhere `command -v doodlebot`.
+3. Keep `<shim>` and any `<prefix-args>` from the absolute command route verified above; the preflight also covers
+   `where.exe doodlebot` (Windows) and `command -v doodlebot` (elsewhere).
 4. Run `doodlebot status`. If MCP is `answering`, ask whether to stop the test Vortex (only one
    this session started) and run `doodlebot down` on a yes; otherwise stop. Ask the person to
    close heavy programs: the numbers are only as good as the machine's quiet conditions.
@@ -112,8 +112,8 @@ Five runs per build by default, never fewer than three. With two builds, alterna
 Each run is these four steps, each with that build's cache (above):
 
 1. `doodlebot up <build flags> <game flags> --fresh`, in the background with a log
-   (`Start-Process -FilePath <shim> -ArgumentList <args> -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`
-   in PowerShell, `nohup <shim> <args> > <log> 2>&1 &` in Bash). The launch is done when that
+   (`Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>) -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`
+   in PowerShell, `nohup <shim> <prefix-args> <args> > <log> 2>&1 &` in Bash). The launch is done when that
    process has exited (`Get-Process -Id <pid>` or `kill -0 <pid>`) and its log has the line
    `Vortex is up in`; an exit without that line is a failed run. A cold start launches Vortex
    up to three times on the same port, so `doodlebot status` answering is only a liveness hint.

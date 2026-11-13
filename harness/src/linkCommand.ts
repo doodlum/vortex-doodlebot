@@ -166,7 +166,7 @@ export function link(
   if (environment.stateDir !== undefined) {
     fs.mkdirSync(environment.stateDir, { recursive: true });
     record = p.join(environment.stateDir, WORKSPACE_RECORD);
-    fs.writeFileSync(record, `${JSON.stringify({ workspace: root }, null, 2)}\n`);
+    fs.writeFileSync(record, `${JSON.stringify({ workspace: root, shim: files[0]! }, null, 2)}\n`);
   }
   return {
     shim: files[0]!,

@@ -50,13 +50,17 @@ folder. The agent uses that command for everything else.
    3. runs `pnpm run build`;
    4. runs `node bin/doodlebot.cjs link`, which writes the shim and prints
       `shim: <path>` and `on PATH: yes` or `on PATH: no`. It also records the workspace in
-      `~/.doodlebot/workspace.json`, so a session opened in a Vortex checkout is told where
+      `~/.doodlebot/workspace.json`, including the absolute shim path, so a session opened in a Vortex checkout is told where
       doodlebot is ([What a Vortex session knows](install.md#what-a-vortex-session-knows));
-   5. runs `doodlebot version` to confirm the shim reports the new workspace.
+   5. runs `doodlebot version --json` and the absolute command route in the agent's normal
+      execution environment to confirm they report the chosen workspace. If linking needed
+      host approval, a host-only version check does not establish that sandboxed skills work.
 
    If `link` reports `on PATH: no`, the agent tells you which folder to add to your PATH. Setup
    itself keeps working, because it calls the shim by its full path. Add the folder so that
-   later sessions find `doodlebot`.
+   later sessions find `doodlebot`. If the sandbox hides or blocks it, the agent reports that
+   distinction and follows [command discovery troubleshooting](../troubleshooting.md#the-agent-says-doodlebot-was-not-found)
+   before reinstalling. A later context can recover the absolute shim from the workspace record.
 
 4. The agent runs `doodlebot doctor --installed --sandbox` to check Vortex and the local setup.
 

@@ -26,6 +26,10 @@ Rules:
 - Repair only what is missing. A second run on a set-up machine changes nothing.
 - Leave no Vortex running when you finish.
 
+Before any mode, try `doodlebot version --json` in the normal tool environment. If lookup or
+execution fails, follow [Command preflight](${CLAUDE_PLUGIN_ROOT}/resources/command-preflight.md)
+before deciding what needs repair. An inaccessible command does not mean setup is missing.
+
 ## The plugin version and the shim
 
 - The **plugin version** is `version` in `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`
@@ -35,7 +39,9 @@ Rules:
   `<bin-dir>/doodlebot.cmd` on Windows (`<bin-dir>/doodlebot` elsewhere); otherwise on Windows
   the first line ending in `.cmd` that `where.exe doodlebot` prints (never PowerShell's
   `where`, which is `Where-Object`), elsewhere `command -v doodlebot`; once `link` has run, the
-  path on its `shim: <path>` line. Call doodlebot only through `<shim>` from then on.
+  path on its `shim: <path>` line. If discovery fails, use the preflight above; keep any
+  absolute route it verified instead of repeating the failing lookup. Call doodlebot only
+  through that route from then on.
 - `<workspace>` is the `workspace` that `<shim> version --json` reports.
 
 ## Mode `setup`: install or repair
@@ -71,7 +77,11 @@ Skip each step whose result already exists, and say which you skipped.
    the record is missing, `--bin-dir` is the folder `<shim>` is in, so the shim stays put). Read its
    `shim:` and `on PATH: yes|no` lines. On `no`, tell the person to add the shim's folder to
    their PATH and restart their agent; keep going with `<shim>`.
-7. **Version.** `doodlebot version` must print `at <workspace>`.
+7. **Verify in the normal environment.** Follow the preflight's "Setup completion":
+   `doodlebot version --json` and the absolute command route must report `<workspace>`.
+   If install or link used host approval, repeat verification without that escalation.
+   Report a blocked normal environment explicitly; host-only success is not unconditional
+   setup success. Do not reinstall or relink merely because the sandbox cannot read it.
 8. Run the `--check` mode below.
 
 ## Mode `--check`: what this machine can test
@@ -204,11 +214,11 @@ open, so the command never returns. Run it in the background with a log under
 
 ```powershell
 $log = "<workspace>/harness/.artifacts/runs/<UTC time>-login.log"
-$p = Start-Process -FilePath <shim> -ArgumentList 'setup','--oauth','--installed','--no-wait' -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+$p = Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + @('setup','--oauth','--installed','--no-wait')) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
 $p.Id
 ```
 
-In Bash: `nohup <shim> <args> > <log> 2>&1 & echo $!`. Check every 10 seconds whether the pid
+In Bash: `nohup <shim> <prefix-args> <args> > <log> 2>&1 & echo $!`. Check every 10 seconds whether the pid
 still runs (`Get-Process -Id <pid>`, `kill -0 <pid>`). It is done when the process has exited
 and the log has its success line. A cold start launches Vortex up to three times on the same
 port, so `doodlebot status` answering is only a liveness hint.

@@ -8,7 +8,8 @@ model: sonnet
 You drive doodlebot's isolated test Vortex through a scenario and write a run report. Your
 brief gives the scenario, the build and game flags and why they were chosen ("Tested
 against"), whether you start and stop the instance, the workspace path `<workspace>`, the shim
-path `<shim>`, the run folder and what counts as done. For QA it also gives the claims or
+path `<shim>` and `<prefix-args>` (the complete verified command route from Command preflight),
+the run folder and what counts as done. For QA it also gives the claims or
 criteria to check.
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md` first and follow its sections "Start and
@@ -17,8 +18,10 @@ and its run report template exactly, including "Tested against" and "Learned".
 
 Rules:
 
-- Use only the `doodlebot` CLI (through `<shim>` when `doodlebot` is not on the PATH) and
-  ordinary file commands. Never start Vortex any other way, never touch the person's own
+- Use only the `doodlebot` CLI through the brief's verified `<shim>` and `<prefix-args>`,
+  even when a bare command is on PATH, and ordinary file commands. For a Node route, keep
+  the CLI entry point as the first argument; never combine it with `Start-Process -FilePath`.
+  Follow `${CLAUDE_PLUGIN_ROOT}/resources/command-preflight.md` if that route fails. Never start Vortex any other way, never touch the person's own
   Vortex, and never edit source code or the doodlebot workspace.
 - Run `doodlebot up`, `doodlebot test`, `doodlebot install` and `doodlebot collection` in the
   background with a log, and wait as "Commands that block" describes: a launch is done when the

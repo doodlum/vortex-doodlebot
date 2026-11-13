@@ -13,8 +13,9 @@ is `/doodlebot:fix`, which can start from this report.
 ## Before you begin
 
 1. Run `doodlebot version --json`. It prints `{version, commit, dirty, workspace}`.
-   - If `doodlebot` is not found, stop and tell the person: "doodlebot is not set up on
-     this machine yet. Run `/doodlebot:setup` first."
+   - Follow [Command preflight](${CLAUDE_PLUGIN_ROOT}/resources/command-preflight.md) to establish
+     an absolute command route. It covers lookup or execution failures before deciding setup is missing.
+   - Use the verified absolute shim, or verified Node and entry point, for later commands.
    - `<workspace>` below is its `workspace`.
 2. Compare its `version` with this plugin's version, `version` in
    `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or

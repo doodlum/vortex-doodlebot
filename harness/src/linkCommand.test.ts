@@ -96,12 +96,16 @@ describe("shim contents", () => {
     const result = link({ binDir: bin, root }, windows({ stateDir }));
     const record = path.join(stateDir, WORKSPACE_RECORD);
     expect(result.record).toBe(record);
-    expect(JSON.parse(fs.readFileSync(record, "utf8"))).toEqual({ workspace: root });
+    expect(JSON.parse(fs.readFileSync(record, "utf8"))).toEqual({
+      workspace: root,
+      shim: result.shim,
+    });
     expect(formatLink(result)).toContain(`workspace record: ${record}`);
     // Linking another workspace takes over, as the shims do.
     link({ binDir: bin, root: path.join(temp, "other") }, windows({ stateDir }));
     expect(JSON.parse(fs.readFileSync(record, "utf8"))).toEqual({
       workspace: path.join(temp, "other"),
+      shim: result.shim,
     });
   });
 });
