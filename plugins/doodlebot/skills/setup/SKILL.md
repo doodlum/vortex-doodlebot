@@ -64,8 +64,11 @@ Skip each step whose result already exists, and say which you skipped.
 4. **Dependencies** (skip when `<workspace>/node_modules/.modules.yaml` exists):
    `pnpm -C <workspace> install --frozen-lockfile`. Allow up to 10 minutes.
 5. **Build** (skip when `<workspace>/dist/index.js` exists): `pnpm -C <workspace> run build`.
-6. **Shim** (skip when `<shim> version --json` already reports `<workspace>`):
-   `node <workspace>/bin/doodlebot.cjs link` (with `--bin-dir <bin-dir>` when given). Read its
+6. **Shim** (skip when `<shim> version --json` already reports `<workspace>` **and**
+   `~/.doodlebot/workspace.json` records it; a shim from an older doodlebot works but never wrote
+   that record, and without it the SessionStart hook says doodlebot is not set up):
+   `node <workspace>/bin/doodlebot.cjs link` (with `--bin-dir <bin-dir>` when given; when only
+   the record is missing, `--bin-dir` is the folder `<shim>` is in, so the shim stays put). Read its
    `shim:` and `on PATH: yes|no` lines. On `no`, tell the person to add the shim's folder to
    their PATH and restart their agent; keep going with `<shim>`.
 7. **Version.** `doodlebot version` must print `at <workspace>`.
@@ -153,20 +156,34 @@ everywhere.
 
 ## Mode `--update [<ref>]`: match the plugin
 
-1. `doodlebot version --json`. When `version` equals the plugin version and no ref was named,
-   say it is up to date and stop. When `dirty` is true, the update refuses: ask the person to
-   commit or remove the local changes, and stop.
+1. `doodlebot version --json`. An equal `version` alone does not make it up to date: the
+   version is not bumped on every merge, so a workspace many commits behind the plugin can carry
+   the same number. Find the **plugin commit**: in Claude Code, `gitCommitSha` of the
+   `doodlebot@doodlebot` entry in `~/.claude/plugins/installed_plugins.json`; otherwise (Codex,
+   or no such field) the commit of tag `v<plugin version>` on origin,
+   `git -C <workspace> ls-remote origin refs/tags/v<plugin version>^{}` (falling back to
+   `refs/tags/v<plugin version>` for a lightweight tag). When no ref was named, `version`
+   equals the plugin version and `commit` equals the plugin commit, say it is up to date, go to
+   step 4's record check, and stop. With no plugin commit found, say so and go on as if it
+   differed. When `dirty` is true, the update refuses: ask the person to commit or remove the
+   local changes, and stop.
 2. `doodlebot status`. If MCP is `answering`, a test Vortex runs: see "A running test Vortex"
    below. Stop here unless this session started it and the person says yes to stopping it.
 3. `doodlebot update --ref <ref>` (default `v<plugin version>`), in the background with a log
    if your tool times out sooner than 10 minutes. It fetches, checks out detached, installs and
    builds. Read the result:
    - `No tag or branch v<plugin version> on origin.` with the default ref: retry with
-     `doodlebot update --ref main`.
+     `doodlebot update --ref main`. If the result's `commit` then differs from the plugin
+     commit, report both: `main` has moved past the installed plugin, or the plugin needs
+     `/plugin marketplace update doodlebot`.
    - `A harness Vortex is running; run doodlebot down before updating.`: back to step 2.
    - `The workspace has local changes; commit or remove them before updating.`: step 1.
 4. `doodlebot version --json` again; report the old and new version and commit. If they still
    differ from the plugin's, the plugin itself may need `/plugin marketplace update doodlebot`.
+   **Record check:** when `~/.doodlebot/workspace.json` is missing or names no workspace, run
+   `<shim> link --bin-dir <the folder <shim> is in>` (an update from an older doodlebot runs
+   that version's `update`, which does not write the record), and tell the person a new
+   session in a Vortex checkout now gets doodlebot's note.
 5. Run the `--check` mode: an update brings new `KNOWLEDGE.md` entries and catalogue entries.
 
 ## A running test Vortex

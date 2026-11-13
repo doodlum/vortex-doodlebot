@@ -55,7 +55,10 @@ the plugin's version differs, the agent suggests `/doodlebot:setup --update`.
 `/doodlebot:setup --update` runs `doodlebot update --ref v<plugin version>`, falling back to `main` when
 that tag does not exist. The update checks out the ref and runs `pnpm install --frozen-lockfile`
 and `pnpm run build`. It refuses while a test Vortex runs, and when the workspace has local
-changes.
+changes. It counts the workspace as up to date only when its commit matches the plugin's (the
+commit Claude Code installed the plugin from, or the `v<plugin version>` tag), not when the
+version numbers merely match. It also writes `~/.doodlebot/workspace.json` when that record is
+missing.
 
 ## Where work happens
 
