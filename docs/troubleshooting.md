@@ -6,10 +6,22 @@ check the local setup.
 
 ## The agent says `doodlebot` was not found
 
-The shim is missing or its folder is not on your PATH.
+The command may be missing, outside PATH, or inaccessible to the agent's sandbox. A Windows
+sandbox can hide an existing shim from `where.exe doodlebot`; setup can have succeeded in a
+host shell while later sandboxed commands cannot read it.
 
-1. Run `/doodlebot:setup`. If the workspace exists, setup repairs only what is missing.
-2. If setup reports `on PATH: no`, add the folder it names to your PATH, then restart your agent.
+1. Have the agent follow the plugin's **Command preflight**. Its read-only Node probe checks
+   PATH and the workspace record without requiring a working doodlebot command.
+2. If the shim is readable, verify its full path with `version --json`. If only the full path
+   works, keep that command route and fix PATH for later sessions.
+3. If access is denied, report the affected path. A specific approved host version check can
+   distinguish an installed runtime from a sandbox blocker. It does not authorize later writes
+   or launches. Do not reinstall, change ACLs or disable the sandbox to fix command discovery.
+4. If no shim is found, check an existing or recorded workspace before running
+   `/doodlebot:setup`. Setup repairs only missing pieces; it need not clone another workspace.
+
+A readable shim can still fail because its Node or dependencies cannot run. Keep that runtime
+error separate from a missing installation.
 
 If `link` fails with
 `No writable folder on the PATH for the doodlebot shim; pass --bin-dir <folder>.`, run setup

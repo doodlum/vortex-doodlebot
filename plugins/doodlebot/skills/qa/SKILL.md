@@ -19,14 +19,15 @@ the checks Vortex's own e2e suite lacks). Three forms:
 ## Before you begin
 
 1. Run `doodlebot version --json`. It prints `{version, commit, dirty, workspace}`.
-   - If `doodlebot` is not found, stop and tell the person: "doodlebot is not set up on
-     this machine yet. Run `/doodlebot:setup` first."
+   - Follow [Command preflight](${CLAUDE_PLUGIN_ROOT}/resources/command-preflight.md) to establish
+     an absolute command route. It covers lookup or execution failures before deciding setup is missing.
+   - Use the verified absolute shim, or verified Node and entry point, for later commands.
    - `<workspace>` below is its `workspace`.
 2. Compare its `version` with this plugin's version, `version` in
    `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (Claude Code) or
    `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this `SKILL.md`).
    If they differ, say so and suggest `/doodlebot:setup --update`, then continue.
-3. `<shim>` is the absolute path of the `doodlebot` command (as in `/doodlebot:try`).
+3. Keep `<shim>` and any `<prefix-args>` from the absolute command route verified above (as in `/doodlebot:try`).
 4. **The author's instance is gone.** `doodlebot status`: if MCP is `answering`, read the
    instance record `~/.doodlebot/instance.json` (`pid`, `cacheDir`, `startedAt`, and `sourceDir`
    for a source build or `exe` for a release). QA never reuses a running instance, and runs
@@ -44,7 +45,8 @@ the checks Vortex's own e2e suite lacks). Three forms:
 Every run in QA starts with `doodlebot up --fresh` and the chosen flags, in the background, and
 follows `/doodlebot:try`'s report procedure (`${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md`). In
 Claude Code, delegate each run to a fresh `doodlebot:vortex-driver` (Sonnet) with a brief that
-holds only the steps, the flags and the content choice, `<workspace>`, `<shim>`, the run folder
+holds only the steps, the flags and the content choice, `<workspace>`, `<shim>` and
+`<prefix-args>` (the complete verified command route), the run folder
 and "start with `doodlebot up --fresh`, do not reuse an instance"; never the author's reasoning
 or results. In Codex, run the procedure inline.
 

@@ -1512,8 +1512,12 @@ reports either as a failing `Vortex` check instead).
   from another workspace, so no cache or port options are needed. If no harness Vortex window is
   open and the refusal persists (a reused pid), delete `~/.doodlebot/instance.json`
   ("One instance").
-- `doodlebot` not found: run `node bin/doodlebot.cjs link` in the workspace (or
-  `/doodlebot:setup`); `link` reports `on PATH: no` when its folder must be added to the PATH.
+- Command lookup or execution failed: follow `plugins/doodlebot/resources/command-preflight.md`.
+  Its dependency-free `scripts/command-probe.cjs` checks PATH and the recorded shim without
+  running doodlebot. Missing, inaccessible and broken runtime routes are different states;
+  a host-only version success must not be reported as sandbox readiness. `link` records both
+  workspace and absolute shim in `~/.doodlebot/workspace.json`; older workspace-only records
+  remain useful recovery hints. Keep the verified absolute command route for later calls.
 - Startup errors name the isolated `userData/vortex.log`. Don't print whole logs: auth flows may
   log sensitive URLs.
 - An instance predating `automation_status`: update its extension and restart it with its MCP

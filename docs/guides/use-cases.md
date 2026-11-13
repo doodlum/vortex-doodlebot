@@ -23,6 +23,10 @@ section (U11).
 | U12 | "Work on Vortex in this checkout"             | Open the agent there; commands prepare it   |
 | U13 | "Prototype this idea"                         | `/doodlebot:prototype <idea>`               |
 
+Every command verifies its runtime before acting. If the command is hidden or blocked by an
+agent sandbox, shared command preflight diagnoses it before suggesting another setup; see
+[command discovery troubleshooting](../troubleshooting.md#the-agent-says-doodlebot-was-not-found).
+
 ## U0: Set up doodlebot, or see what you can test
 
 1. Run `/doodlebot:setup`. It clones the workspace, installs and builds it, and puts the
