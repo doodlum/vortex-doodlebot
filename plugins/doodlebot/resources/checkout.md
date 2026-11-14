@@ -30,7 +30,7 @@ branch just checked out for QA) is not ready either: run the steps.
 ## Steps
 
 1. **Find the checkout.** `doodlebot source --where` prints it, `<checkout>` below.
-   - If it refuses with "Open Claude in a Vortex checkout or worktree", the session is not in
+   - If it refuses with "Open your coding agent in a Vortex checkout or worktree", the session is not in
      one. Say so and stop: the person opens the agent in a checkout, or clones one with
      `/doodlebot:setup` ("No checkout yet").
 2. **A running test Vortex.** `doodlebot status`. A test Vortex launched from `<checkout>`

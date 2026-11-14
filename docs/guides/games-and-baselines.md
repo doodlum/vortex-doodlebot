@@ -12,6 +12,11 @@ one only to override it.
   Use a test machine or a QA-only Windows account if you can.
 - For a source build: [Work on Vortex source](source-development.md).
 
+The same inventory and isolation rules apply in Codex and Claude Desktop local Code
+sessions. If a source build is unavailable, open your coding agent in the Vortex checkout
+or worktree named by the next step; the doodlebot workspace is not the Vortex checkout.
+See the [desktop agent contract](../concepts/desktop-agents.md) for runtime access checks.
+
 ## What a baseline is
 
 A **baseline** is a saved, clean Vortex profile for one combination of target, game and game

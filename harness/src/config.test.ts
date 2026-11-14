@@ -207,7 +207,7 @@ describe("the session's checkout", { timeout: 60_000 }, () => {
     expect(vortexCheckoutOf(os.tmpdir())).toBeUndefined();
     expect(() => requireCheckout(undefined, plain)).toThrow(NEEDS_CHECKOUT);
     expect(NEEDS_CHECKOUT).toBe(
-      "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
+      "Open your coding agent in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
     );
     // An explicit checkout is used as given.
     expect(requireCheckout(repo, plain)).toBe(path.resolve(repo));

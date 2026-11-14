@@ -214,6 +214,13 @@ Sources: [Codex developer commands](https://learn.chatgpt.com/docs/developer-com
 [Codex plugins](https://learn.chatgpt.com/docs/plugins) and
 [Codex on Windows](https://learn.chatgpt.com/docs/windows/windows-app).
 
+## Verify the desktop execution path
+
+Plugin installation, hook trust and runtime access are separate checks. Follow the
+[desktop agent contract](../concepts/desktop-agents.md) before the first run. The same runtime
+and isolated test profile are used by either coding agent; their plugin stores and permissions
+are separate.
+
 ## What a Vortex session knows
 
 The plugin carries one hook that runs when a session starts. When you open the session in a

@@ -139,7 +139,7 @@ describe("doctor's This checkout row", () => {
     expect(check(report, "This checkout")).toMatchObject({
       ok: false,
       advisory: true,
-      fix: "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
+      fix: "Open your coding agent in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
     });
     expect(check(report, "Vortex source")).toBeUndefined();
     expect(report.ok).toBe(true);

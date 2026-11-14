@@ -164,7 +164,7 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
 
    ```powershell
    $log = "<workspace>/harness/.artifacts/runs/<UTC time>-<command>.log"
-   $p = Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+   $p = Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -WindowStyle Hidden -PassThru
    $p.Id
    ```
 

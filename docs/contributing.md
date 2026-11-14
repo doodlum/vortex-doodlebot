@@ -10,7 +10,7 @@ checks, add tests and keep this documentation current.
 
 ## Use your checkout as the workspace
 
-1. Start Claude Code in your checkout and trust the folder. The repository's project settings
+1. In Claude Code, start a session in your checkout and trust the folder. The repository's project settings
    (`.claude/settings.json`) register the `doodlebot` marketplace from this folder and the EGM
    marketplace pinned to `v0.1.1`, and enable `egm@egm` and `doodlebot@doodlebot`. You use the
    plugin you are editing.
@@ -20,6 +20,13 @@ checks, add tests and keep this documentation current.
 
 If the plugin does not appear after you trust the folder, run `/plugin marketplace add ./` from
 the checkout once.
+
+In Codex, `.claude/settings.json` does not install or enable plugins. Add the checkout's
+marketplace with `codex plugin marketplace add .`, then `codex plugin add doodlebot@doodlebot`,
+and start a new chat. Check `codex plugin list --json` or the app's Plugins tab after refreshing
+the marketplace. Follow [Install the plugin](get-started/install.md) for EGM and hook trust.
+The [desktop agent contract](concepts/desktop-agents.md) lists what the compatibility checks
+prove and which desktop steps still need a person to verify.
 
 ## Where the code is
 

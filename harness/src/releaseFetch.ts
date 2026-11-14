@@ -60,13 +60,15 @@ export function find7Zip(
   return undefined;
 }
 
-/** `2.8.0.0` and `2.8.0` match `2.8.0`; `2.8.10` does not. */
+/**
+ * Numeric Windows resources omit prerelease/build labels. The exact release tag, asset name and
+ * digest authenticate those; compare the numeric core here, preserving explicit resource labels.
+ */
 export function versionMatches(productVersion: string | undefined, version: string): boolean {
   if (productVersion === undefined) return false;
   const actual = productVersion.trim();
-  if (!actual.startsWith(version)) return false;
-  const rest = actual.slice(version.length);
-  return rest === "" || /^[.+-]/.test(rest);
+  const numeric = /^(\d+\.\d+\.\d+)(?:\.\d+)?$/.exec(actual);
+  return numeric !== null ? numeric[1] === version.replace(/[-+].*$/, "") : actual === version;
 }
 
 /**

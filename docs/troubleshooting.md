@@ -169,7 +169,7 @@ Current versions do not use them. Once no doodlebot Vortex is running, they can 
   forgets the deleted checkouts. Their branches stay in that clone;
 - the Vortex clone older versions kept in the workspace. Current versions work in the Vortex
   checkout your session is in, and that clone is one: `doodlebot check` lists it as "Your
-  Vortex clone from an older doodlebot (<path>, <n> worktrees): open Claude in it or one of its
+  Vortex clone from an older doodlebot (<path>, <n> worktrees): open your coding agent in it or one of its
   worktrees". Doodlebot never deletes it, and `doodlebot clean` leaves it alone.
 
 ## What's next

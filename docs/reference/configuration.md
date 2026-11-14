@@ -36,6 +36,9 @@ downloaded and registered. Doodlebot checks the download against the SHA-256 Git
 and extracts it with 7-Zip into `~/.doodlebot/releases/<version>`. It never runs the installer, so
 your own Vortex installation is not touched. A release that is not registered fails with
 `Release <version> is not registered. Get it with doodlebot release get <version>.`
+Windows executable versions often omit beta labels: `2.11.0.0` is accepted for
+`2.11.0-beta.4` after the exact release asset's digest is verified. Different numeric versions
+or explicitly different beta labels are refused.
 `doodlebot release list` lists the registered releases. A machine with no installed Vortex
 needs nothing more: `doodlebot check` and `doctor` count a registered release as the available
 Vortex and tell you to use `--release <version>`.
@@ -48,7 +51,7 @@ check, and its `This checkout` line names the session's checkout.
 
 `build`, `source` (except `source --clone <dir>`), `push-branch` and `pr-preflight` need a
 checkout. Outside one they refuse with
-`Open Claude in a Vortex checkout or worktree (or clone one with doodlebot source --clone <dir>).`
+`Open your coding agent in a Vortex checkout or worktree (or clone one with doodlebot source --clone <dir>).`
 
 `doodlebot doctor` reports the baseline for the flags you give it. With `--no-game` its
 `Profile cache` and `Sandbox baseline` lines describe the no-game baseline, which is separate

@@ -63,6 +63,10 @@ To run a suite or check on an official release, add `--release <version>`, for e
 `doodlebot test core --release 2.8.0`. The release must be registered first with
 `doodlebot release get <version>`; `/doodlebot:qa --release <version>` does both. A machine with no installed Vortex needs nothing else: `doodlebot check` lists the registered releases as the available Vortex.
 
+For release-fetch changes, `pnpm exec vitest run harness/src/releaseFetch.test.ts` checks
+registration and refusal paths without a Vortex install or network. It covers prereleases whose
+Windows version resource omits the beta label, while keeping the requested release identity.
+
 ## What's next
 
 - [Open a pull request](pull-requests.md) for the Vortex change, with its own Vortex test.

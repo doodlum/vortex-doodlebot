@@ -112,7 +112,7 @@ Five runs per build by default, never fewer than three. With two builds, alterna
 Each run is these four steps, each with that build's cache (above):
 
 1. `doodlebot up <build flags> <game flags> --fresh`, in the background with a log
-   (`Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>) -RedirectStandardOutput <log> -RedirectStandardError <log>.err -NoNewWindow -PassThru`
+   (`Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>) -RedirectStandardOutput <log> -RedirectStandardError <log>.err -WindowStyle Hidden -PassThru`
    in PowerShell, `nohup <shim> <prefix-args> <args> > <log> 2>&1 &` in Bash). The launch is done when that
    process has exited (`Get-Process -Id <pid>` or `kill -0 <pid>`) and its log has the line
    `Vortex is up in`; an exit without that line is a failed run. A cold start launches Vortex

@@ -157,7 +157,7 @@ export const TARGET_EXE_ENV = "DOODLEBOT_TARGET_EXE";
 
 /** What a command that needs Vortex's source says outside a checkout. */
 export const NEEDS_CHECKOUT =
-  "Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).";
+  "Open your coding agent in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).";
 
 /**
  * The Vortex checkout holding `cwd` (default the caller's folder, `callerCwd()`): the session's
@@ -281,7 +281,7 @@ export function resolveTarget(overrides: TargetOverrides = {}): VortexTarget {
   if (exe === undefined) {
     throw new ConfigError(`No Vortex to drive.
 
-  Work on Vortex itself:      open Claude in a Vortex checkout or worktree and run
+  Work on Vortex itself:      open your coding agent in a Vortex checkout or worktree and run
      doodlebot source (or clone one first: doodlebot source --clone <dir>)
 
   Or drive a released build:  doodlebot release get <version>, then --release <version>,

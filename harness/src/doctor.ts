@@ -273,7 +273,7 @@ export function missingVortexCheck(releases: string[]): Check {
     fix:
       "doodlebot release get <version>   (an official release, never installed), or install " +
       "Vortex from https://www.nexusmods.com/about/vortex/, or name one with --exe <path> " +
-      "(VORTEX_AI_EXE), or open Claude in a built Vortex checkout.",
+      "(VORTEX_AI_EXE), or open your coding agent in a built Vortex checkout.",
   };
 }
 

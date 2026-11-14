@@ -10,16 +10,15 @@ import { find7Zip, getRelease, releaseCli, versionMatches, type ReleaseDeps } fr
 
 const INSTALLER = Buffer.from("pretend NSIS installer bytes");
 const DIGEST = `sha256:${createHash("sha256").update(INSTALLER).digest("hex")}`;
-const API = "https://api.github.com/repos/Nexus-Mods/Vortex/releases/tags/v2.8.0";
-const DOWNLOAD =
-  "https://github.com/Nexus-Mods/Vortex/releases/download/v2.8.0/vortex-setup-2.8.0.exe";
 
 let root: string;
 let digest: string | null;
 let downloads: number;
 let execCalls: string[][];
 
-function deps(overrides: Partial<ReleaseDeps> = {}): ReleaseDeps {
+function deps(overrides: Partial<ReleaseDeps> = {}, version = "2.8.0"): ReleaseDeps {
+  const api = `https://api.github.com/repos/Nexus-Mods/Vortex/releases/tags/v${version}`;
+  const download = `https://github.com/Nexus-Mods/Vortex/releases/download/v${version}/vortex-setup-${version}.exe`;
   return {
     releasesDir: path.join(root, "releases"),
     contentFile: path.join(root, "content.json"),
@@ -31,19 +30,19 @@ function deps(overrides: Partial<ReleaseDeps> = {}): ReleaseDeps {
       const url = String(input);
       const headers = (init?.headers ?? {}) as Record<string, string>;
       expect(headers["User-Agent"]).toBe("doodlebot");
-      if (url === API)
+      if (url === api)
         return Response.json({
-          tag_name: "v2.8.0",
-          prerelease: false,
+          tag_name: `v${version}`,
+          prerelease: version.includes("-"),
           assets: [
             {
-              name: "vortex-setup-2.8.0.exe",
-              browser_download_url: DOWNLOAD,
+              name: `vortex-setup-${version}.exe`,
+              browser_download_url: download,
               digest,
             },
           ],
         });
-      if (url === DOWNLOAD) {
+      if (url === download) {
         downloads++;
         return new Response(INSTALLER);
       }
@@ -93,6 +92,29 @@ describe("release get", () => {
     expect(downloads).toBe(1);
   });
 
+  it("registers the exact prerelease when its Windows resource has only the numeric version", async () => {
+    const version = "2.11.0-beta.4";
+    const release = await getRelease(version, deps({ productVersion: () => "2.11.0.0" }, version));
+
+    expect(release.version).toBe(version);
+    expect(release.sha256).toBe(DIGEST.slice("sha256:".length));
+    expect(release.exe).toBe(path.join(root, "releases", version, "app", "Vortex.exe"));
+    expect(readContent(path.join(root, "content.json")).releases).toEqual([release]);
+    expect(downloads).toBe(1);
+    expect(execCalls).toHaveLength(2);
+  });
+
+  it.each(["2.11.1.0", "2.11.0-beta.3", undefined])(
+    "refuses prerelease registration when the resource is %s",
+    async (productVersion) => {
+      const version = "2.11.0-beta.4";
+      await expect(
+        getRelease(version, deps({ productVersion: () => productVersion }, version)),
+      ).rejects.toThrow(/it was not registered/);
+      expect(readContent(path.join(root, "content.json")).releases).toEqual([]);
+    },
+  );
+
   it("refuses a download whose SHA-256 differs from the published digest", async () => {
     digest = `sha256:${"0".repeat(64)}`;
     await expect(getRelease("2.8.0", deps())).rejects.toThrow(
@@ -141,6 +163,23 @@ describe("release helpers", () => {
     expect(versionMatches("2.8.0", "2.8.0")).toBe(true);
     expect(versionMatches("2.8.10.0", "2.8.1")).toBe(false);
     expect(versionMatches(undefined, "2.8.0")).toBe(false);
+  });
+
+  it.each([
+    ["2.11.0.0", "2.11.0-beta.4", true],
+    ["2.11.0", "2.11.0-beta.4", true],
+    ["2.11.0.0", "2.11.0+build.4", true],
+    ["2.11.0-beta.4", "2.11.0-beta.4", true],
+    ["2.11.0-beta.3", "2.11.0-beta.4", false],
+    ["2.11.0-beta.40", "2.11.0-beta.4", false],
+    ["2.11.0-beta.4.1", "2.11.0-beta.4", false],
+    ["2.11.0-beta.4-extra", "2.11.0-beta.4", false],
+    ["2.11.0-beta.4", "2.11.0", false],
+    ["2.11.1.0", "2.11.0-beta.4", false],
+    ["2.11.10.0", "2.11.1-beta.4", false],
+    ["2.11.0-garbage", "2.11.0-beta.4", false],
+  ])("matches resource %s against release %s: %s", (actual, requested, matches) => {
+    expect(versionMatches(actual, requested)).toBe(matches);
   });
 
   it("finds 7-Zip on the PATH, then under Program Files", () => {

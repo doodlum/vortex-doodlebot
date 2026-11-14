@@ -66,6 +66,7 @@ nav:
       - Work on Vortex source: guides/source-development.md
   - Concepts:
       - How doodlebot works: concepts/how-it-works.md
+      - Desktop coding agents: concepts/desktop-agents.md
       - One test Vortex at a time: concepts/one-test-vortex.md
       - Design with EGM: concepts/design-first.md
       - What doodlebot learns: concepts/knowledge.md
