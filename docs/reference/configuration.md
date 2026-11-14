@@ -111,19 +111,20 @@ Both ports must be distinct integers between 1 and 65535.
 Flags vary by command. The [doodlebot CLI](cli.md) reference lists the commands. A few belong
 to one command:
 
-| Flag                          | Command                   | Effect                                                                                                   |
-| ----------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `--new`                       | `game copy`               | Make another copy even when one of the same version exists                                               |
-| `--older-than <days>`         | `clean`                   | What counts as old; default 30 days                                                                      |
-| `--dry-run`, `--yes`          | `clean`                   | List only; delete what is listed (without `--yes` it only lists)                                         |
-| `--touching <paths...>`       | `qa list`                 | Vortex files a change touches, relative to the Vortex root                                               |
-| `--allow-logout`              | `qa list`                 | Also select entries that log out of the account (only after you agree)                                   |
-| `--need <need>`               | `inventory`               | The content chosen for these needs (repeatable), instead of every item                                   |
-| `--json`                      | `inventory`, `qa list`    | Print JSON                                                                                               |
-| `--clone <dir>`               | `source`                  | Clone Vortex into that new folder, outside the workspace                                                 |
-| `--release <version>`         | `test <suite>`            | Run the suite on that registered release; not passed on to the suite                                     |
-| `--stale-ok`                  | `up`, `bootstrap`, `test` | Start a source build even though its checkout changed since the build, or it was built in the other mode |
-| `--add-upstream`, `--exclude` | `source`                  | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` and `.claude/worktrees/` out of Git              |
+| Flag                          | Command                   | Effect                                                                                                                                     |
+| ----------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--new`                       | `game copy`               | Make another copy even when one of the same version exists                                                                                 |
+| `--older-than <days>`         | `clean`                   | What counts as old; default 30 days                                                                                                        |
+| `--dry-run`, `--yes`          | `clean`                   | List only; delete what is listed (without `--yes` it only lists)                                                                           |
+| `--touching <paths...>`       | `qa list`                 | Vortex files a change touches, relative to the Vortex root                                                                                 |
+| `--allow-logout`              | `qa list`                 | Also select entries that log out of the account (only after you agree)                                                                     |
+| `--need <need>`               | `inventory`               | The content chosen for these needs (repeatable), instead of every item                                                                     |
+| `--json`                      | `inventory`, `qa list`    | Print JSON                                                                                                                                 |
+| `--clone <dir>`               | `source`                  | Clone Vortex into that new folder, outside the workspace                                                                                   |
+| `--release <version>`         | `test <suite>`            | Run the suite on that registered release; not passed on to the suite                                                                       |
+| `--stale-ok`                  | `up`, `bootstrap`, `test` | Start a source build even though its checkout changed since the build, or it was built in the other mode                                   |
+| `--add-upstream`, `--exclude` | `source`                  | Add Nexus-Mods/Vortex as `upstream`; keep `.doodlebot/` and `.claude/worktrees/` out of Git                                                |
+| `--optionals <who>`           | `collection`              | `skip` (default: mark every optional mod skipped), `install` (select them all) or `vortex` (choose nothing: Vortex decides, as for a user) |
 
 A path argument is one word to the shell, so quote a path that has spaces:
 `doodlebot install "C:\Users\Nexus Two\probe.zip"`. `install` refuses more than one path

@@ -691,8 +691,19 @@ describe("agents", () => {
     expect(frontmatter(read("plugins/doodlebot/agents/vortex-driver.md"))).toMatchObject({
       name: "vortex-driver",
       model: "sonnet",
-      tools: "Bash, PowerShell, Read, Write, Grep, Glob",
+      tools: "Bash, PowerShell, Read, Grep, Glob",
     });
+  });
+
+  it("driver-returns-report: the driver returns its report and the dispatcher writes it", () => {
+    // A subagent's Write of a report file is refused, so the driver has no Write tool.
+    const driver = read("plugins/doodlebot/agents/vortex-driver.md").replace(/\s+/g, " ");
+    expect(driver).toContain("**return the run report**");
+    expect(driver).toContain("The dispatching command writes it to `<run folder>/report.md`.");
+    for (const skill of ["try", "qa"]) {
+      const text = read(skillFile("doodlebot", skill)).replace(/\s+/g, " ");
+      expect(text, skill).toMatch(/write it (unchanged )?to `<run folder>\/report\.md`/);
+    }
   });
 });
 

@@ -575,7 +575,8 @@ doodlebot game folder [<dir>]                  # store the copy folder (asked on
   are (`--all` and `--file` refuse: there is nothing to restore from).
 - **`down`** restores after the confirmed exit (design 4.3.3). `VORTEX_WRITES` next to
   `USER_FOLDERS` names the files Vortex writes per game: `plugins.txt`, `loadorder.txt`,
-  `DLCList.txt` and `*.ini` for the Bethesda games, none for Stardew Valley. A change is
+  `DLCList.txt`, `*.ini` and the INI tweak copies `*.ini.base` and `*.ini.baked` for the
+  Bethesda games, none for Stardew Valley. A change is
   restored automatically only when it is to such a file **and** inside the run (start to
   confirmed exit) by its modification time; a deleted file is dated by its nearest existing
   folder's modification time, and one with no folder left is not restored (`planRestore`).
@@ -840,12 +841,20 @@ uploads files that `--body-file` image references name (push access, under 10 MB
 doodlebot fixture mod --out C:/fixtures/probe.zip [--name automation-probe]
 doodlebot fixture fomod --out C:/fixtures/probe-fomod.zip [--name automation-probe]
 doodlebot install C:/fixtures/example.zip
-doodlebot collection <collection-url>
+doodlebot collection <collection-url> [--optionals skip|install|vortex]
 doodlebot deploy --game <active-game-id> [--purge]
 doodlebot purge
 doodlebot e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
 ```
 
+- `collection` chooses the optional members itself by default: before the install driver starts,
+  and again whenever Vortex refreshes the collection's rules, it marks every `recommends` rule
+  ignored (`--optionals skip`) or selected (`install`). No user does that, and it overwrites
+  Vortex's own default skip, so a bug in that skip cannot show. `--optionals vortex` writes no
+  optional rule at all, declines the completion dialog with No Thanks like a user who never
+  opened the optional list, and prints how many optionals Vortex ignored and how many
+  installed. Use it for any scenario about optional or recommended members, skips or ignored
+  flags, and say in the report which mode ran.
 - `fixture mod` writes an archive with one file, `textures/<name>.txt` containing `<name>`; in
   the sandbox it deploys to `<gamePath>/Data/textures/<name>.txt`.
 - `fixture fomod` writes a FOMOD installer archive (`fomod/ModuleConfig.xml` with one install

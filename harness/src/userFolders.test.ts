@@ -339,9 +339,19 @@ describe("planRestore", () => {
       "loadorder.txt",
       "DLCList.txt",
       "Fallout4.ini",
+      // Vortex's INI tweak preparation writes these beside each INI.
+      "Fallout4Prefs.ini.baked",
+      "Fallout4Prefs.ini.base",
     ])
       expect(vortexWrites("fallout4", name), name).toBe(true);
-    for (const name of ["save1.fos", "plugins.txt.bak", "Fallout4.ini.baked", "ini"])
+    expect(vortexWrites("skyrimse", "SkyrimPrefs.ini.baked")).toBe(true);
+    for (const name of [
+      "save1.fos",
+      "plugins.txt.bak",
+      "Fallout4.ini.bak",
+      "Fallout4.baked",
+      "ini",
+    ])
       expect(vortexWrites("fallout4", name), name).toBe(false);
     expect(vortexWrites("stardewvalley", "startup_preferences")).toBe(false);
     for (const gameId of Object.keys(USER_FOLDERS))

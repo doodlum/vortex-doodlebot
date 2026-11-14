@@ -95,8 +95,9 @@ Bethesda sandbox, which uses your real Fallout 4 folders on any Vortex build:
   list for. This holds inside the profile cache too, and a Steam install is refused there as
   anywhere.
 - `doodlebot down` puts back, after Vortex has closed, only the files Vortex itself writes:
-  the plugin list (`plugins.txt`, `loadorder.txt`, `DLCList.txt`) and the game's `.ini` files,
-  and only those changed during the run. It checks every restored file.
+  the plugin list (`plugins.txt`, `loadorder.txt`, `DLCList.txt`), the game's `.ini` files and
+  the `.ini.base` and `.ini.baked` copies Vortex keeps beside them, and only those changed
+  during the run. It checks every restored file.
 - Every other changed file is kept as it is and listed for you, a save above all, even one
   made during the run: you may have played your own copy of the game while the test ran.
   The next start is refused until you decide with `doodlebot game restore <gameId>`.

@@ -48,7 +48,8 @@ Claude Code, delegate each run to a fresh `doodlebot:vortex-driver` (Sonnet) wit
 holds only the steps, the flags and the content choice, `<workspace>`, `<shim>` and
 `<prefix-args>` (the complete verified command route), the run folder
 and "start with `doodlebot up --fresh`, do not reuse an instance"; never the author's reasoning
-or results. In Codex, run the procedure inline.
+or results. The driver returns its run report as text: write it to `<run folder>/report.md`
+yourself. In Codex, run the procedure inline.
 
 **Kit gaps the driver proposes.** When a driver's report proposes kit gaps in its Learned
 section, record each yourself: `doodlebot gap list --json` (reuse a matching title), then

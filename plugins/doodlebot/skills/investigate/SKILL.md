@@ -42,7 +42,9 @@ is `/doodlebot:fix`, which can start from this report.
    on `--release <version>`, with the content the scenario needs (its "Choose the build and
    content"). The brief's done-criterion is the symptom from step 1, the end outcome the user
    saw; "Reproducing a reported symptom" in that skill defines it, and an intermediate state you
-   predict from the code is not it. Keep the run report. Compare `automation_status.vortexVersion`
+   predict from the code is not it. Run it the way the user did: a collection scenario about
+   optional members uses `doodlebot collection --optionals vortex` (that skill's "Rules that
+   save time"), since the default writes the optional choice itself. Keep the run report. Compare `automation_status.vortexVersion`
    with the user's version:
    - the same, and the symptom appears: **reproduced on <version>**;
    - the same, and the run stopped before the symptom could appear (a time cap, a skipped

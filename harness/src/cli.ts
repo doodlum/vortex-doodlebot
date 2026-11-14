@@ -57,7 +57,7 @@ import { localOnlyConfig, sandboxConfig } from "./sandbox";
 import { bethesdaSandboxConfig } from "./bethesdaSandbox";
 import { installLocalMod } from "./localMod";
 import { runSlowDownloads } from "./slowDownload";
-import { installCollection } from "./collections";
+import { installCollection, parseOptionalMods } from "./collections";
 import { deployMods, needsDeployment, purgeGame } from "./deployment";
 import { runE2e } from "./e2e";
 import { versionCommand } from "./versionCommand";
@@ -333,7 +333,10 @@ Driving a running instance
     --count <n> --seconds <n> --stagger <s>   (defaults 1, 30, 0)
   collection <url>       Install exact Nexus collection/revision using OAuth
     --warnings-as-errors Fail on any collection warning; warnings are printed by default
-  deploy                 Deploy enabled mods for the active game
+    --optionals <who>    skip (default: the harness marks every optional ignored), install
+                         (selects them all) or vortex (writes nothing: Vortex's own driver
+                         decides, as for a user; the completion dialog gets No Thanks)
+  deploy                Deploy enabled mods for the active game
     --purge              Permit purging a foreign deployment in a disposable game
   purge                  Remove files recorded in this game's deployment manifest
   e2e <collection>       Fresh start, install, verify, deploy, launch real game
@@ -1035,12 +1038,14 @@ async function main(): Promise<number> {
           throw new ConfigError(`collection needs a collection to install, e.g.
   doodlebot collection https://next.nexusmods.com/fallout4/collections/<slug>`);
         }
+        const optionalMods = parseOptionalMods(flags.optionals);
         let renderer: RendererHandle | undefined;
         let result;
         let installFailed = false;
         let rendererCleanupFailure: { error: unknown } | undefined;
         try {
           result = await installCollection(mcp, target, {
+            optionalMods,
             warningsAsErrors: flags["warnings-as-errors"] === true,
             onWarning: (warning) =>
               log(
@@ -1078,6 +1083,9 @@ async function main(): Promise<number> {
         log(`  mod id: ${result.modId ?? "unknown"}`);
         log(
           `  required mods installed: ${String(result.modCount)}/${String(result.expectedModCount)}`,
+        );
+        log(
+          `  optional members (${result.optionalMods}): ${String(result.optionalIgnored)}/${String(result.optionalCount)} ignored, ${String(result.optionalSatisfied)} installed`,
         );
         if (!result.complete) {
           log("");

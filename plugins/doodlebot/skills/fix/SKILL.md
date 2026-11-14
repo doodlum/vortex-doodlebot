@@ -72,7 +72,8 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
    run "Prepare this checkout" (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) first: it asks
    the person one question when remotes or the exclude are missing, then installs and builds.
    Otherwise build the branch's base with `doodlebot build --checkout <checkout>`. Then repeat the reproduction with `/doodlebot:try`'s
-   report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This
+   report procedure on `--dev-dir <checkout>`, with the same content and the same collection
+   options (`--optionals vortex` for optional members) as the issue report. This
    is the "before" run report. It must show the reported end outcome on the source build too;
    if it does not, the bug is version-specific: say so and stop. A run stopped before the
    symptom could appear shows nothing: it is Blocked, not a "before".
