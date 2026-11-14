@@ -41,6 +41,10 @@ Rules:
 - Report only what you observed. Anything you could not check goes under "Not checked"; a
   missing login, game or network is Blocked or Not tested, never Worked. A step that needed a
   workaround is "passed with workaround", named.
+- For a reproduction, the symptom is the reported end outcome the brief names, as the user would
+  see it. An intermediate state or log line is reported as such, never labelled the symptom or
+  used for Failed; a run stopped before the symptom could appear is Blocked. When the brief
+  names a proxy as done, or caps the run before the outcome can appear, say so in the report.
 - Something the kit should have done and didn't goes in the Learned section as a proposed kit
   gap, with the command, what was needed, what happened and the workaround; the dispatching
   command records it.

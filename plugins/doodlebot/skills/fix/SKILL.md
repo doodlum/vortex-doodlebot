@@ -45,8 +45,9 @@ Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session
 1. **The issue report.** Take the one the person gives (a `/doodlebot:investigate` report).
    Without one, run `/doodlebot:investigate`'s procedure first
    (`${CLAUDE_PLUGIN_ROOT}/skills/investigate/SKILL.md`). Continue only when it says
-   **reproduced**, with a cause; otherwise report it and stop: a fix for an unreproduced bug is
-   a guess.
+   **reproduced**, with a cause, and its reproduction observed the reported end outcome
+   ("Reproducing a reported symptom" in `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md`), not a
+   precursor state; otherwise report it and stop: a fix for an unreproduced bug is a guess.
 2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`),
    or one the person names with `--dev-dir <checkout>`.
    Outside a checkout, ask the person to open Claude in one (or clone one with
@@ -72,8 +73,9 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
    the person one question when remotes or the exclude are missing, then installs and builds.
    Otherwise build the branch's base with `doodlebot build --checkout <checkout>`. Then repeat the reproduction with `/doodlebot:try`'s
    report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This
-   is the "before" run report. It must show the symptom on the source build too; if it does
-   not, the bug is version-specific: say so and stop.
+   is the "before" run report. It must show the reported end outcome on the source build too;
+   if it does not, the bug is version-specific: say so and stop. A run stopped before the
+   symptom could appear shows nothing: it is Blocked, not a "before".
 4. **Fix.** Change the source on the branch, following Vortex's guidance. Rebuild with
    `doodlebot build --checkout <checkout>` (after a dependency change, `doodlebot source`
    again). For release-like timing, `--production` on both `build` and `up`.
@@ -88,7 +90,9 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
 7. **The reproduction on the fix (after).** Start the fixed build and repeat the person's exact
    scenario with `/doodlebot:try`'s report procedure (`--dev-dir <checkout>`, same content),
    observing the result independently: UI, deployed files, state, `doodlebot log --level warn`.
-   For UI fixes check widths and heights separately. This is the "after" run report.
+   For UI fixes check widths and heights separately. This is the "after" run report. It proves
+   the fix only when the run reached the point where the symptom appeared before and the
+   reported end outcome did not happen; a changed precursor state alone is supporting evidence.
 8. **Gates.** The scoped tests, then Vortex's own gate (for example `pnpm run verify`) with the
    test Vortex stopped. Keep failures and say whether each is a regression, a known base
    failure or an external blocker. Never call a blocked gate passed.

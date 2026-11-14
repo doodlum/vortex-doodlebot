@@ -57,7 +57,9 @@ check. See [Try things in Vortex](try-vortex.md).
 
 You get an issue report: reproduced or not, and on which version; the cause with file and line;
 how confident it is; and a proposed fix. No code is changed. A different version is reported as
-"not reproduced on the user's version", never as "not reproduced".
+"not reproduced on the user's version", never as "not reproduced". "Reproduced" means the run saw
+what the user reported (the mod ends up installed, the dialog appears), not a state the agent
+predicted from the code; a run cut short before that point is reported as Blocked.
 
 ## U3: Fix it
 

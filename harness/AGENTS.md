@@ -200,6 +200,13 @@ authorization.
   benchmark report (`/doodlebot:measure`), evidence receipts ("Evidence receipts") and the QA
   catalogue's results. A tool returning success is not an observation: check the result through
   state, files on disk or the UI.
+- A reported bug is reproduced only by observing the end outcome the user reported, as they
+  would see it, and fixed only when the same scenario no longer produces it. An intermediate
+  state or a prediction from the code supports the cause; it is never the reproduction. Cost is
+  no reason for a proxy: run it in full, use a cheaper scenario with the same trigger and end
+  outcome (say why it is equivalent), or ask the person before reducing scope. A run stopped
+  before the symptom could appear is Blocked ("Reproducing a reported symptom" in
+  `plugins/doodlebot/skills/try/SKILL.md`).
 - Controls: a bug fix needs its intended assertion to fail without the fix (an import, compile,
   setup or timeout failure is inconclusive); a feature needs each acceptance criterion with its
   negative control; a refactor needs its invariants and affected consumers covered;

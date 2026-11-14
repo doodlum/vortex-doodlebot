@@ -39,7 +39,10 @@ save time", "Commands that block" and "The report procedure".
     complete brief: the scenario in the person's words, the build and game flags and why they
     were chosen (below), `<workspace>`, `<shim>` and `<prefix-args>` (the complete verified command
     route), the run folder, whether it starts and stops
-    the instance, and what counts as done. Wait for it, check its report exists, and read it.
+    the instance, and what counts as done. For a reproduction, done is the reported end outcome
+    observed or ruled out ("Reproducing a reported symptom", below), never an intermediate state
+    and never a time cap that stops the run before it could appear. Wait for it, check its
+    report exists, and read it.
     **Record the kit gaps it proposes:** the driver cannot. For each proposed gap in its
     Learned section, `doodlebot gap list --json` (reuse a matching title), then
     `doodlebot gap add --title <t> --command <c> --needed <x> --happened <x> --workaround <x> --blocked yes|no --json`,
@@ -214,6 +217,19 @@ workaround: <x>** (a step needed a workaround, named; one that bypasses the UI, 
 missing: login, game, network, a person); **Not tested** (no content met a need); **Failed**
 (Vortex did not do what the scenario asked). When a check passed but the scenario failed, the
 outcome is Failed, and the check is a kit gap.
+
+**Reproducing a reported symptom** (investigate, fix, qa). The symptom is what the user
+reported, as they would see it: the mod ends up installed, the file is deployed, the dialog
+appears, Vortex crashes. A run **reproduces** it only when it observes that end outcome, on the
+user's version and content. An intermediate state, a log line or a prediction from the code (a
+flag unset, a status still pending) is evidence for the cause, never the reproduction; report it
+under Steps as what it is, not as the symptom. A run stopped before the symptom could appear is
+**Blocked** (or Not tested), never Failed. The same holds for a fix: the "after" run must show the
+reported end outcome no longer happens in the same scenario, not only that its precursor changed.
+Cost is no reason to substitute a proxy: run the expensive scenario in full (a large collection,
+a long install, in the background), or use a cheaper one that produces the same end outcome
+through the same trigger (a smaller collection or fixture) and say why it is equivalent; otherwise
+ask the person before reducing scope.
 
 ### Run report template
 
