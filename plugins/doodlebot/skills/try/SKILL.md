@@ -39,7 +39,11 @@ save time", "Commands that block" and "The report procedure".
     complete brief: the scenario in the person's words, the build and game flags and why they
     were chosen (below), `<workspace>`, `<shim>` and `<prefix-args>` (the complete verified command
     route), the run folder, whether it starts and stops
-    the instance, and what counts as done. Wait for it, check its report exists, and read it.
+    the instance, and what counts as done. For a reproduction, done is the reported end outcome
+    observed or ruled out ("Reproducing a reported symptom", below), never an intermediate state
+    and never a time cap that stops the run before it could appear. Wait for it. It returns
+    the run report as text (a subagent cannot write report files); write it unchanged to
+    `<run folder>/report.md`, check the evidence it lists exists in the run folder, and read it.
     **Record the kit gaps it proposes:** the driver cannot. For each proposed gap in its
     Learned section, `doodlebot gap list --json` (reuse a matching title), then
     `doodlebot gap add --title <t> --command <c> --needed <x> --happened <x> --workaround <x> --blocked yes|no --json`,
@@ -112,6 +116,11 @@ Only one test Vortex runs on the machine. It uses its own profile.
    is after your launch). It prints
    which checkout it stops and restores a game copy's user folders. `Vortex exited cleanly.` or
    `Nothing is running.` is fine; an instance that did not exit is reported, never killed.
+6. **With a registered game copy**, those user folders are the person's real Documents files.
+   When `down` prints `Not restored: ...`, run `doodlebot game restore <gameId>`: it lists every
+   changed file with its time. When each listed file changed inside the run, restore them with
+   `--all`; otherwise (a save, or a change outside the run: the person may have played) ask the
+   person, then `--all`, `--keep` or `--file <path>`. Report what was restored.
 
 ## The loop
 
@@ -140,6 +149,13 @@ Only one test Vortex runs on the machine. It uses its own profile.
 - **A Nexus collection** needs the `login` need. Run `doodlebot collection <url>` in the
   background and poll `doodlebot call collection_install_state` (the driver's step, the
   session's members, open collection dialogs).
+- **`doodlebot collection` chooses the optionals unless told not to.** By default
+  (`--optionals skip`) it marks every optional member ignored, before the install starts and
+  again after Vortex refreshes the rules, which overwrites Vortex's own default skip. A
+  scenario about optional or recommended members, skips or ignored flags runs with
+  `--optionals vortex` (no rule written; the completion dialog gets No Thanks, as from a user
+  who never opened the optional list), or drives Add to Vortex, Install Now and No Thanks
+  itself. The report says which.
 - **Find dialogs by their own text**, with a snapshot scoped to the dialog: a full snapshot of
   a big Mods page stops at its node limit, and dialog text is cut at 400 characters.
 - **State and screen can disagree.** `doodlebot call vortex_query` says what Vortex believes;
@@ -206,7 +222,8 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
    - notifications (`doodlebot call vortex_query` with
      `{"path": ["session", "notifications", "notifications"]}`).
 6. **Stop** with `doodlebot down` if you started the instance.
-7. **Write the report** with the template below, then summarize it in chat with its path.
+7. **Write the report** with the template below, then summarize it in chat with its path. The
+   `doodlebot:vortex-driver` returns it as text instead, and its dispatcher writes `report.md`.
 
 Outcomes: **Worked**; **Worked with errors** (errors or warnings appeared); **Passed with
 workaround: <x>** (a step needed a workaround, named; one that bypasses the UI, such as
@@ -214,6 +231,19 @@ workaround: <x>** (a step needed a workaround, named; one that bypasses the UI, 
 missing: login, game, network, a person); **Not tested** (no content met a need); **Failed**
 (Vortex did not do what the scenario asked). When a check passed but the scenario failed, the
 outcome is Failed, and the check is a kit gap.
+
+**Reproducing a reported symptom** (investigate, fix, qa). The symptom is what the user
+reported, as they would see it: the mod ends up installed, the file is deployed, the dialog
+appears, Vortex crashes. A run **reproduces** it only when it observes that end outcome, on the
+user's version and content. An intermediate state, a log line or a prediction from the code (a
+flag unset, a status still pending) is evidence for the cause, never the reproduction; report it
+under Steps as what it is, not as the symptom. A run stopped before the symptom could appear is
+**Blocked** (or Not tested), never Failed. The same holds for a fix: the "after" run must show the
+reported end outcome no longer happens in the same scenario, not only that its precursor changed.
+Cost is no reason to substitute a proxy: run the expensive scenario in full (a large collection,
+a long install, in the background), or use a cheaper one that produces the same end outcome
+through the same trigger (a smaller collection or fixture) and say why it is equivalent; otherwise
+ask the person before reducing scope.
 
 ### Run report template
 

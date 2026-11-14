@@ -107,6 +107,12 @@ The agent runs `doodlebot collection <url>` in the background and follows the in
 `~/.doodlebot/content.json`, so later runs and `doodlebot test nexus` can use it. Deploy only
 into a registered game copy (see [Use real games and baselines](games-and-baselines.md)).
 
+By default `doodlebot collection` decides the optional mods itself and skips them all, which no
+user does. To see what Vortex does with optional mods on its own, as when you install a
+collection without opening its optional list, it runs `doodlebot collection <url> --optionals
+vortex`: nothing is chosen for Vortex, and the end-of-install offer is declined with No Thanks.
+The agent uses it for any problem about optional mods, and its report says which ran.
+
 ## Check a change, a pull request or a release
 
 Use `/doodlebot:qa` when you want a change checked by someone who did not write it. It always

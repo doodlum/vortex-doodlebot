@@ -11,7 +11,7 @@
  * The restore decides whose a change is (design 4.3.3). After a clean stop the run lasted from its
  * recorded start until the kit confirmed the exit. A change is restored automatically only when it
  * is to a file Vortex writes for the game (`VORTEX_WRITES`: plugins.txt, loadorder.txt,
- * DLCList.txt, *.ini) and falls inside that window. Every other change, a save above all, is
+ * DLCList.txt, *.ini and its .base/.baked copies) and falls inside that window. Every other change, a save above all, is
  * listed for the owner, who may have played their own copy while the run lasted; it keeps the
  * pending restore. After an unclean end (a crash, a kill, a missed `down`) the end is unknown, so
  * nothing is restored until the owner chooses with `doodlebot game restore`. A pending restore

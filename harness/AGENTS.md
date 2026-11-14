@@ -200,6 +200,13 @@ authorization.
   benchmark report (`/doodlebot:measure`), evidence receipts ("Evidence receipts") and the QA
   catalogue's results. A tool returning success is not an observation: check the result through
   state, files on disk or the UI.
+- A reported bug is reproduced only by observing the end outcome the user reported, as they
+  would see it, and fixed only when the same scenario no longer produces it. An intermediate
+  state or a prediction from the code supports the cause; it is never the reproduction. Cost is
+  no reason for a proxy: run it in full, use a cheaper scenario with the same trigger and end
+  outcome (say why it is equivalent), or ask the person before reducing scope. A run stopped
+  before the symptom could appear is Blocked ("Reproducing a reported symptom" in
+  `plugins/doodlebot/skills/try/SKILL.md`).
 - Controls: a bug fix needs its intended assertion to fail without the fix (an import, compile,
   setup or timeout failure is inconclusive); a feature needs each acceptance criterion with its
   negative control; a refactor needs its invariants and affected consumers covered;
@@ -568,7 +575,8 @@ doodlebot game folder [<dir>]                  # store the copy folder (asked on
   are (`--all` and `--file` refuse: there is nothing to restore from).
 - **`down`** restores after the confirmed exit (design 4.3.3). `VORTEX_WRITES` next to
   `USER_FOLDERS` names the files Vortex writes per game: `plugins.txt`, `loadorder.txt`,
-  `DLCList.txt` and `*.ini` for the Bethesda games, none for Stardew Valley. A change is
+  `DLCList.txt`, `*.ini` and the INI tweak copies `*.ini.base` and `*.ini.baked` for the
+  Bethesda games, none for Stardew Valley. A change is
   restored automatically only when it is to such a file **and** inside the run (start to
   confirmed exit) by its modification time; a deleted file is dated by its nearest existing
   folder's modification time, and one with no folder left is not restored (`planRestore`).
@@ -839,12 +847,20 @@ uploads files that `--body-file` image references name (push access, under 10 MB
 doodlebot fixture mod --out C:/fixtures/probe.zip [--name automation-probe]
 doodlebot fixture fomod --out C:/fixtures/probe-fomod.zip [--name automation-probe]
 doodlebot install C:/fixtures/example.zip
-doodlebot collection <collection-url>
+doodlebot collection <collection-url> [--optionals skip|install|vortex]
 doodlebot deploy --game <active-game-id> [--purge]
 doodlebot purge
 doodlebot e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
 ```
 
+- `collection` chooses the optional members itself by default: before the install driver starts,
+  and again whenever Vortex refreshes the collection's rules, it marks every `recommends` rule
+  ignored (`--optionals skip`) or selected (`install`). No user does that, and it overwrites
+  Vortex's own default skip, so a bug in that skip cannot show. `--optionals vortex` writes no
+  optional rule at all, declines the completion dialog with No Thanks like a user who never
+  opened the optional list, and prints how many optionals Vortex ignored and how many
+  installed. Use it for any scenario about optional or recommended members, skips or ignored
+  flags, and say in the report which mode ran.
 - `fixture mod` writes an archive with one file, `textures/<name>.txt` containing `<name>`; in
   the sandbox it deploys to `<gamePath>/Data/textures/<name>.txt`.
 - `fixture fomod` writes a FOMOD installer archive (`fomod/ModuleConfig.xml` with one install

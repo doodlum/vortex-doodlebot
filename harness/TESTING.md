@@ -106,6 +106,14 @@ Click identity tests exercise handlers that relabel/change role during mousedown
 returned metadata describes the target before the sequence. Collection startup also exercises
 native DOM label replacement through its MCP response adapter.
 
+`harness/src/collectionsCompletion.test.ts` keeps the optional-member choice through a rules
+refresh (`--optionals skip` and `install`), and with `--optionals vortex` dispatches no
+`addModRule` at all and waits for the optional Vortex itself left unskipped to install, so a
+default-skip bug stays visible. `userFolders.test.ts` counts the INI tweak copies
+(`*.ini.base`, `*.ini.baked`) among the files Vortex writes. `plugins.test.ts`
+(`driver-returns-report`) holds the driver to returning its report as text, with no Write tool,
+and try and qa to writing it to `report.md`.
+
 The site's guides (`docs/guides/regression-tests.md`, `docs/guides/benchmark.md`) tell people
 how to run these through the plugins; update them with this manual when selection or
 prerequisites change. `docs:check` validates generated references (including

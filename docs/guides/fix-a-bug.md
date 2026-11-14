@@ -36,6 +36,14 @@ It changes no code. The expected result: an **issue report** that says reproduce
 on which version (a different version is "not reproduced on the user's version", never plain
 "not reproduced"), the cause with its file and line, how confident it is, and a proposed fix.
 
+"Reproduced" means the run saw what the user reported, as they would see it: the mod ends up
+installed, the file is deployed, the dialog appears. A state the agent predicts from the code (a
+flag unset, a status pending) only supports the cause. When the real scenario is expensive, such
+as a large collection, the agent runs it in full, uses a cheaper one that leads to the same
+outcome and says why, or asks you before cutting it short. A run stopped before the symptom could
+appear is _Blocked_. The fix's "after" run is held to the same rule: the reported outcome no
+longer happens.
+
 A user's log is someone else's data: the agent quotes only what it needs, and never shares it
 without asking you.
 
