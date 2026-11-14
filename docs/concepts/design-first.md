@@ -36,6 +36,11 @@ Vortex's own instructions, not doodlebot's, so the line carries what EGM needs f
 drafts and reports. `.doodlebot/` is kept out of every commit, and nothing about EGM is written
 into Vortex.
 
+EGM is installed separately in each coding agent. `doodlebot check` uses Codex's plugin
+inventory in a Codex session and Claude's user settings in a Claude Desktop local Code
+session. A disabled plugin is not ready; an unavailable Codex inventory is advisory, not
+proof of a missing installation. See the [desktop agent contract](desktop-agents.md).
+
 ## The runtime review
 
 After EGM's own staged review, you run EGM's review loop with doodlebot's Goldfish,

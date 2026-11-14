@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   LOW_DISK_BYTES,
@@ -39,6 +39,7 @@ beforeEach(() => {
     "# Knowledge\n\n## Collections\n\n### Review stays open after Resume\n\nText.\n",
   );
   deps = {
+    agent: "claude-code",
     version: () => ({ version: "2.0.0", commit: "abcdef1234567", dirty: false, workspace: root }),
     doctor: () =>
       Promise.resolve([
@@ -81,7 +82,10 @@ beforeEach(() => {
     freeBytes: () => 50 * 1024 ** 3,
   };
 });
-afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+  vi.unstubAllEnvs();
+  fs.rmSync(root, { recursive: true, force: true });
+});
 
 const row = (rows: CheckRow[], item: string): CheckRow | undefined =>
   rows.find((r) => r.item === item);
@@ -233,12 +237,98 @@ describe("doodlebot check", () => {
     });
   });
 
+  it("does not count a user installation as enabled when Claude settings disable EGM", async () => {
+    fs.writeFileSync(
+      deps.userSettingsFile!,
+      JSON.stringify({ enabledPlugins: { "egm@egm": false } }),
+    );
+    fs.writeFileSync(
+      deps.installedPluginsFile!,
+      JSON.stringify({ plugins: { "egm@egm": [{ scope: "user" }] } }),
+    );
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "missing",
+      detail: expect.stringContaining("disabled"),
+      next: expect.stringContaining("enable EGM"),
+    });
+  });
+
+  it.each([
+    { codex: "thread-id", claude: "", readsCodex: true },
+    { codex: "", claude: "1", readsCodex: false },
+    { codex: "thread-id", claude: "1", readsCodex: false },
+  ])("uses the active session markers: $codex / $claude", async ({ codex, claude, readsCodex }) => {
+    delete deps.agent;
+    vi.stubEnv("CODEX_THREAD_ID", codex);
+    vi.stubEnv("CLAUDECODE", claude);
+    const inventory = vi.fn(() => ({ installed: [] }));
+    deps.codexPlugins = inventory;
+    await checkRows(deps);
+    expect(inventory).toHaveBeenCalledTimes(readsCodex ? 1 : 0);
+  });
+
+  it("checks EGM in Codex rather than treating Claude's user settings as its installation", async () => {
+    deps.agent = "codex";
+    deps.userSettingsFile = path.join(root, "absent.json");
+    deps.codexPlugins = () => ({
+      installed: [
+        { name: "egm", pluginId: "egm@egm", version: "0.1.1", installed: true, enabled: true },
+      ],
+    });
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "ready",
+      detail: expect.stringContaining("Codex"),
+    });
+    // Enabling Claude's plugin does not make a missing Codex plugin ready.
+    deps.userSettingsFile = path.join(root, "settings.json");
+    deps.codexPlugins = () => ({ installed: [] });
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "missing",
+      next: expect.stringContaining("codex plugin add egm@egm"),
+    });
+  });
+
+  it("reports disabled Codex EGM separately from an absent installation", async () => {
+    deps.agent = "codex";
+    deps.codexPlugins = () => ({
+      installed: [{ name: "egm", pluginId: "egm@egm", installed: true, enabled: false }],
+    });
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "missing",
+      detail: expect.stringContaining("disabled"),
+      next: expect.stringContaining("enable"),
+    });
+  });
+
+  it.each([undefined, null, {}, { installed: null }])(
+    "does not claim Codex EGM is missing when the plugin inventory is unavailable: %s",
+    async (inventory) => {
+      deps.agent = "codex";
+      deps.codexPlugins = () => inventory;
+      expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+        status: "advisory",
+        next: "codex plugin list --json",
+      });
+    },
+  );
+
+  it("keeps an unavailable Codex CLI distinct from a missing EGM plugin", async () => {
+    deps.agent = "codex";
+    deps.codexPlugins = () => {
+      throw new Error("CLI blocked");
+    };
+    expect(row(await checkRows(deps), "EGM (Elephant-Goldfish Model)")).toMatchObject({
+      status: "advisory",
+      next: "codex plugin list --json",
+    });
+  });
+
   it("outside a Vortex checkout, names the step that makes one, and prints a table or JSON", async () => {
     deps.source = () => undefined;
     const text = await checkCommand({}, deps);
     expect(text).toContain("[advisory] this checkout: this session is not in a Vortex checkout");
     expect(text).toContain(
-      "next: Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
+      "next: Open your coding agent in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).",
     );
     expect(text).toMatch(/item\(s\) missing or blocked/);
     const json = JSON.parse(await checkCommand({ json: true }, deps)) as { rows: CheckRow[] };
@@ -270,7 +360,7 @@ describe("doodlebot check", () => {
       area: "vortex source",
       item: "old Vortex clone",
       status: "advisory",
-      detail: `Your Vortex clone from an older doodlebot (${clone}, 2 worktrees): open Claude in it or one of its worktrees`,
+      detail: `Your Vortex clone from an older doodlebot (${clone}, 2 worktrees): open your coding agent in it or one of its worktrees`,
     });
     expect(await checkCommand({}, deps)).not.toMatch(/doodlebot clean/);
   });

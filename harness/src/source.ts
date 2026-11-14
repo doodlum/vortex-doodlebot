@@ -1,7 +1,7 @@
 /**
  * Preparing the session's Vortex checkout, and cloning a new one where the person says.
  *
- * The person opens Claude in a Vortex checkout or one of its worktrees, and that is the checkout
+ * The person opens the coding agent in a Vortex checkout or one of its worktrees, and that is the checkout
  * the kit works in (config.ts `vortexCheckoutOf`); the kit never goes hunting around the
  * filesystem for one. `source --clone <dir>` makes one: it asks GitHub who the operator is,
  * looks for their fork, and clones it into the folder the person named, outside the workspace.
@@ -426,7 +426,7 @@ export async function cloneVortex(
     );
   if (fs.existsSync(dir) && fs.readdirSync(dir).length > 0)
     throw new ConfigError(
-      `${dir} already exists and is not empty. Name a new folder, or open Claude in that ` +
+      `${dir} already exists and is not empty. Name a new folder, or open your coding agent in that ` +
         "checkout: the commands that need a build there prepare it.",
     );
 

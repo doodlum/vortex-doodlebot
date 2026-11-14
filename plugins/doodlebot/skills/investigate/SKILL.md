@@ -51,7 +51,7 @@ is `/doodlebot:fix`, which can start from this report.
 5. **Narrow to the cause** in the source: the session's Vortex checkout, `<checkout>`
    (`doodlebot source --where`). Reading needs no build; a run on the source build prepares
    it first, as `/doodlebot:try` does (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`). Outside a checkout, ask the
-   person to open Claude in one, or to clone one with `doodlebot source --clone <dir>`. Check
+   person to open your coding agent in one, or to clone one with `doodlebot source --clone <dir>`. Check
    out the user's version's tag without building over the session's work
    (`git -C <checkout> status --porcelain` must be empty; note the branch it is on,
    `git -C <checkout> symbolic-ref --short HEAD`, or its commit when detached; then

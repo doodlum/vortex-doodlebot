@@ -24,7 +24,7 @@ passed on the change.
    `<plugin root>/.codex-plugin/plugin.json` (Codex; three folders above this `SKILL.md`).
    If they differ, say so and suggest `/doodlebot:setup --update`, then continue.
 3. Run `doodlebot source --where`. It prints the session's checkout, `<checkout>` below. If it
-   refuses, the session is not in a Vortex checkout: tell the person to open Claude in the
+   refuses, the session is not in a Vortex checkout: tell the person to open the coding agent in the
    checkout or worktree that holds the change, and stop.
 4. Read `<workspace>/harness/PULL-REQUESTS.md` (titles, description template, the doodlebot
    footer, review lessons) and the checkout's `CONTRIBUTING.md`.

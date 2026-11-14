@@ -1,6 +1,6 @@
 # Work on Vortex source
 
-This page shows how to work in your own Vortex checkout: open Claude in it, let the commands
+This page shows how to work in your own Vortex checkout: open your coding agent in it, let the commands
 prepare it, work on a branch of it, and run your build in the test Vortex.
 
 ## Before you begin
@@ -14,7 +14,7 @@ prepare it, work on a branch of it, and run your build in the test Vortex.
 You do not need Vortex source to drive a released Vortex, add a regression test for doodlebot's
 suite, or measure a release.
 
-## Open Claude in your checkout
+## Open your coding agent in your checkout
 
 Doodlebot works in the Vortex checkout your Claude session is opened in, or in a worktree of it.
 The same holds for the Claude desktop app, the Codex app and the Codex CLI: open the session in
@@ -24,12 +24,12 @@ runs its build. Doodlebot's own workspace stays where setup put it.
 
 If you have no checkout yet, run `/doodlebot:setup --check` and ask for one: the agent asks for
 a folder of your choosing (never inside the doodlebot workspace) and runs
-`doodlebot source --clone <dir>`. Then open Claude in that folder.
+`doodlebot source --clone <dir>`. Then open your coding agent in that folder.
 
 Outside a checkout, commands that need Vortex's source refuse with:
 
 ```text
-Open Claude in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).
+Open your coding agent in a Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`).
 ```
 
 ## Prepare the checkout
@@ -165,9 +165,9 @@ Stop it before you switch the checkout to another branch as well.
 ## Your clone from an older doodlebot
 
 Earlier versions of doodlebot kept a Vortex clone inside the workspace. It is still a Vortex
-checkout, with your branches and worktrees: open Claude in it, or in one of its worktrees, and
+checkout, with your branches and worktrees: open your coding agent in it, or in one of its worktrees, and
 doodlebot works there. `doodlebot check` lists it as "Your Vortex clone from an older doodlebot
-(<path>, <n> worktrees): open Claude in it or one of its worktrees". Doodlebot never deletes it;
+(<path>, <n> worktrees): open your coding agent in it or one of its worktrees". Doodlebot never deletes it;
 `doodlebot clean` leaves it alone.
 
 ## Features and refactors start with a design

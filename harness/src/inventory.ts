@@ -171,7 +171,7 @@ function buildItems(content: Content, deps: InventoryDeps): InventoryItem[] {
       id: "source",
       kind: "build",
       ready: false,
-      next: "doodlebot source --clone <dir>, or open Claude in a Vortex checkout or worktree",
+      next: "doodlebot source --clone <dir>, or open your coding agent in a Vortex checkout or worktree",
       label: "a Vortex source checkout: this session is not in one",
     });
   else

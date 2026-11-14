@@ -14,7 +14,7 @@ companion, without you typing a terminal command.
 Setup installs the doodlebot runtime into a **workspace**: a clone of the doodlebot repository,
 with its dependencies installed and its Vortex extension built. The default folder is
 `%USERPROFILE%\doodlebot`. Test profiles and reports live inside the workspace. Vortex's own
-source is not in it: work on Vortex's code happens in a Vortex checkout you open Claude in. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
+source is not in it: work on Vortex's code happens in a Vortex checkout you open your coding agent in. Your Nexus login, lessons, kit gaps, releases and registered game copies live in
 `%USERPROFILE%\.doodlebot`, so they survive updates and a new workspace.
 
 Setup also writes a small launcher, the **shim**, so that the `doodlebot` command works from any
@@ -93,7 +93,7 @@ ready, missing with the exact next step, or blocked with the reason:
   test Vortex);
 - whether the EGM plugin is installed, and the Vortex checkout the session is in: its remotes,
   branch and build (a Vortex clone an older doodlebot kept in the workspace is listed with its
-  worktrees, as a checkout to open Claude in; doodlebot never deletes it);
+  worktrees, as a checkout to open your coding agent in; doodlebot never deletes it);
 - `doodlebot inventory`: releases, game copies, snapshots, sandboxes and collections;
 - the Nexus login;
 - the folder game copies go in, and any pending restore of a game's user folders, with
@@ -101,13 +101,20 @@ ready, missing with the exact next step, or blocked with the reason:
 - open kit gaps, and lessons on your machine that `KNOWLEDGE.md` now holds;
 - disk use, with a warning below 10 GB free that names `doodlebot clean`.
 
+EGM is checked for the active coding agent. In Codex sessions the check reads
+`codex plugin list --json`, not Claude's settings. If that inventory cannot be read, the row
+is advisory and asks you to verify it in Codex. Claude Desktop local Code sessions use Claude
+Code's user settings and plugin scopes; a disabled or project-only install is not ready.
+Outside an agent session the check uses Claude's settings; use `codex plugin list --json` to
+inspect Codex separately. EGM is needed for design work, not for trying Vortex or fixing bugs.
+
 The first time it finds no folder for game copies, the agent asks you for one and stores it
 (`doodlebot game folder <dir>`), so it never asks again. The agent acts on a row only with your
 yes: it deletes nothing on its own.
 
 A checkout that is not built yet needs nothing from you: the first `/doodlebot:try` on your
 build (or `fix`, `qa`, `prototype`) prepares it. With no checkout yet, ask for one: the agent
-asks for a folder, runs `doodlebot source --clone <dir>`, and you open Claude in `<dir>`.
+asks for a folder, runs `doodlebot source --clone <dir>`, and you open your coding agent in `<dir>`.
 
 If setup stops with an error, see [Troubleshooting](../troubleshooting.md).
 

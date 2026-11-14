@@ -7,6 +7,19 @@ that absolute path reports the same workspace. If lookup or execution fails, use
 steps below. A failed `doodlebot version --json` does not prove the runtime is uninstalled. In a Windows sandbox,
 `where.exe doodlebot` can find nothing even when a shim on PATH exists but is unreadable.
 
+## Desktop execution contract
+
+Use a local Windows coding session: Codex with local execution, or the Code tab of Claude
+Desktop in a local session. A plugin being listed does not establish access to the host shell,
+workspace, game copies or loopback ports. Check with the read-only version probe below before
+launching Vortex. Cloud or WSL sessions are not a substitute for the local Windows runtime.
+See `<workspace>/docs/concepts/desktop-agents.md` for the host differences and acceptance checks.
+
+Respect the active host's approval mechanism. A working host retry does not authorize later
+commands, and an unavailable host retry is a concrete blocker rather than a reason to disable
+sandboxing. Keep the complete absolute command route in every delegated brief; Codex performs
+the driver procedure inline, as the calling skill says.
+
 ## Discover without changing the installation
 
 Use the current agent's normal tool environment first. Keep the original command and error.
@@ -54,7 +67,10 @@ CLI entry point as its first argument. Prepend it to every command, including ba
 launches. In PowerShell, quote an entry-point path containing spaces inside the argument
 string (for example `@('"<workspace>/bin/doodlebot.cjs"')`), then use
 `Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + <args>)` with the template's log
-and process options. In Bash, pass the quoted entry point immediately after the Node executable.
+and process options. Quote each other argument containing spaces too (for example a
+`--dev-dir` path); `Start-Process -ArgumentList` joins the array into one command line and does
+not preserve argument boundaries automatically. Use `-WindowStyle Hidden` for background helper
+processes. In Bash, pass the quoted entry point immediately after the Node executable.
 
 A readable shim whose Node, dependencies or process startup fail is a runtime execution
 failure, not a missing shim. Report the actual error. In Codex, sandbox denial can affect

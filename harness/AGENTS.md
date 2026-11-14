@@ -107,7 +107,7 @@ Tests: `harness/src/sessionNote.test.ts`.
 A **workspace** is a clone of this repository with dependencies installed and the extension
 built; `/doodlebot:setup` creates one (default `%USERPROFILE%\doodlebot`), and a doodlebot
 developer may use their own checkout. Caches, profiles and artifacts live in the workspace,
-relative to its root. Vortex's own code is not in the workspace: the person opens Claude in a
+relative to its root. Vortex's own code is not in the workspace: the person opens the coding agent in a
 Vortex checkout or one of its worktrees, and that is the **session's checkout** ("Which
 checkout").
 
@@ -596,7 +596,10 @@ against the asset's `digest`. A mismatch refuses; a missing digest is
 passes when a release is registered and names it (`missingVortexCheck`); with none it offers
 `release get` first. 7-Zip (on the PATH or under Program Files; `doctor` reports it) extracts `$PLUGINSDIR\app-64.7z` and then the app into `<version>/app`; the
 installer never runs, so the owner's installation is never replaced. `Vortex.exe`'s version
-resource must start with the version (`2.8.0.0` matches `2.8.0`). The release is then registered
+resource must match the requested version. Numeric resources compare against the numeric release
+core (`2.11.0.0` matches `2.11.0-beta.4`); the exact GitHub tag, asset name and digest identify
+the prerelease. A resource that includes a prerelease label must still match that label.
+The release is then registered
 in `content.json`, and the installer and inner archive are deleted. `release list [--json]`
 lists them, and `--release <version>` selects one wherever `--exe` is accepted. Releases stay
 outside the workspace: under it the renderer fails with `Cannot find module './common'`
@@ -609,13 +612,16 @@ It only reads and always exits 0. Each row is `{area, item, status, detail, next
 one of `ready`, `missing`, `blocked`, `advisory` and `info`; every missing or blocked row has
 `next`. Rows: the workspace (`versionInfo`); `doctor` for the installed target and the sandbox
 unless target or game flags are given (the login row replaces doctor's `Nexus login captured`);
-EGM at user scope only (enabled in `~/.claude/settings.json`, or a `user`-scope entry in
-`~/.claude/plugins/installed_plugins.json`; a project-scope install alone is `missing` with
-`next: install EGM at user scope`, since a Vortex session doesn't read the workspace's
-settings); this checkout (the session's Vortex checkout: its
+EGM for the current agent: `CLAUDECODE` selects Claude Code (including local Desktop Code
+sessions); otherwise `CODEX_THREAD_ID` selects Codex. Codex reads `codex plugin list --json`
+with a bounded timeout, checks installed/enabled EGM, and reports an unavailable inventory as
+advisory with a verification step. Claude reads user settings and installed-plugin scopes;
+explicitly disabled or project-only EGM is not ready. Outside either session, the check uses
+Claude's settings, so inspect Codex explicitly with `codex plugin list --json`.
+Then this checkout (the session's Vortex checkout: its
 fetch remotes, branch and build, or `advisory` with the step that makes one outside a checkout);
 the Vortex clone older kits kept in the workspace, as `advisory`: "Your Vortex clone from an
-older doodlebot (<path>, <n> worktrees): open Claude in it or one of its worktrees". Doodlebot
+older doodlebot (<path>, <n> worktrees): open your coding agent in it or one of its worktrees". Doodlebot
 never deletes a Vortex clone: `clean` refuses it, and any folder holding `.git`;
 the inventory's items (a store install with a registered copy is `info`) and the login
 (`next: /doodlebot:setup --login`); the copy folder (`next: doodlebot game folder <dir>`); each
@@ -917,7 +923,7 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   Vortex or a registered release. A target flag puts its build in front of the checkout. No
   environment variable names a checkout; one left in a shell by an older kit is ignored.
   - `build`, `source` (except `--clone`), `push-branch` and `pr-preflight` need a checkout
-    (`--checkout`, `--dev-dir` or the session's); outside one they refuse with "Open Claude in a
+    (`--checkout`, `--dev-dir` or the session's); outside one they refuse with "Open your coding agent in a
     Vortex checkout or worktree (or clone one with `doodlebot source --clone <dir>`)."
   - `up`, `bootstrap` and `setup` in an unbuilt checkout refuse with "This session's checkout
     <dir> is not built: ... Build it with `doodlebot build --checkout <dir>`" instead of falling
@@ -964,7 +970,7 @@ doodlebot responsive --screenshots --viewports "1024x720,1280x720,1280x1000,1920
   remote **`upstream`**.
   - It clones into the folder the person names (resolved against the caller's folder), never
     into the workspace and never over a folder with something in it. There is no default folder.
-    It ends with "Open Claude in <dir>. The first command that needs a build there
+    It ends with "Open your coding agent in <dir>. The first command that needs a build there
     (/doodlebot:try, fix, qa or prototype) prepares it." `setup --check` runs it when the
     session is in no checkout and the person names a folder.
   - With a fork: `git clone -o origin <fork>`, then `upstream` is added and fetched.
@@ -995,7 +1001,7 @@ Nexus-Mods/Vortex. Doodlebot changed nothing. ...`). Missing, it is added and fe
     unless `--no-build`. It reports the checkout, branch, remotes, the exclude, whether it
     built, and the next step.
   - The Vortex clone an earlier kit kept in the workspace (`OLD_CLONE_DIR`) can hold worktrees
-    and unpushed work: `check` reports it with its worktree count and says to open Claude in it
+    and unpushed work: `check` reports it with its worktree count and says to open your coding agent in it
     or one of its worktrees. Doodlebot never deletes it; `clean` refuses it.
 - **Branches start from upstream.** `source --branch <name>` fetches `upstream` and runs
   `git switch --no-track -c <name> upstream/<default branch>` (`cutWorkBranch`), never from the

@@ -6,6 +6,7 @@
  * ones (4.10), and disk use (4.13). Every row is ready, missing with the exact next command,
  * blocked with the reason, or advisory/info.
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -53,6 +54,10 @@ export interface SourceState {
 }
 
 export interface CheckDeps {
+  /** Current coding agent; otherwise inferred from its session environment. */
+  agent?: "codex" | "claude-code";
+  /** Read-only `codex plugin list --json` result. Unavailable is advisory, not missing. */
+  codexPlugins?: () => unknown;
   version?: () => VersionInfo;
   /** doctor's checks for the installed target and the sandbox. */
   doctor?: () => Promise<Check[]>;
@@ -135,19 +140,96 @@ function egmInstallScopes(file: string): string[] {
     );
 }
 
+/** Use Codex's inventory instead of inferring its installation from Claude's settings. */
+function codexEgmRow(deps: CheckDeps): CheckRow {
+  const base = { area: "plugins", item: "EGM (Elephant-Goldfish Model)" };
+  let inventory: { installed?: unknown } | undefined;
+  try {
+    inventory = (
+      deps.codexPlugins ??
+      (() =>
+        JSON.parse(
+          execFileSync("codex", ["plugin", "list", "--json"], {
+            encoding: "utf8",
+            windowsHide: true,
+            timeout: 10_000,
+            stdio: ["ignore", "pipe", "ignore"],
+          }),
+        ))
+    )() as typeof inventory;
+  } catch {
+    // CLI absent, blocked or an older schema: do not report an unverified missing plugin.
+  }
+  if (!Array.isArray(inventory?.installed))
+    return {
+      ...base,
+      status: "advisory",
+      detail: "Codex plugin inventory unavailable; verify EGM in the active Codex app or CLI",
+      next: "codex plugin list --json",
+    };
+  const installs = inventory.installed.filter(
+    (
+      entry: unknown,
+    ): entry is { name: string; installed: boolean; enabled: boolean; version?: string } =>
+      entry !== null &&
+      typeof entry === "object" &&
+      "name" in entry &&
+      entry.name === "egm" &&
+      "installed" in entry &&
+      entry.installed === true,
+  );
+  const enabled = installs.find((entry) => entry.enabled === true);
+  if (enabled !== undefined)
+    return {
+      ...base,
+      status: "ready",
+      detail: `EGM enabled in Codex${typeof enabled.version === "string" ? ` (${enabled.version})` : ""}`,
+    };
+  if (installs.length > 0)
+    return {
+      ...base,
+      status: "missing",
+      detail: "EGM is installed in Codex but disabled",
+      next: "Open Codex Plugins (or /plugins in the CLI) and enable EGM",
+    };
+  return {
+    ...base,
+    status: "missing",
+    detail: "EGM is not installed in Codex; designing features needs it",
+    next: "codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.1, then codex plugin add egm@egm",
+  };
+}
+
 /**
- * EGM must be there in every Vortex checkout and worktree the person opens Claude in, so only
+ * EGM must be there in every Vortex checkout and worktree the person opens the coding agent in, so only
  * user scope counts: the user's settings enabling it, or a user-scope install. A project-scope
  * install (the doodlebot workspace's `.claude/settings.json` enables EGM for that folder only)
  * is reported as missing, with the step that installs it for the user.
  */
 function egmRow(deps: CheckDeps): CheckRow {
+  const agent =
+    deps.agent ??
+    (process.env.CLAUDECODE
+      ? "claude-code"
+      : process.env.CODEX_THREAD_ID
+        ? "codex"
+        : "claude-code");
+  if (agent === "codex") return codexEgmRow(deps);
   const item = "EGM (Elephant-Goldfish Model)";
   const userSettings = deps.userSettingsFile ?? path.join(os.homedir(), ".claude", "settings.json");
   const settings = readJson(userSettings) as
     | { enabledPlugins?: Record<string, unknown> }
     | undefined;
-  const enabled = settings?.enabledPlugins?.["egm@egm"] === true;
+  const enabledSetting = settings?.enabledPlugins?.["egm@egm"];
+  if (enabledSetting === false)
+    return {
+      area: "plugins",
+      item,
+      status: "missing",
+      detail: "EGM is disabled in Claude Code user settings",
+      next: "Open the Claude plugin manager (/plugin in the CLI) and enable EGM at user scope",
+    };
+  const enabled = enabledSetting === true;
   const scopes = egmInstallScopes(
     deps.installedPluginsFile ??
       path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json"),
@@ -172,7 +254,7 @@ function egmRow(deps: CheckDeps): CheckRow {
       scopes.length > 0
         ? `installed only at ${[...new Set(scopes)].join(", ")} scope, so a session in a Vortex checkout doesn't have it`
         : "not installed at user scope; designing features needs it",
-    next: "install EGM at user scope: /plugin marketplace add google/elephant-goldfish-model, then /plugin install egm@egm (user scope)",
+    next: "install EGM at user scope in Claude Desktop's plugin manager, or in Claude Code: /plugin marketplace add google/elephant-goldfish-model, then /plugin install egm@egm (user scope)",
   };
 }
 const samePath = (a: string, b: string): boolean => {
@@ -241,7 +323,7 @@ function sourceRow(state: SourceState | undefined): CheckRow {
 
 /**
  * The Vortex clone older kits kept in the workspace (OLD_CLONE_DIR). It can hold worktrees and
- * unpushed work, so doodlebot never deletes it: the row says where to open Claude instead.
+ * unpushed work, so doodlebot never deletes it: the row says where to open your coding agent instead.
  */
 function oldCloneRows(deps: CheckDeps): CheckRow[] {
   const dir = deps.oldClone ?? OLD_CLONE_DIR;
@@ -259,7 +341,7 @@ function oldCloneRows(deps: CheckDeps): CheckRow[] {
       detail:
         `Your Vortex clone from an older doodlebot (${dir}` +
         `${worktrees === undefined ? "" : `, ${String(worktrees)} worktree${worktrees === 1 ? "" : "s"}`}` +
-        "): open Claude in it or one of its worktrees",
+        "): open your coding agent in it or one of its worktrees",
     },
   ];
 }

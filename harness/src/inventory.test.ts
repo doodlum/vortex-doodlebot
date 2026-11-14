@@ -70,7 +70,7 @@ describe("the inventory", () => {
     expect(byId(inventory, "login")).toMatchObject({ ready: false, next: LOGIN_NEXT });
     expect(byId(inventory, "source")).toMatchObject({
       ready: false,
-      next: "doodlebot source --clone <dir>, or open Claude in a Vortex checkout or worktree",
+      next: "doodlebot source --clone <dir>, or open your coding agent in a Vortex checkout or worktree",
     });
     expect(formatInventory(inventory)).toContain(`next: ${LOGIN_NEXT}`);
     // A captured `doodlebot setup --oauth` can hang on Windows; the plugin command runs it.

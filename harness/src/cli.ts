@@ -997,7 +997,7 @@ async function main(): Promise<number> {
           if (!source.hasFork) log(`  ${NO_FORK_NOTE}`);
           log("");
           log(
-            `Open Claude in ${source.dir}. The first command that needs a build there (/doodlebot:try, fix, qa or prototype) prepares it.`,
+            `Open your coding agent in ${source.dir}. The first command that needs a build there (/doodlebot:try, fix, qa or prototype) prepares it.`,
           );
           return 0;
         }

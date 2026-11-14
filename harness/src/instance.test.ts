@@ -374,7 +374,10 @@ describe("stopping", () => {
   it("down names the checkout the running Vortex comes from before stopping it", async () => {
     const config = installedConfig({ mcpPort: await freePort() });
     const child = idleChild();
-    writeInstanceRecord(record(child.pid!, config.cacheDir, { sourceDir: checkout }));
+    // down follows the recorded port: never probe a real instance on the default MCP port.
+    writeInstanceRecord(
+      record(child.pid!, config.cacheDir, { sourceDir: checkout, mcpPort: config.mcpPort }),
+    );
     const messages: string[] = [];
     const stopping = stopRunningInstance(config, (message) => messages.push(message));
     await new Promise((resolve) => setTimeout(resolve, 500));

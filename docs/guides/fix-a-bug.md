@@ -7,7 +7,7 @@ This page shows how to find out why something in Vortex is broken, with
 
 - [Set up doodlebot](../get-started/set-up.md).
 - Have Vortex's build prerequisites, and a GitHub fork of Vortex if you want to push the fix.
-  Open Claude in your Vortex checkout, or a worktree of it; the agent prepares it if needed. See
+  Open your coding agent in your Vortex checkout, or a worktree of it; the agent prepares it if needed. See
   [Work on Vortex source](source-development.md).
 - Have the bug report: what the user did, what they saw, their Vortex version, and any
   collection, mod or files they named; or a user's `vortex.log`. If the report depends on a

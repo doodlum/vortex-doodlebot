@@ -49,7 +49,7 @@ Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session
    a guess.
 2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`),
    or one the person names with `--dev-dir <checkout>`.
-   Outside a checkout, ask the person to open Claude in one (or clone one with
+   Outside a checkout, ask the person to open your coding agent in one (or clone one with
    `doodlebot source --clone <dir>`) and stop. First `git -C <checkout> status --porcelain`
    must print nothing: cutting a branch carries uncommitted changes onto it, so with output,
    say what it printed and ask the person to commit or stash it, and stop. Then cut the branch

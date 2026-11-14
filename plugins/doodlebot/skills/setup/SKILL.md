@@ -93,8 +93,11 @@ item, each `ready`, `MISSING` or `BLOCKED` with its `next:` step, or `advisory`/
 - `doctor` for the installed Vortex and the sandbox: Vortex, the extension, the sandbox
   baseline, 7-Zip (for `doodlebot release get`), the login folder's privacy, a running test
   Vortex, an old `Legacy lease store`;
-- EGM at user scope, from the user's Claude Code settings and installed-plugins list (a
-  project-scope install alone is missing: a session in a Vortex checkout would not have it);
+- EGM for the active coding agent: in Codex sessions, the read-only `codex plugin list --json`
+  inventory (an unavailable inventory is advisory, not proof it is missing); in Claude Code or
+  Claude Desktop local Code sessions, user settings and installed-plugin scopes (disabled EGM
+  and project-only installs are not ready). Outside an agent session the check uses Claude's
+  settings; inspect Codex with `codex plugin list --json` instead;
 - the session's Vortex checkout, when the session is in one: remotes (a fork as `origin`,
   Nexus-Mods/Vortex as `upstream`), branch, and whether it is built;
 - `doodlebot inventory`: builds, games (a Steam install is never usable; a registered copy
@@ -214,7 +217,7 @@ open, so the command never returns. Run it in the background with a log under
 
 ```powershell
 $log = "<workspace>/harness/.artifacts/runs/<UTC time>-login.log"
-$p = Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + @('setup','--oauth','--installed','--no-wait')) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -NoNewWindow -PassThru
+$p = Start-Process -FilePath <shim> -ArgumentList (<prefix-args> + @('setup','--oauth','--installed','--no-wait')) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -WindowStyle Hidden -PassThru
 $p.Id
 ```
 
