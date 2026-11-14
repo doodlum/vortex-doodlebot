@@ -44,7 +44,8 @@ and watcher errors remain distinct causes. These tests need no Vortex, game or a
 `pnpm run ci` runs types, lint, formatting, paired documentation checks and their negative
 controls, the QA catalogue check (`qa:check`, `node bin/doodlebot.cjs qa check`), unit and
 filesystem/process tests, and the extension build. Run it for every kit change. Tests use synthetic credentials;
-instance-record cases mock `USER_STATE_DIR` (and the default cache) to temporary folders, so
+instance-record cases use temporary MCP ports in their fake records as well as configs, and
+mock `USER_STATE_DIR` (and the default cache) to temporary folders, so
 they never read or write the real `~/.doodlebot/instance.json`. `update.test.ts` passes a
 temporary `stateDir` for the same reason. The operator's package-manager override must not
 affect them. The `ci` job of `.github/workflows/ci.yml` runs the same `pnpm run` scripts, in the

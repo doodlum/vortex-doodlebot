@@ -47,7 +47,9 @@ to the isolated profile, game copy and loopback endpoints are required.
 
 The November 2026 audit found and corrected prerelease registration, Codex EGM attribution,
 and disabled Claude EGM readiness. Shared checkout messages now address either coding agent;
-Windows background templates use hidden helpers. Command preflight retains separate states
+Windows background templates use hidden helpers. The shutdown test's fake record now uses its
+allocated MCP port instead of probing the default port of a potentially real instance.
+Command preflight retains separate states
 for missing, inaccessible and failing commands.
 
 Automated coverage: `releaseFetch.test.ts`, `checkCommand.test.ts`, `plugins.test.ts`,
