@@ -269,7 +269,14 @@ time of writing they route tasks like this (consult the index if paths move):
   performance where relevant.
 - Vortex's own gate (`pnpm run verify`) runs on the exact final commit with the test Vortex
   stopped. Vortex's e2e suite runs only when asked, with Vortex's own scripts, on the base and
-  then the head. Never overwrite a live development renderer with a production build.
+  then the head; fix, qa and pr ask the person up front for the touched area's specs, yes by
+  default for a fix bound for a PR. Never overwrite a live development renderer with a
+  production build.
+- **Verified means all of it** (`plugins/doodlebot/resources/testing.md`, section 6): before and
+  after runs on production builds (`build --production`, `up --production`), content that gets
+  installed deployed and checked on disk then purged with the same profile before a `--fresh`
+  one, the E2E specs for the touched area, and the reported outcome. A gap makes the change
+  "partially verified", named in the report, the PR description and any PR comment.
 - Comparing rendered timings needs an in-build control the change does not touch: for the Mods
   table that is the classic layout, since the Mods page stays mounted while hidden
   (KNOWLEDGE.md).

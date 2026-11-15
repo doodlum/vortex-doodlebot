@@ -25,17 +25,17 @@ publication, and authorization to open one does not waive the testing.
 
 ## Gates
 
-| Change or claim                                    | Evidence                                                                                                                         |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Every Vortex submission                            | Vortex's full `pnpm run verify` on the exact final commit, a clean tree afterwards, `doodlebot pr-preflight`, independent review |
-| Bug fix                                            | The before and after run reports of the person's scenario; the regression test's revert control (fails without the fix)          |
-| Feature                                            | The approved design; `/doodlebot:qa --design <file>`: each acceptance criterion proved with its negative control                 |
-| Equivalence refactor                               | The approved design; invariants and affected consumers covered, including failure and cancellation paths                         |
-| Touched areas Vortex's e2e suite does not cover    | The QA catalogue entries `doodlebot qa list --touching <files>` selects, run on base and head; files no entry guards, listed     |
-| UI or interaction                                  | The relevant states, widths and heights and input modes, with before and after evidence; clips when motion matters               |
-| Performance claim or affected performance contract | `/doodlebot:measure --a <base> --b <head>` benchmark report: production builds, idle machine, at least three runs per side       |
-| Documentation                                      | Factual, link and command checks                                                                                                 |
-| Vortex's e2e suite, when asked                     | Base and head reports with complete selection and classified outcomes                                                            |
+| Change or claim                                                   | Evidence                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every Vortex submission                                           | Vortex's full `pnpm run verify` on the exact final commit, a clean tree afterwards, `doodlebot pr-preflight`, independent review                                                                                                   |
+| Bug fix                                                           | The before and after run reports of the person's scenario on production builds, deployed and checked on disk when it installs content; the regression test's revert control (fails without the fix); a gap is "partially verified" |
+| Feature                                                           | The approved design; `/doodlebot:qa --design <file>`: each acceptance criterion proved with its negative control                                                                                                                   |
+| Equivalence refactor                                              | The approved design; invariants and affected consumers covered, including failure and cancellation paths                                                                                                                           |
+| Touched areas Vortex's e2e suite does not cover                   | The QA catalogue entries `doodlebot qa list --touching <files>` selects, run on base and head; files no entry guards, listed                                                                                                       |
+| UI or interaction                                                 | The relevant states, widths and heights and input modes, with before and after evidence; clips when motion matters                                                                                                                 |
+| Performance claim or affected performance contract                | `/doodlebot:measure --a <base> --b <head>` benchmark report: production builds, idle machine, at least three runs per side                                                                                                         |
+| Documentation                                                     | Factual, link and command checks                                                                                                                                                                                                   |
+| Vortex's e2e suite (fix, qa and pr ask; yes by default for a fix) | The touched area's specs: base and head reports with complete selection and classified outcomes, or what blocked them                                                                                                              |
 
 Mark an inapplicable gate with a reason grounded in the actual diff. A gate blocked by
 authorization, a login, a service or tooling stays blocked; never disguise it as not

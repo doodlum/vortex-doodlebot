@@ -99,7 +99,9 @@ optional choice, leaves one with any other button and the prompt outside a colle
 alone, and reads its buttons once per dialog. `userFolders.test.ts` counts the INI tweak copies
 (`*.ini.base`, `*.ini.baked`) among the files Vortex writes. `plugins.test.ts`
 (`driver-returns-report`) holds the driver to returning its report as text, with no Write tool,
-and try and qa to writing it to `report.md`.
+and try and qa to writing it to `report.md`; `verified-means-all` holds fix, qa and pr to
+production builds, deployment checked on disk then purged, the E2E specs, and "partially
+verified" for any gap (`resources/testing.md`, section 6).
 
 The site's guides (`docs/guides/regression-tests.md`, `docs/guides/benchmark.md`) tell people
 how to run these through the plugins; update them with this manual when selection or

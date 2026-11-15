@@ -71,6 +71,17 @@ reproduced. Then it:
 The expected result: a branch with the fix and its test, before and after run reports, the
 revert control's result, and a report that ends with what doodlebot learned.
 
+The agent calls the bug **fixed** only when all of these hold; otherwise the report, and anything
+it writes on a pull request, says **partially verified** and names what is missing:
+
+- the before and after runs use production builds (`--production`), as users run Vortex; a
+  development build's result is labelled "dev build only";
+- when the scenario installs mods or a collection, they are deployed and the deployed files
+  checked on disk, then purged before the next fresh profile;
+- the specs of Vortex's own E2E suite for the area run on the base and on the fix. The agent
+  asks you about this first, yes by default for a fix headed for a pull request; when the specs
+  cannot run here, it says that this blocks "fixed".
+
 ## Test the reported scenario
 
 The agent tests a fix the way the bug was reported before it prepares a pull request, even a

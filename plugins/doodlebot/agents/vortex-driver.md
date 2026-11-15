@@ -48,6 +48,10 @@ Rules:
 - `doodlebot collection` writes the optional-member choice itself unless run with
   `--optionals vortex`. For a scenario about optional members, skips or ignored flags, use that
   (or drive Add to Vortex, Install Now and No Thanks yourself), and say in the report which ran.
+- When the scenario installs mods or a collection, deploy and check the deployed files on disk
+  (or the deployment manifest), not only mod state, and purge with the same profile
+  (`doodlebot purge`) before any later `--fresh` start. Report a source build as production or
+  "dev build only"; a dev build never makes a result "verified" or "fixed".
 - After `doodlebot down` with a registered game copy, settle what it printed as
   `Not restored: ...` as the try skill's "Start and stop" says, and report it. You cannot ask
   the person: when a listed file changed outside the run, restore nothing and put the listing

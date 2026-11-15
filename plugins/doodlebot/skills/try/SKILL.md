@@ -218,6 +218,10 @@ wait on a dialog, and on Windows a captured `up` may never return. So:
 4. **Check the result independently** of the tool that acted: state through
    `doodlebot call vortex_query`, files on disk (sandbox: deployed files under its game
    folder's `Data`), the UI through a snapshot. A tool returning success is not an observation.
+   When the scenario installs mods or a collection, deploy them (`doodlebot deploy`, or wait
+   for Vortex's auto-deploy) and check the deployed files on disk or the deployment manifest,
+   not only mod state. Before this profile is replaced by a `--fresh` one, purge with it
+   (`doodlebot purge`): a fresh profile meets the old deployment as another instance's.
 5. **Read errors last:**
    - the renderer console from sequence 0: `doodlebot call ui_read_console --args-file <file>`
      with `{"since":0,"levels":["error","warn"],"limit":500}` in the file. The console keeps only
@@ -249,7 +253,10 @@ reported end outcome no longer happens in the same scenario, not only that its p
 Cost is no reason to substitute a proxy: run the expensive scenario in full (a large collection,
 a long install, in the background), or use a cheaper one that produces the same end outcome
 through the same trigger (a smaller collection or fixture) and say why it is equivalent; otherwise
-ask the person before reducing scope.
+ask the person before reducing scope. Calling a change verified or fixed also needs a
+production build, a deployment checked on disk and Vortex's E2E specs
+(`${CLAUDE_PLUGIN_ROOT}/resources/testing.md`, section 6); a run report on a dev build says
+"dev build only".
 
 ### Run report template
 
@@ -262,8 +269,9 @@ Worked | Worked with errors | Passed with workaround: <x> | Blocked | Not tested
 
 ## Tested against
 
-- Build: <release 2.8.0 | installed | source <checkout> at <head>>, Vortex <vortexVersion> (<nodeEnv>)
+- Build: <release 2.8.0 | installed | source <checkout> at <head>>, Vortex <vortexVersion> (<nodeEnv>); a source build says production or "dev build only"
 - Content: <sandbox | copy of <game> at <path> | offline collection | ...>
+- Deployment: <deployed, files checked on disk, purged | nothing deployed, and why>
 - Why: <the need each item met, and why it was the cheapest; or "the person's choice">
 
 ## Scenario and target

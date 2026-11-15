@@ -53,7 +53,8 @@ Features and refactors of doodlebot start with an approved design, like Vortex c
    denial, recorded shim recovery in a fresh process, and missing or corrupt workspace records. It does not launch Vortex. Among the unit tests, `harness/src/plugins.test.ts` holds the plugin
    to its design: the manifests and icon, every skill's frontmatter, every plugin resource a
    skill names, both agents running on Sonnet, the driver returning its report for the command
-   that sent it to write, exactly the eight commands with a Learned section
+   that sent it to write, fix, qa and pr calling a change verified only with production
+   builds, deployment and Vortex's E2E specs, exactly the eight commands with a Learned section
    in each report, and no text naming a removed command. Tests that would reach GitHub (sharing,
    pushing) use a stand-in for `gh`; none of them publishes anything.
 
