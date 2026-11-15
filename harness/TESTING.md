@@ -93,7 +93,10 @@ native DOM label replacement through its MCP response adapter.
 `harness/src/collectionsCompletion.test.ts` keeps the optional-member choice through a rules
 refresh (`--optionals skip` and `install`), and with `--optionals vortex` dispatches no
 `addModRule` at all and waits for the optional Vortex itself left unskipped to install, so a
-default-skip bug stays visible. `userFolders.test.ts` counts the INI tweak copies
+default-skip bug stays visible. `uiDriver.test.ts` answers an optional member's instructions
+prompt (text cut at 400 characters, buttons Skip and Install) with Install or Skip to match the
+optional choice, leaves one with any other button and the prompt outside a collection install
+alone, and reads its buttons once per dialog. `userFolders.test.ts` counts the INI tweak copies
 (`*.ini.base`, `*.ini.baked`) among the files Vortex writes. `plugins.test.ts`
 (`driver-returns-report`) holds the driver to returning its report as text, with no Write tool,
 and try and qa to writing it to `report.md`.

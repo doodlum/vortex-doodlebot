@@ -855,6 +855,15 @@ doodlebot e2e <collection-url> [--runs <n>] [--keep] [--purge] [--no-launch]
   opened the optional list, and prints how many optionals Vortex ignored and how many
   installed. Use it for any scenario about optional or recommended members, skips or ignored
   flags, and say in the report which mode ran.
+- Installing an optional member that has curator instructions opens Vortex's per-member
+  prompt (InstallManager's `installRecommendations`): titled with the mod's name, the
+  instructions as its body, Skip and Install, and while more remain a "Do this for all
+  remaining instructions" checkbox. It follows Install optional mods, and comes again when a
+  restarted install re-drives an optional selected earlier. Its reported text is the
+  curator's, cut at 400 characters, so `collection`'s policy for it (`dialogPolicies`, only
+  when an optional choice is given) matches the dialog's buttons, exactly Skip and Install,
+  not its text: Install for `--optionals install`, Skip for `skip` and `vortex`, one prompt at a
+  time with the checkbox left alone, each recorded in the answered dialogs.
 - `fixture mod` writes an archive with one file, `textures/<name>.txt` containing `<name>`; in
   the sandbox it deploys to `<gamePath>/Data/textures/<name>.txt`.
 - `fixture fomod` writes a FOMOD installer archive (`fomod/ModuleConfig.xml` with one install

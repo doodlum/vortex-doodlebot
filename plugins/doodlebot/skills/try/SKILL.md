@@ -156,6 +156,12 @@ Only one test Vortex runs on the machine. It uses its own profile.
   `--optionals vortex` (no rule written; the completion dialog gets No Thanks, as from a user
   who never opened the optional list), or drives Add to Vortex, Install Now and No Thanks
   itself. The report says which.
+- **An optional member with curator instructions asks first.** Installing it (after Install
+  optional mods, or when a restarted install re-drives one selected earlier) opens a prompt
+  titled with the mod's name, the instructions as its text, Skip and Install. `doodlebot
+collection` answers it to match `--optionals` (Install for `install`, Skip otherwise) and
+  lists it among the answered dialogs. Driving the install yourself, a scenario that says yes
+  or no to optionals answers each such prompt the same way, and the report counts them.
 - **Find dialogs by their own text**, with a snapshot scoped to the dialog: a full snapshot of
   a big Mods page stops at its node limit, and dialog text is cut at 400 characters.
 - **State and screen can disagree.** `doodlebot call vortex_query` says what Vortex believes;

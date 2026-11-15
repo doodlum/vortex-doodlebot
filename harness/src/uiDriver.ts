@@ -244,6 +244,43 @@ export interface DialogPolicy {
    * reported through `onUnanswerable` rather than clicked.
    */
   refuse?: { match: RegExp; because: string };
+  /**
+   * The dialog's whole set of buttons, for a dialog whose text says nothing reliable (its
+   * text is the curator's, cut at 400 characters). The policy applies only when every button
+   * matches one of these and each of these matches a button; it is tried after every policy
+   * without `buttons`, so it never takes a dialog another policy answers.
+   */
+  buttons?: RegExp[];
+}
+
+/** Whether `names` are exactly the buttons `wanted` describes, each present, nothing else. */
+export function buttonsAre(names: string[], wanted: RegExp[]): boolean {
+  const named = names.map((name) => name.trim()).filter((name) => name !== "");
+  return (
+    named.length > 0 &&
+    named.every((name) => wanted.some((pattern) => pattern.test(name))) &&
+    wanted.every((pattern) => named.some((name) => pattern.test(name)))
+  );
+}
+
+/**
+ * Vortex's per-member instructions prompt while it installs a collection's optional members
+ * (InstallManager's installRecommendations): titled with the mod's name, the curator's
+ * instructions as its body, buttons Skip and Install, and while more remain a "Do this for all
+ * remaining instructions" checkbox. It comes after "Install optional mods", and again when a
+ * restarted install re-drives an optional selected earlier. It is answered to match the run's
+ * optional choice, one prompt at a time; the checkbox is left alone.
+ */
+function optionalInstructionsPolicy(optionalMods: "skip" | "install"): DialogPolicy {
+  return {
+    match: /[\s\S]/,
+    buttons: [/^skip$/i, /^install$/i],
+    button: optionalMods === "install" ? /^install$/i : /^skip$/i,
+    because:
+      optionalMods === "install"
+        ? "the run installs the optional members; this is the curator's instructions prompt for one of them"
+        : "the run declined the optional members (skip, or left to Vortex), so it declines this one's instructions prompt too",
+  };
 }
 
 /**
@@ -290,7 +327,7 @@ const FOREIGN_PURGE_ACCEPTED: DialogPolicy = {
 export function dialogPolicies(
   options: { allowForeignPurge?: boolean; optionalMods?: "skip" | "install" } = {},
 ): DialogPolicy[] {
-  return DEFAULT_DIALOG_POLICIES.map((policy) =>
+  const policies = DEFAULT_DIALOG_POLICIES.map((policy) =>
     policy === FOREIGN_PURGE_REFUSED && options.allowForeignPurge === true
       ? FOREIGN_PURGE_ACCEPTED
       : options.optionalMods === "install" &&
@@ -302,6 +339,10 @@ export function dialogPolicies(
           }
         : policy,
   );
+  // Only a collection install states an optional choice, and only it meets this prompt.
+  return options.optionalMods === undefined
+    ? policies
+    : [...policies, optionalInstructionsPolicy(options.optionalMods)];
 }
 
 export const DEFAULT_DIALOG_POLICIES: DialogPolicy[] = [
@@ -422,6 +463,7 @@ export function autoAnswerDialogs(
   const answered: AnsweredDialog[] = [];
   // Report each stuck dialog once, not on every poll.
   const warned = new Set<string>();
+  const buttonsOf = new Map<string, string[]>();
 
   return (async () => {
     while (!options.signal.aborted) {
@@ -432,10 +474,23 @@ export function autoAnswerDialogs(
       if (dialogs === undefined || dialogs.length === 0) continue;
 
       for (const text of dialogs) {
-        const policy = policies.find((p) => p.match.test(text));
+        let policy = policies.find((p) => p.buttons === undefined && p.match.test(text));
+        // The collection coordinator owns this confirmation separately.
+        if (policy === undefined && /collection added/i.test(text)) continue;
         if (policy === undefined) {
-          // The collection coordinator owns this confirmation separately.
-          if (/collection added/i.test(text)) continue;
+          const shaped = policies.filter((p) => p.buttons !== undefined && p.match.test(text));
+          if (shaped.length > 0) {
+            // A scoped snapshot per dialog text, not per poll: an unanswered dialog stays open.
+            let names = buttonsOf.get(text);
+            if (names === undefined) {
+              const found = await dialogButtons(mcp, text);
+              names = (found ?? []).map((b) => b.name);
+              if (found !== undefined) buttonsOf.set(text, names);
+            }
+            policy = shaped.find((p) => buttonsAre(names, p.buttons ?? []));
+          }
+        }
+        if (policy === undefined) {
           if (!warned.has(text)) {
             warned.add(text);
             options.onUnanswerable?.(text.slice(0, 160), "a documented dialog policy");

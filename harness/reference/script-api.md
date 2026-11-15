@@ -2892,10 +2892,25 @@ export interface DialogPolicy {
    * reported through `onUnanswerable` rather than clicked.
    */
   refuse?: { match: RegExp; because: string };
+  /**
+   * The dialog's whole set of buttons, for a dialog whose text says nothing reliable (its
+   * text is the curator's, cut at 400 characters). The policy applies only when every button
+   * matches one of these and each of these matches a button; it is tried after every policy
+   * without `buttons`, so it never takes a dialog another policy answers.
+   */
+  buttons?: RegExp[];
 }
 ```
 
 [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L234).
+
+Whether `names` are exactly the buttons `wanted` describes, each present, nothing else.
+
+```typescript
+export function buttonsAre(names: string[], wanted: RegExp[]): boolean;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L257).
 
 The policy list, with the purge prompt answered according to intent.
 
@@ -2911,13 +2926,13 @@ export function dialogPolicies(
 ): DialogPolicy[];
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L290).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L327).
 
 ```typescript
 export const DEFAULT_DIALOG_POLICIES: DialogPolicy[];
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L307).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L348).
 
 ```typescript
 export interface AnsweredDialog {
@@ -2927,7 +2942,7 @@ export interface AnsweredDialog {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L366).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L407).
 
 The text of every open modal. Observation errors propagate to the caller.
 
@@ -2940,7 +2955,7 @@ install being measured.
 export async function openDialogs(mcp: VortexMcpClient): Promise<string[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L380).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L421).
 
 Watch for modals and answer the known ones until stopped.
 
@@ -2977,7 +2992,7 @@ export function autoAnswerDialogs(
 ): Promise<AnsweredDialog[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L400).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L441).
 
 Whether a scoped snapshot is of the dialog whose text was read from `activeDialogs`.
 
@@ -2993,13 +3008,13 @@ the dialog's text appear in it in order.
 export function snapshotIsDialog(snap: Snapshot, dialogText: string): boolean;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L504).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L559).
 
 ```typescript
 export class DialogClickError {}
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L519).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L574).
 
 ```typescript
 export interface ClickInsideDialogOptions {
@@ -3012,7 +3027,7 @@ export interface ClickInsideDialogOptions {
 }
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L521).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L576).
 
 Click a button within the dialog whose text matches, and only within it.
 
@@ -3033,7 +3048,7 @@ export async function clickInsideDialog(
 ): Promise<string | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L541).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L596).
 
 The buttons of the dialog whose text matches, disabled ones included, or undefined when no
 such dialog is open. For deciding what a dialog offers before clicking: `clickInsideDialog`
@@ -3046,7 +3061,7 @@ export async function dialogButtons(
 ): Promise<Array<{ name: string; disabled: boolean }> | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L605).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L660).
 
 Advance a FOMOD installer by one step, accepting whatever it has pre-selected.
 
@@ -3066,7 +3081,7 @@ Returns the label clicked, or undefined when no FOMOD dialog is open.
 export async function advanceFomod(mcp: VortexMcpClient): Promise<string | undefined>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L663).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L718).
 
 Click through FOMOD installers until stopped.
 
@@ -3083,7 +3098,7 @@ export function autoAdvanceFomods(
 ): Promise<number>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L689).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/uiDriver.ts#L744).
 
 ## vortexLog
 

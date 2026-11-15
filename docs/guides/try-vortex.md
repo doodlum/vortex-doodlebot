@@ -113,6 +113,11 @@ collection without opening its optional list, it runs `doodlebot collection <url
 vortex`: nothing is chosen for Vortex, and the end-of-install offer is declined with No Thanks.
 The agent uses it for any problem about optional mods, and its report says which ran.
 
+An optional mod whose curator left instructions asks before it installs: a prompt with the mod's
+name, the instructions, and Skip or Install. `doodlebot collection` answers each one the way the
+run treats optional mods (Install when it installs them, Skip otherwise) and lists it in what it
+answered.
+
 ## Check a change, a pull request or a release
 
 Use `/doodlebot:qa` when you want a change checked by someone who did not write it. It always
