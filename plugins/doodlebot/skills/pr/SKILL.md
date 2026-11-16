@@ -33,6 +33,12 @@ passed on the change.
    approved design (the person set its Status to Approved, or told you to; the walk is
    `${CLAUDE_PLUGIN_ROOT}/resources/egm.md`) and a `/doodlebot:qa --design <file>` report. If
    anything is missing, say what and stop.
+6. **Verified, or the gap named.** Read the report's outcome against "Verified means all of it"
+   (`${CLAUDE_PLUGIN_ROOT}/resources/testing.md`, section 6): production builds for the before and
+   after runs, deployment checked on disk when content is installed, and Vortex's E2E specs for
+   the touched area on base and head. When the E2E specs were not run, ask whether to run them
+   now, yes by default. A remaining gap makes the change **partially verified**: say which,
+   and continue only when the person accepts it.
 
 ## Steps
 
@@ -64,7 +70,10 @@ passed on the change.
 4. **Description**, from the template in `<workspace>/harness/PULL-REQUESTS.md`: a Conventional
    Commit title of at most 72 characters, every required section, the head sha, what was run
    and its results (never "Not run"), the reported scenario before and after (from the run
-   reports), and the doodlebot footer at the end. With a design, add:
+   reports) with the build mode (production or dev), the deployment checked and the E2E specs'
+   results, and the doodlebot footer at the end. A change with a gap from step 6 of "Before you
+   begin" says "partially verified" and names the gap in the description; it never says "fixes"
+   or "verified" without it. With a design, add:
    - the design's Overview and acceptance criteria, verbatim;
    - "Design approved by <owner> on <date>: `docs/designs/<topic>.md`", naming the file in this
      pull request. Never claim an approval the person has not given, and never describe a

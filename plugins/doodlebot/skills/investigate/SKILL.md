@@ -40,9 +40,15 @@ is `/doodlebot:fix`, which can start from this report.
    build makes the whole result Blocked with that reason, never "not reproduced".
 4. **Reproduce** with `/doodlebot:try`'s report procedure (`${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md`)
    on `--release <version>`, with the content the scenario needs (its "Choose the build and
-   content"). Keep the run report. Compare `automation_status.vortexVersion` with the user's
-   version:
+   content"). The brief's done-criterion is the symptom from step 1, the end outcome the user
+   saw; "Reproducing a reported symptom" in that skill defines it, and an intermediate state you
+   predict from the code is not it. Run it the way the user did: a collection scenario about
+   optional members uses `doodlebot collection --optionals vortex` (that skill's "Rules that
+   save time"), since the default writes the optional choice itself. Keep the run report. Compare `automation_status.vortexVersion`
+   with the user's version:
    - the same, and the symptom appears: **reproduced on <version>**;
+   - the same, and the run stopped before the symptom could appear (a time cap, a skipped
+     download): **Blocked**, with what stopped it; ask the person before reducing the scenario;
    - the same, and it does not: **not reproduced on <version>**, with what you tried;
    - different (the release could not be had, or only another build was tested): **not
      reproduced on the user's version**, never plain "not reproduced";
@@ -88,7 +94,8 @@ Reproduced on <version> | Not reproduced on <version> | Not reproduced on the us
 ## Reproduction
 
 - Run report: <path>; Tested against: <build, content, why>
-- What happened: <the observation that shows the symptom, or what was tried>
+- What happened: <the observation of the reported end outcome, or what was tried>
+- Supporting observations: <intermediate states or log lines that point at the cause, or "none">
 
 ## Cause
 

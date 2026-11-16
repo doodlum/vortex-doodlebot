@@ -12,6 +12,7 @@ import {
   waitForNode,
   autoAnswerDialogs,
   DEFAULT_DIALOG_POLICIES,
+  buttonsAre,
   dialogPolicies,
   snapshotIsDialog,
   type Snapshot,
@@ -372,6 +373,124 @@ describe("autoAnswerDialogs", () => {
     controller.abort();
     await answering;
     expect(clicked).toContain("r4");
+  });
+});
+
+/**
+ * Vortex's per-member instructions prompt for an optional collection member: titled with the
+ * mod's name, the curator's instructions as its body, a "Do this for all remaining
+ * instructions" checkbox while more remain, and Skip and Install. Its reported text is cut at
+ * 400 characters, so long instructions push the buttons out of it.
+ */
+function instructionsMcp(buttons = ["Skip", "Install"]): {
+  mcp: VortexMcpClient;
+  clicked: string[];
+  scoped: () => number;
+} {
+  const body =
+    "Optional - Better Crops. " + "Read the curator's notes before installing. ".repeat(12);
+  const full = `Better Crops${body}Do this for all remaining instructions (7 more)${buttons.join("")}`;
+  const text = full.length > 400 ? `${full.slice(0, 399)}…` : full;
+  const tree: SnapshotNode[] = [
+    { ref: "r1", role: "heading", name: "Better Crops" },
+    { ref: "r2", role: "text", text: body },
+    { ref: "r3", role: "checkbox", name: "Do this for all remaining instructions (7 more)" },
+    ...buttons.map((name, i) => ({ ref: `b${String(i)}`, role: "button", name })),
+  ];
+  const clicked: string[] = [];
+  let scoped = 0;
+  const mcp = {
+    call: (name: string, args: Record<string, unknown> = {}) => {
+      if (name === "ui_active_dialogs") return Promise.resolve([text]);
+      if (name === "ui_snapshot") {
+        scoped += 1;
+        if (args["selector"] !== '[role="dialog"]')
+          return Promise.reject(
+            new Error(`No element matches selector ${String(args["selector"])}`),
+          );
+        if (Number(args["index"] ?? 0) > 0)
+          return Promise.reject(
+            new Error(`Selector [role="dialog"] matches 1 element, so index 1 is out of range.`),
+          );
+        return Promise.resolve({ ...snapshotOf(tree), rootText: text } satisfies Snapshot);
+      }
+      if (name === "ui_click") {
+        const ref = String(args["ref"]);
+        clicked.push(ref);
+        return Promise.resolve({ name: tree.find((n) => n.ref === ref)?.name, role: "button" });
+      }
+      throw new Error(`unexpected tool call: ${name}`);
+    },
+  } as unknown as VortexMcpClient;
+  return { mcp, clicked, scoped: () => scoped };
+}
+
+async function answerInstructions(
+  mcp: VortexMcpClient,
+  policies: ReturnType<typeof dialogPolicies>,
+  stuck: string[] = [],
+) {
+  const controller = new AbortController();
+  const answering = autoAnswerDialogs(mcp, {
+    policies,
+    signal: controller.signal,
+    pollMs: 1,
+    onUnanswerable: (_dialog, wanted) => stuck.push(wanted),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  controller.abort();
+  return answering;
+}
+
+describe("the optional member's instructions prompt", () => {
+  it("installs it when the run installs optionals", async () => {
+    const { mcp, clicked } = instructionsMcp();
+    const answered = await answerInstructions(mcp, dialogPolicies({ optionalMods: "install" }));
+    expect(clicked[0]).toBe("b1");
+    expect(answered[0]).toMatchObject({ clicked: "Install" });
+    expect(answered[0]?.because).toMatch(/instructions prompt/);
+  });
+
+  it("skips it when the run declined optionals (skip, and vortex which answers as skip)", async () => {
+    const { mcp, clicked } = instructionsMcp();
+    const answered = await answerInstructions(mcp, dialogPolicies({ optionalMods: "skip" }));
+    expect(clicked[0]).toBe("b0");
+    expect(answered[0]).toMatchObject({ clicked: "Skip" });
+    expect(answered[0]?.because).toMatch(/declined/);
+  });
+
+  it("leaves a dialog with other buttons alone, however it reads", async () => {
+    const { mcp, clicked } = instructionsMcp(["Skip", "Install", "Cancel"]);
+    const stuck: string[] = [];
+    expect(
+      await answerInstructions(mcp, dialogPolicies({ optionalMods: "install" }), stuck),
+    ).toEqual([]);
+    expect(clicked).toEqual([]);
+    expect(stuck).toEqual(["a documented dialog policy"]);
+  });
+
+  it("is not answered outside a collection install, and reads its buttons once per dialog", async () => {
+    const { mcp, clicked, scoped } = instructionsMcp();
+    const stuck: string[] = [];
+    expect(await answerInstructions(mcp, dialogPolicies(), stuck)).toEqual([]);
+    expect(clicked).toEqual([]);
+    expect(stuck).toEqual(["a documented dialog policy"]);
+    expect(scoped()).toBe(0);
+    expect(dialogPolicies()).toHaveLength(DEFAULT_DIALOG_POLICIES.length);
+
+    const shaped = instructionsMcp(["Skip", "Install", "Cancel"]);
+    await answerInstructions(shaped.mcp, dialogPolicies({ optionalMods: "skip" }));
+    expect(shaped.scoped()).toBeLessThanOrEqual(2);
+  });
+
+  it("matches exactly the buttons named, each present", () => {
+    const wanted = [/^skip$/i, /^install$/i];
+    expect(buttonsAre(["Skip", "Install"], wanted)).toBe(true);
+    expect(buttonsAre(["Install", "Skip", ""], wanted)).toBe(true);
+    expect(buttonsAre(["Skip"], wanted)).toBe(false);
+    expect(buttonsAre(["Skip", "Install", "Cancel"], wanted)).toBe(false);
+    expect(buttonsAre(["Skip all", "Install"], wanted)).toBe(false);
+    expect(buttonsAre([], wanted)).toBe(false);
   });
 });
 

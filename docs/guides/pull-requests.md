@@ -13,7 +13,10 @@ in the review pane.
 - Make sure the change was tested in the scenario it addresses. For a bug fix, the reported
   scenario was reproduced on the base and passes on the fix; see
   [Fix a Vortex bug](fix-a-bug.md#test-the-reported-scenario). Without that, the agent does not
-  prepare a pull request, draft included.
+  prepare a pull request, draft included. "Fixed" also needs production builds, the deployment
+  checked on disk when content is installed, and Vortex's E2E specs for the area; with a gap the
+  description says "partially verified" and names it, and the agent continues only if you
+  accept it.
 - For a feature or a refactor, have the approved design; see [Design a feature with EGM](design-a-feature.md).
 - Stop the test Vortex (`doodlebot down`). The checks below refuse to change a checkout that
   a running test Vortex uses.

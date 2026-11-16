@@ -36,6 +36,14 @@ It changes no code. The expected result: an **issue report** that says reproduce
 on which version (a different version is "not reproduced on the user's version", never plain
 "not reproduced"), the cause with its file and line, how confident it is, and a proposed fix.
 
+"Reproduced" means the run saw what the user reported, as they would see it: the mod ends up
+installed, the file is deployed, the dialog appears. A state the agent predicts from the code (a
+flag unset, a status pending) only supports the cause. When the real scenario is expensive, such
+as a large collection, the agent runs it in full, uses a cheaper one that leads to the same
+outcome and says why, or asks you before cutting it short. A run stopped before the symptom could
+appear is _Blocked_. The fix's "after" run is held to the same rule: the reported outcome no
+longer happens.
+
 A user's log is someone else's data: the agent quotes only what it needs, and never shares it
 without asking you.
 
@@ -62,6 +70,17 @@ reproduced. Then it:
 
 The expected result: a branch with the fix and its test, before and after run reports, the
 revert control's result, and a report that ends with what doodlebot learned.
+
+The agent calls the bug **fixed** only when all of these hold; otherwise the report, and anything
+it writes on a pull request, says **partially verified** and names what is missing:
+
+- the before and after runs use production builds (`--production`), as users run Vortex; a
+  development build's result is labelled "dev build only";
+- when the scenario installs mods or a collection, they are deployed and the deployed files
+  checked on disk, then purged before the next fresh profile;
+- the specs of Vortex's own E2E suite for the area run on the base and on the fix. The agent
+  asks you about this first, yes by default for a fix headed for a pull request; when the specs
+  cannot run here, it says that this blocks "fixed".
 
 ## Test the reported scenario
 

@@ -124,7 +124,16 @@ export const USER_FOLDERS: Record<string, UserFolderNames> = {
  * here, changed inside the run, is restored automatically; every other change (a save above all)
  * is listed for the owner, since the owner may have played their own copy during the run.
  */
-const BETHESDA_WRITES = ["plugins.txt", "loadorder.txt", "DLCList.txt", "*.ini"];
+// `<ini>.base` and `<ini>.baked` are the copies Vortex's INI tweak preparation writes beside
+// each INI (SkyrimPrefs.ini.baked changed early in a Skyrim SE collection run).
+const BETHESDA_WRITES = [
+  "plugins.txt",
+  "loadorder.txt",
+  "DLCList.txt",
+  "*.ini",
+  "*.ini.base",
+  "*.ini.baked",
+];
 export const VORTEX_WRITES: Record<string, string[]> = {
   vortexaisandbox: [],
   fallout4: BETHESDA_WRITES,

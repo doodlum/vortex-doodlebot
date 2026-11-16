@@ -196,8 +196,12 @@ export interface InstallCollectionOptions {
   onProgress?: (message: string) => void;
   /** Answer blocking modals automatically. Defaults to true. */
   autoAnswer?: boolean;
-  /** Keep the optional-member choice applied through driver metadata refreshes. */
-  optionalMods?: "skip" | "install";
+  /**
+   * Keep the optional-member choice applied through driver metadata refreshes. "vortex" writes
+   * no choice: Vortex's own install driver decides which optionals to skip, as for a user who
+   * never opens the optional list, and the completion dialog is declined (No Thanks).
+   */
+  optionalMods?: OptionalMods;
   /** Surface instrumentation failure at each collection progress poll. */
   verifyProgress?: () => void;
   /** Final functional/UI boundary. Required to accept warnings; automation remains active. */
@@ -215,9 +219,21 @@ export interface InstallCollectionResult {
   complete: boolean;
   answeredDialogs: AnsweredDialog[];
   downloadThreads: DownloadThreads;
-  optionalMods: "skip" | "install";
+  optionalMods: OptionalMods;
   optionalCount: number;
+  /** Optional members whose rule ended ignored (with "vortex", the ones Vortex skipped). */
+  optionalIgnored: number;
   optionalSatisfied: number;
+}
+
+/** Who chooses the optional members: the harness (skip or install all) or Vortex itself. */
+export type OptionalMods = "skip" | "install" | "vortex";
+
+/** `--optionals <who>` for `doodlebot collection`; absent means "skip". */
+export function parseOptionalMods(value: unknown): OptionalMods {
+  if (value === undefined) return "skip";
+  if (value === "skip" || value === "install" || value === "vortex") return value;
+  throw new CollectionError("--optionals is skip, install or vortex.");
 }
 
 export interface DownloadThreads {
@@ -314,7 +330,10 @@ export async function installCollection(
     if (ms <= 0) throw new CollectionError("Collection installation exceeded the overall timeout");
     return ms;
   };
-  const optionalMods = options.optionalMods ?? "skip";
+  const optionalPolicy = options.optionalMods ?? "skip";
+  // "vortex" declines dialogs like "skip" but never writes the optional rules.
+  const optionalMods = optionalPolicy === "install" ? "install" : "skip";
+  const leaveOptionals = optionalPolicy === "vortex";
   const warnings: CollectionWarning[] = [];
   const observeWarning = (warning: CollectionWarning) => {
     if (!warnings.some((prior) => prior.source === warning.source && prior.id === warning.id)) {
@@ -494,10 +513,14 @@ export async function installCollection(
       Math.min(remaining(), 60_000),
       report,
     );
-    const optionalCount = await selectOptionalMembers(mcp, exactRef, collectionMod, optionalMods);
+    const optionalCount = leaveOptionals
+      ? (collectionMod.rules ?? []).filter((rule) => rule.type === "recommends").length
+      : await selectOptionalMembers(mcp, exactRef, collectionMod, optionalMods);
     ownedCollectionId = collectionMod.id;
     report(
-      `${optionalMods === "install" ? "Selected" : "Skipped"} ${optionalCount} optional members`,
+      leaveOptionals
+        ? `Left ${optionalCount} optional members to Vortex`
+        : `${optionalMods === "install" ? "Selected" : "Skipped"} ${optionalCount} optional members`,
     );
     if (options.autoAnswer !== false)
       answeredDialogs.push(...(await confirmCollectionProfile(mcp)));
@@ -539,7 +562,12 @@ export async function installCollection(
       optionalMods,
       { required: expected, optional: optionalCount },
       observeWarning,
+      leaveOptionals,
     );
+    if (leaveOptionals)
+      report(
+        `Vortex ignored ${status.optionalIgnored}/${status.optional} optional members; ${status.optionalSatisfied} installed`,
+      );
     assertNoFailedCollectionMembers(
       await observeCollectionWarnings(
         mcp,
@@ -588,8 +616,9 @@ export async function installCollection(
       complete: status.complete,
       answeredDialogs,
       downloadThreads,
-      optionalMods,
+      optionalMods: optionalPolicy,
       optionalCount,
+      optionalIgnored: status.optionalIgnored,
       optionalSatisfied: status.optionalSatisfied,
     };
   } catch (error) {
@@ -987,6 +1016,7 @@ async function waitForCompletion(
   optionalMods: "skip" | "install" = "skip",
   expectedMembers?: { required: number; optional: number },
   observeWarning: (warning: CollectionWarning) => void = () => undefined,
+  leaveOptionals = false,
 ): Promise<CollectionCompleteness> {
   const started = Date.now();
   let last = "";
@@ -1030,10 +1060,12 @@ async function waitForCompletion(
             `${status.optionalSatisfied}/${status.optional} optional members installed. ` +
             "Doodlebot does not retry failed installs. The profile, downloads and warning evidence are preserved.",
         );
+      // Left to Vortex, its own choice is the observation: never repair it.
       const selectionApplied =
-        optionalMods === "skip"
+        leaveOptionals ||
+        (optionalMods === "skip"
           ? status.optionalIgnored === status.optional
-          : status.optionalSelected === status.optional;
+          : status.optionalSelected === status.optional);
       if (!selectionApplied) {
         // Released Vortex can regenerate rules after resume-collection, dropping
         // the earlier selection. Repair only this exact manifest, then poll the
@@ -1066,8 +1098,10 @@ async function waitForCompletion(
           throw new CollectionError("Collection disappeared after optional selection");
         verifyCounts(status);
       }
-      const optionalsDone =
-        optionalMods === "skip"
+      // Left to Vortex, done is every optional it did not ignore installed.
+      const optionalsDone = leaveOptionals
+        ? status.optionalSatisfied >= status.optional - status.optionalIgnored
+        : optionalMods === "skip"
           ? status.optionalIgnored === status.optional
           : status.optionalSelected === status.optional &&
             status.optionalIgnored === 0 &&

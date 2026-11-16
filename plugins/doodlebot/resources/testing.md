@@ -50,7 +50,8 @@ A regression test that passes on the base proves nothing.
 
 - Unit tests: from the test's project folder in the checkout, for example
   `pnpm exec vitest run <test path>`.
-- E2E specs: with Vortex's own scripts in the checkout, after `doodlebot down`.
+- E2E specs: with Vortex's own scripts in the checkout, after `doodlebot down`; the specs for
+  the touched area are part of "verified" (section 6).
 - Then the Vortex gate the contribution guide names (for example `pnpm run verify`). Keep every
   failure, and say whether it is a regression, a known base failure or an external blocker;
   never call a blocked gate passed.
@@ -58,7 +59,8 @@ A regression test that passes on the base proves nothing.
 ## 5. Show it on a real Vortex too
 
 Repeat the person's own scenario on the fixed build with `/doodlebot:try`'s report procedure
-(`--dev-dir <checkout>`), observing the result independently of the tool that acted.
+(`--dev-dir <checkout> --production`, built with `--production`), observing the result
+independently of the tool that acted, deploying what it installs (section 6).
 
 **UI changes: sizes and states.** Resize both dimensions: a list that works at a narrow width
 can still hide its footer in a short window. Run the same width at different heights and the
@@ -90,6 +92,32 @@ error states, keyboard access, overflow, resizing), build on Vortex's components
 `docs/frontend.md` and design-system guidance, and compare screenshots at the design's
 reference size and its neighbours by eye: structural checks cannot judge typography, icons,
 color or fidelity.
+
+## 6. Verified means all of it
+
+A change is **verified** (a fix **fixed**) only when every item below holds. Any gap makes it
+**partially verified**, naming the gap, in the report, in chat, in the PR description and in
+any PR comment; it is never "fixed", "verified" or "this PR fixes it". Do not offer
+`/doodlebot:pr` or post verification on a PR before this holds, unless the person accepts the
+named gap.
+
+1. **A production build.** The after run and its before control run on builds made with
+   `doodlebot build --checkout <checkout> --production` and started with `up --production`
+   (both builds, so the control compares like with like). A dev build's result is labelled
+   "dev build only" and does not verify.
+2. **Deployed, when the scenario installs content.** When it installs mods or a collection that
+   get deployed, the run deploys (`doodlebot deploy`, or Vortex's own auto-deploy) and checks
+   the deployed files on disk or the deployment manifest, not only mod state. Before the next
+   `--fresh` profile, purge with the same profile (`doodlebot purge`): a fresh profile meets the
+   old deployment as another instance's, and one such orphan cost a 100 GB manual clean-up.
+3. **Vortex's E2E suite.** Run the specs of Vortex's E2E suite (`packages/e2e`) for the touched
+   area with Vortex's own scripts, on the base and then the head, after `doodlebot down`, and
+   report both. Fix, qa and pr ask the person up front ("Run Vortex's E2E specs for <area> on
+   base and head?"), yes by default for a fix bound for a PR. When they cannot run (a packaged
+   app, a real game, account credentials: KNOWLEDGE.md, "Vortex's E2E suite cannot give a local
+   baseline as-is"), say so plainly as what blocks "verified", not under "Not checked".
+4. **The reported outcome**, on the scenario as the person reported it ("Reproducing a reported
+   symptom" in `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md`).
 
 ## Rules
 

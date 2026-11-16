@@ -85,7 +85,10 @@ the record, so it stops the running test
 Vortex whatever cache or port it uses, and first names the checkout and branch, or the
 executable, it runs. It asks Vortex to quit, waits up to 30 seconds for a clean exit, then clears
 the record and restores your `nxm://` handler and the game's user folders
-([Use real games and baselines](../guides/games-and-baselines.md#keep-a-real-game-safe)). It never kills a process: a Vortex that does not exit is reported
+([Use real games and baselines](../guides/games-and-baselines.md#keep-a-real-game-safe)): the
+files Vortex writes there, its INI tweak copies (`.ini.base`, `.ini.baked`) included. When it
+lists other changed files, the agent runs `doodlebot game restore <gameId>` and restores them
+only when each changed during the run, asking you otherwise. It never kills a process: a Vortex that does not exit is reported
 and left running. Close its window and stop it again.
 
 ## Records from older doodlebot versions

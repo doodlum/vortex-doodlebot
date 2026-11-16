@@ -215,7 +215,10 @@ Driving a running instance
     --count <n> --seconds <n> --stagger <s>   (defaults 1, 30, 0)
   collection <url>       Install exact Nexus collection/revision using OAuth
     --warnings-as-errors Fail on any collection warning; warnings are printed by default
-  deploy                 Deploy enabled mods for the active game
+    --optionals <who>    skip (default: the harness marks every optional ignored), install
+                         (selects them all) or vortex (writes nothing: Vortex's own driver
+                         decides, as for a user; the completion dialog gets No Thanks)
+  deploy                Deploy enabled mods for the active game
     --purge              Permit purging a foreign deployment in a disposable game
   purge                  Remove files recorded in this game's deployment manifest
   e2e <collection>       Fresh start, install, verify, deploy, launch real game

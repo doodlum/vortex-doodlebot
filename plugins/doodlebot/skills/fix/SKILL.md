@@ -31,6 +31,10 @@ filled-in lines to hand the person, from `/egm:egm-brainstorm` to the runtime re
 4. In the Vortex checkout read its `AGENTS.md`, nested instructions, `CLAUDE.md` when present,
    `CONTRIBUTING.md` and `docs/README.md`: they govern the submission. "Working in a Vortex
    checkout" in `<workspace>/harness/AGENTS.md` maps tasks to Vortex's own guides.
+5. **Verified means all of it** (`${CLAUDE_PLUGIN_ROOT}/resources/testing.md`, section 6): a
+   production build for the before and after runs, deployment checked on disk when content is
+   installed, Vortex's E2E specs for the touched area, and the reported outcome. Ask now: "Run
+   Vortex's E2E specs for <area> on base and head?", yes by default for a fix bound for a PR.
 
 Commands that launch Vortex or run long run in the background with a log, as
 `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md` describes under "Commands that block". Only one
@@ -45,8 +49,9 @@ Vortex"): the instance record's `sourceDir` (or `exe`) is the build this session
 1. **The issue report.** Take the one the person gives (a `/doodlebot:investigate` report).
    Without one, run `/doodlebot:investigate`'s procedure first
    (`${CLAUDE_PLUGIN_ROOT}/skills/investigate/SKILL.md`). Continue only when it says
-   **reproduced**, with a cause; otherwise report it and stop: a fix for an unreproduced bug is
-   a guess.
+   **reproduced**, with a cause, and its reproduction observed the reported end outcome
+   ("Reproducing a reported symptom" in `${CLAUDE_PLUGIN_ROOT}/skills/try/SKILL.md`), not a
+   precursor state; otherwise report it and stop: a fix for an unreproduced bug is a guess.
 2. **Source and branch.** The session's Vortex checkout, `<checkout>` (`doodlebot source --where`),
    or one the person names with `--dev-dir <checkout>`.
    Outside a checkout, ask the person to open your coding agent in one (or clone one with
@@ -70,13 +75,18 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
    (`doodlebot check --json`'s `this checkout` row is not `ready`, or it was never installed),
    run "Prepare this checkout" (`${CLAUDE_PLUGIN_ROOT}/resources/checkout.md`) first: it asks
    the person one question when remotes or the exclude are missing, then installs and builds.
-   Otherwise build the branch's base with `doodlebot build --checkout <checkout>`. Then repeat the reproduction with `/doodlebot:try`'s
-   report procedure on `--dev-dir <checkout>`, with the same content as the issue report. This
-   is the "before" run report. It must show the symptom on the source build too; if it does
-   not, the bug is version-specific: say so and stop.
+   Otherwise build the branch's base with `doodlebot build --checkout <checkout> --production`.
+   Then repeat the reproduction with `/doodlebot:try`'s report procedure on
+   `--dev-dir <checkout> --production`, with the same content and the same collection options
+   (`--optionals vortex` for optional members) as the issue report, deploying what it installs
+   and purging before the next fresh profile. This
+   is the "before" run report. It must show the reported end outcome on the source build too;
+   if it does not, the bug is version-specific: say so and stop. A run stopped before the
+   symptom could appear shows nothing: it is Blocked, not a "before".
 4. **Fix.** Change the source on the branch, following Vortex's guidance. Rebuild with
    `doodlebot build --checkout <checkout>` (after a dependency change, `doodlebot source`
-   again). For release-like timing, `--production` on both `build` and `up`.
+   again) while iterating. The after run needs the production build: `--production` on both
+   `build` and `up`.
 5. **Regression test**, by `${CLAUDE_PLUGIN_ROOT}/resources/testing.md`: a Vortex unit test
    next to the code or a spec in Vortex's e2e suite, in the same branch. Tests that prove a
    Vortex change belong in its PR, not in doodlebot.
@@ -85,13 +95,18 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
    `doodlebot pr-preflight --checkout <checkout> --base upstream/master --test <test> --revert <file>`.
    The branch must pass and the reverted run fail on the intended assertion (an INCONCLUSIVE
    failure needs its assertion read). Without the permission, report the control as not run.
-7. **The reproduction on the fix (after).** Start the fixed build and repeat the person's exact
-   scenario with `/doodlebot:try`'s report procedure (`--dev-dir <checkout>`, same content),
-   observing the result independently: UI, deployed files, state, `doodlebot log --level warn`.
-   For UI fixes check widths and heights separately. This is the "after" run report.
+7. **The reproduction on the fix (after).** Build the fix with `--production`, start it with
+   `--production` and repeat the person's exact scenario with `/doodlebot:try`'s report
+   procedure (`--dev-dir <checkout> --production`, same content), observing the result
+   independently: UI, deployed files on disk after a deploy, state, `doodlebot log --level warn`.
+   For UI fixes check widths and heights separately. This is the "after" run report. It proves
+   the fix only when the run reached the point where the symptom appeared before and the
+   reported end outcome did not happen; a changed precursor state alone is supporting evidence.
 8. **Gates.** The scoped tests, then Vortex's own gate (for example `pnpm run verify`) with the
-   test Vortex stopped. Keep failures and say whether each is a regression, a known base
-   failure or an external blocker. Never call a blocked gate passed.
+   test Vortex stopped, then the E2E specs for the touched area on base and head (unless the
+   person said no in "Before you begin"). Keep failures and say whether each is a regression, a
+   known base failure or an external blocker. Never call a blocked gate passed; an E2E run that
+   cannot happen blocks "fixed" and is said as such.
 9. **Catalogue.** If `doodlebot qa list --touching <changed files>` reports files no entry
    guards and the behaviour is something Vortex's e2e suite cannot hold, propose an entry.
 
@@ -99,8 +114,15 @@ upstream` and only when it already sits at `upstream/<default>`; run it only on 
 
 Write `<workspace>/harness/.artifacts/runs/<UTC time>-fix-<slug>/report.md` with:
 
-- **Outcome:** fixed, with the before and after observations; or why not.
-- **Tested against:** the build (branch and head, base) and the content, and why.
+- **Outcome:** fixed, with the before and after observations, only when everything in
+  `${CLAUDE_PLUGIN_ROOT}/resources/testing.md` section 6 holds; otherwise **partially
+  verified**, naming each gap (dev build only, not deployed, E2E not run or blocked); or why
+  not.
+- **Tested against:** the build (branch and head, base, production or dev) and the content, and
+  why.
+- **Deployment:** what was deployed, the files checked on disk or in the manifest, and the
+  purge; or "nothing deployed" and why.
+- **E2E:** the specs run on base and head with their results, or what blocked them.
 - **Cause:** file and line (from the issue report, confirmed or corrected).
 - **Change:** the files, and the branch `fix-<topic>`.
 - **Regression test:** its path in the Vortex branch, what it asserts, and the revert control's
@@ -115,7 +137,9 @@ Write `<workspace>/harness/.artifacts/runs/<UTC time>-fix-<slug>/report.md` with
 ## Finish
 
 Tell the person the cause, the change, the test and its control, the before and after results,
-the gates, and the report's path. Then offer `/doodlebot:pr`. Apart from the local commit made
+the gates, and the report's path, with the outcome word the report uses (fixed or partially
+verified). Then offer `/doodlebot:pr` when it is fixed; when it is partially verified, name the
+gaps and offer to close them first, or the PR only if the person accepts them. Apart from the local commit made
 with their permission, never commit, push or open a PR unless they ask, and never open one
 before their own scenario passed on the fix. Never patch the doodlebot workspace mid-task: a
 missing capability is a kit gap, offered as doodlebot work afterwards.
