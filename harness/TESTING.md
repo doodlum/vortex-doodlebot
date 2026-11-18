@@ -260,3 +260,5 @@ an isolated released app covers runtime behavior. Verify the actual final commit
 publication; a previous local-diff receipt remains evidence for that diff only. See
 [the manual](AGENTS.md#evidence-receipts) for the commands and
 [its working rules](AGENTS.md#working-rules) for who decides and what counts as evidence.
+
+Baseline compatibility: bootstrap.test.ts seeds a newer-release baseline with a sentinel and observes every launch of an older release to prove no newer state is copied. It also checks missing and mismatched build markers trigger cold setup and same-build fresh starts reuse their baseline. For a live control, start 2.8.0, stop cleanly, then start 2.3.0 with --no-game --fresh on the same cache: automation_status must report 2.3.0 without a native downgrade warning.

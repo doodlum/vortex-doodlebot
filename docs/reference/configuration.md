@@ -155,3 +155,5 @@ check before you share them. See [Security and privacy](../security.md).
 
 - [Troubleshooting](../troubleshooting.md).
 - [doodlebot CLI](cli.md).
+
+Baselines within VORTEX_AI_CACHE_DIR are separated by normalized release-executable or source-checkout path. Changing builds creates a clean baseline if that build has none; --fresh copies only that build's baseline. The OAuth cache remains separate from baseline state.
