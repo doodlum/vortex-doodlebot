@@ -22,7 +22,7 @@ See the [desktop agent contract](../concepts/desktop-agents.md) for runtime acce
 A **baseline** is a saved, clean Vortex profile for one combination of target, game and game
 path. Doodlebot creates it on the first start, by managing the game and quitting cleanly, and
 reuses it afterward. Each combination has its own baseline, so an unrelated profile is never
-reused.
+reused. Release executables and source checkouts have separate baselines. A baseline with a missing or mismatched build marker is rebuilt from a blank profile; registered releases at different executable paths cannot share saved profile state.
 
 | Start                | What happens                                                  |
 | -------------------- | ------------------------------------------------------------- |

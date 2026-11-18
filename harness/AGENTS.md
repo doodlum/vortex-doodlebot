@@ -1562,3 +1562,5 @@ reports either as a failing `Vortex` check instead).
   `vortex_quit` tool first.
 - **Never treat a port collision as permission to stop an unrelated Vortex.** Never commit
   profiles, screenshots with private data, or credentials.
+
+Baseline compatibility: bootstrap keys snapshots by normalized build identity (release executable or source checkout), in addition to target layout and game. A missing or different build marker forces a cold bootstrap. Keep OAuth in its separate cache; never bypass Vortex's downgrade warning to reuse another build's profile.
