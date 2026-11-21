@@ -162,8 +162,10 @@ account-free tests. In harness mode only, `authCache.ts` restores the current
 OAuth credentials from a private local file and persists changes when Vortex
 refreshes them. Logout leaves a tombstone that overrides stale snapshots. It
 uses Vortex's own actions and refresh logic; no OAuth secret is returned by MCP.
-Credentials are separate from profile snapshots so game changes and `--fresh`
-do not restore old refresh tokens or copy another game's mods into a blank profile.
+The shared cache stays authoritative across game changes and `--fresh`. When
+that cache exists, the launcher clears the OAuth key in the isolated Vortex
+database before normal startup. This prevents Nexus initialization from using
+a snapshot's older refresh token before the Doodlebot extension loads.
 
 ## One instance at a time
 

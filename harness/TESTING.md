@@ -204,6 +204,10 @@ released Vortex.
 
 ## Authentication and live services
 
+`harness/src/oauthProfile.test.ts` checks prelaunch cleanup with a stale synthetic profile
+token, an authoritative cache, the signed-out marker and a redirected database. It does not
+use a Nexus account.
+
 `doodlebot test oauth` explicitly uses the operator's sandbox login. Cache it first with
 `save-login --sandbox`. The check captures a clean profile, performs a fresh restore, verifies
 access/refresh credential presence, and leaves Vortex running. It prints no credentials.
