@@ -6,9 +6,10 @@
       "human": [
         "docs/reference/commands.md",
         "docs/get-started/install.md",
+        "docs/guides/pull-requests.md",
         "docs/guides/use-cases.md"
       ],
-      "ai": ["AGENTS.md", "harness/AGENTS.md"]
+      "ai": ["AGENTS.md", "harness/AGENTS.md", "harness/PULL-REQUESTS.md"]
     },
     {
       "name": "MCP and renderer tools",
@@ -67,6 +68,7 @@
       ],
       "human": [
         "docs/guides/source-development.md",
+        "docs/guides/pull-requests.md",
         "docs/concepts/evidence.md",
         "docs/contributing.md"
       ],
