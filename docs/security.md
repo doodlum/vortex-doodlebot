@@ -23,8 +23,9 @@ own Vortex.
   browser; see [Sign in to Nexus Mods](guides/sign-in.md).
 - The saved login is one file per target in `~/.doodlebot/login`, outside every workspace.
   Only you, Windows (SYSTEM) and administrators should be able to read that folder; doodlebot's
-  check reports anything else, with the `icacls` command that fixes it. Doodlebot never copies
-  the login.
+  check reports anything else, with the `icacls` command that fixes it. Doodlebot uses that file
+  directly. Before startup it uses Vortex's state command to clear any older OAuth entry in
+  the isolated test database. The command receives the entry name and the verified test path.
 - When you share a lesson or a kit gap, the text is shown to you first, with your folders and
   user, computer and Nexus names replaced. Nothing is published until you confirm.
 - `doodlebot auth-status` reports only whether credentials are present.

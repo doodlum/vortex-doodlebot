@@ -67,6 +67,10 @@ For release-fetch changes, `pnpm exec vitest run harness/src/releaseFetch.test.t
 registration and refusal paths without a Vortex install or network. It covers prereleases whose
 Windows version resource omits the beta label, while keeping the requested release identity.
 
+OAuth startup cleanup has a separate unit test in `harness/src/oauthProfile.test.ts`. It uses
+synthetic credentials to check that stale profile state is cleared before Vortex starts and
+that cleanup refuses a redirected database.
+
 ## What's next
 
 - [Open a pull request](pull-requests.md) for the Vortex change, with its own Vortex test.

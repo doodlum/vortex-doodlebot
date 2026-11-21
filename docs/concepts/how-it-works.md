@@ -46,6 +46,10 @@ Read the [Overview](../index.md) for what doodlebot does.
 
 The extension works with a stock, released Vortex. Nothing in doodlebot needs a patched Vortex.
 
+Before launching a test profile with a saved OAuth login, the harness clears the profile's
+copied OAuth state. The extension restores the current login from its private cache after
+Vortex starts.
+
 ## Versions and updates
 
 The plugins and the workspace each have a version. Every command except `/doodlebot:setup` first

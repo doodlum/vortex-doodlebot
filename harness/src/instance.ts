@@ -37,6 +37,7 @@ import { resolveDevElectron } from "./electronRuntime";
 import { installSandboxExtension } from "./sandbox";
 import { readNxmHandler } from "./nxmHandler";
 import { loginFileFor } from "./login";
+import { removePersistedOAuthBeforeLaunch } from "./oauthProfile";
 import { DEFAULT_CACHE_DIR, normalizedPath } from "./paths";
 import { processAlive } from "./processes";
 import {
@@ -456,6 +457,8 @@ export async function launchVortex(options: LaunchOptions): Promise<VortexInstan
   }
 
   const env = buildInstanceEnv(userDataDir, config);
+  await removePersistedOAuthBeforeLaunch(config, env);
+  assertNoHarnessVortex("starting Vortex");
 
   // Every Vortex re-registers itself as the nxm link handler; the record keeps what was there,
   // and the confirmed end of this Vortex writes it back (clearInstanceRecord).

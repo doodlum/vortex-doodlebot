@@ -43,8 +43,9 @@ only whether credentials are present, never the credentials themselves.
   `--installed` on every command, `setup` and `save-login` included.
 - If the target already has a saved login present, the agent reports it and no click
   is needed.
-- The main test Vortex uses the login directly. Fresh and rebuilt profiles keep it, but not
-  mod lists or game paths.
+- The main test Vortex uses the saved login directly. Before starting a fresh or rebuilt
+  profile, Doodlebot clears any older login stored in that profile so Vortex uses the current
+  cache. Each test profile keeps its own mod list and game path.
 - Test profiles, benchmarks and the core suite are signed out. They never get a copy of your
   login, so they cannot use it up.
 - Doodlebot never copies the login. Nexus replaces part of it each time it refreshes, so a copy
