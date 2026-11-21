@@ -81,6 +81,10 @@ in the review pane.
    it from your branch with `gh pr create`, as a draft unless you say otherwise. A pull request
    inside your fork lets you review the change there before it goes upstream.
 
+   Screenshots go directly into the pull request description as GitHub attachments. The agent
+   checks that the published description contains each image. If the CLI or web editor
+   cannot upload them, the agent reports the blocker and keeps the local screenshots available.
+
    Either way, the pull request's base is Nexus-Mods/Vortex's default branch name, normally
    `master`, in your fork as well as upstream. It is never your fork's own default branch, which
    can be another branch with work of its own (doodlum/Vortex's default branch is `linux`).

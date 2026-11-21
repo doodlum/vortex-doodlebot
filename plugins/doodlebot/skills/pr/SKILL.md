@@ -80,6 +80,9 @@ passed on the change.
      revision they have not approved.
 
    Save it as `<workspace>/harness/.artifacts/pr/<topic>.md` and show it to the person.
+   If the PR includes screenshots, keep the files in the artifact directory and use the direct
+   attachment procedure in `<workspace>/harness/PULL-REQUESTS.md`. Put local image references in
+   the Markdown where each screenshot should appear.
 
 5. **Publish, only when asked.** On the person's go-ahead:
    1. **Push the session's branch:** `doodlebot push-branch --checkout <checkout>`. It pushes
@@ -95,6 +98,11 @@ passed on the change.
    3. **Open it from the session's branch**, as a draft unless the person says otherwise:
       `gh pr create --repo <fork or Nexus-Mods/Vortex> --base <upstream default> --head <fork owner>:<branch> --draft --title <title> --body-file <description>`
       (without `--draft` only when they say so).
+      - For screenshots, check `gh pr create --help` and pass one `--attach <file>` per local
+        image when supported and the account has push access to the destination. For an
+        existing draft, use `gh pr edit <PR URL> --body-file <description> --attach <file>` and check
+        `gh pr edit --help`. If the CLI cannot attach, use GitHub’s web editor when available
+        or report the attachment blocker. Keep screenshots out of Git branches.
       - `<upstream default>` is **Nexus-Mods/Vortex's default branch name**, normally `master`:
         `git -C <checkout> symbolic-ref --short refs/remotes/upstream/HEAD` without the
         `upstream/` prefix. Use it in both cases, a PR in the fork and one against
@@ -114,6 +122,10 @@ passed on the change.
       person to follow CI with step 6.
    6. Check the published description:
       `doodlebot pr-preflight --checkout <checkout> --skip-revert --pr <number> --repo <owner/name>`.
+      For attached screenshots, read the saved description back and verify that every image
+      has a GitHub attachment URL in its intended place. If creation reports a partial upload,
+      resolve the existing draft in the approved repository and retry the missing attachments
+      with `gh pr edit <PR URL>`.
 6. **CI.** `doodlebot pr-checks <number> --repo <owner/name>` reports the head's checks, with
    failed jobs expanded to their failed steps; it exits nonzero while any is pending or failed.
    When CI is red, say why: a test failure (read it, reproduce it locally, offer a fix on the
