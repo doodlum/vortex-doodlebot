@@ -20,7 +20,7 @@ behavior changes, update both: `pnpm run docs:generate` refreshes the generated 
 | Designs (features and refactors)               | EGM: Vortex in `plugins/doodlebot/resources/egm.md`, doodlebot in the root `AGENTS.md`   |
 | Commands, tools, internals and traps           | This file; full CLI help in `reference/cli.md`, tool schemas in `reference/mcp-tools.md` |
 | Kit gates, the core suite and opt-in checks    | [TESTING.md](TESTING.md)                                                                 |
-| Vortex PR titles, description, review lessons  | [PULL-REQUESTS.md](PULL-REQUESTS.md)                                                     |
+| Vortex PR descriptions, attachments and review | [PULL-REQUESTS.md](PULL-REQUESTS.md)                                                     |
 | Confirmed Vortex pitfalls                      | [KNOWLEDGE.md](../KNOWLEDGE.md): search the affected area and recheck its scope          |
 | Where a new capability belongs                 | [ARCHITECTURE.md](../ARCHITECTURE.md)                                                    |
 | Person-facing setup and usage                  | The site, `docs/` and `README.md`                                                        |

@@ -163,6 +163,9 @@ commands, the expected result, and "What's next".
 Use Conventional Commits. Keep pull requests focused on the behavior changed and the checks
 performed.
 
+For changes to PR publishing, update the [pull request guide](guides/pull-requests.md) and
+the agent’s PR instructions together so both describe the same publication steps.
+
 ## What's next
 
 - [How doodlebot works](concepts/how-it-works.md).

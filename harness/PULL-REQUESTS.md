@@ -103,6 +103,25 @@ Every PR description ends with that footer. Additional tool attribution belongs 
 `pr-preflight --pr` checks the title and section/footer format for an existing PR; branch
 review can inspect a prepared description without opening one.
 
+### Screenshot attachments
+
+Keep screenshots with the run artifacts. Use relative image paths in the description, and run
+`gh pr create` or `gh pr edit` from the directory those paths are relative to. Pass the same
+path once per image as `--attach` alongside `--body-file`. The CLI uploads the files to GitHub
+and replaces the matching Markdown paths in place, preserving captions and the footer. Verify
+support with `gh pr create --help` or `gh pr edit --help`. CLI uploads require push access
+to the destination repository. [GitHub CLI attachment guide](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli)
+
+When the CLI cannot attach, upload the images directly in the GitHub web editor if available.
+If both routes are unavailable, report the missing access or capability and keep the local
+files for handoff. Keep screenshots out of Git branches.
+
+Read the published body back with `gh pr view <PR URL> --json body` and verify every intended
+image reference resolved to a GitHub attachment URL. A partial upload can leave a created PR
+even when `gh pr create` exits nonzero. Capture its URL or find the matching head in the approved
+repository. Use `gh pr edit <PR URL>` to retry only the missing attachments, preserving the
+working URLs.
+
 Use passed, failed, inconclusive, blocked or not applicable with a concrete reason. Do not
 write an unexplained "Not run", conceal skipped coverage or describe earlier evidence as
 rerun. Measurements belong in dated evidence, not hard-coded code comments. Update the
