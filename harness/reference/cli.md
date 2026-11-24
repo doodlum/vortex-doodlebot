@@ -98,7 +98,10 @@ Instance lifecycle
     --stale-ok           Launch a source build whose build record no longer matches its
                          checkout, and say so (otherwise refused, naming a changed file);
                          a build with no record is launched with a warning
-  bootstrap              Build/reset baseline and launch (--no-game, --stale-ok supported)
+    --keep-user-folders  Restart this cache's running Vortex without restoring the game's
+                         user folders between (plugins.txt, INIs stay as the run left them);
+                         the first launch's backup stays pending and down restores it
+  bootstrap             Build/reset baseline and launch (--no-game, --stale-ok supported)
   down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
                          then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status

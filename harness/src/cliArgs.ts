@@ -57,6 +57,7 @@ export const BOOLEAN_FLAGS = new Set([
   "wontfix",
   "allow-logout",
   "stale-ok",
+  "keep-user-folders",
   "add-upstream",
   "exclude",
 ]);

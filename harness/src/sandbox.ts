@@ -93,6 +93,60 @@ export function removeRootDeployments(gamePath: string): string[] {
   return removed;
 }
 
+/** The suffix Vortex gives a game file it moved aside to deploy over it (LinkingDeployment.ts). */
+const VORTEX_BACKUP = ".vortex_backup";
+
+/**
+ * Undo an earlier instance's deployment in a registered game copy, before a reset profile starts.
+ *
+ * A copy holds the real game's files, so it is never emptied like a disposable game. But the files
+ * an earlier profile deployed stay, with their `vortex.deployment*.json` manifests, and a fresh
+ * profile then meets "Purge files from different instance?" on every install and deploy. Each
+ * manifest (in the game folder and in `Data`) lists exactly what was deployed: those files are
+ * removed, a game file Vortex moved aside (`<file>.vortex_backup`) is put back, and the manifests
+ * go. Nothing outside the game folder, and nothing no manifest lists, is touched.
+ */
+export function removeCopyDeployments(gamePath: string): string[] {
+  const root = path.resolve(gamePath);
+  const removed: string[] = [];
+  const insideRoot = (abs: string): string | undefined => {
+    const relative = path.relative(root, abs);
+    return relative === "" || relative.startsWith("..") || path.isAbsolute(relative)
+      ? undefined
+      : relative;
+  };
+  for (const dir of [root, path.join(root, "Data")]) {
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names.filter((n) => /^vortex\.deployment(\..+)?\.json$/i.test(n))) {
+      const manifestPath = path.join(dir, name);
+      let manifest: { targetPath?: string; files?: Array<{ relPath?: string }> } = {};
+      try {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as typeof manifest;
+      } catch {
+        // unreadable: it describes nothing to undo, but it would still raise the prompt
+      }
+      const target = path.resolve(manifest.targetPath ?? dir);
+      for (const file of manifest.files ?? []) {
+        if (typeof file.relPath !== "string") continue;
+        const abs = path.resolve(target, file.relPath);
+        const relative = insideRoot(abs);
+        if (relative === undefined) continue;
+        fs.rmSync(abs, { force: true });
+        if (fs.existsSync(`${abs}${VORTEX_BACKUP}`)) fs.renameSync(`${abs}${VORTEX_BACKUP}`, abs);
+        removed.push(relative);
+      }
+      fs.rmSync(manifestPath, { force: true });
+      removed.push(insideRoot(manifestPath) ?? name);
+    }
+  }
+  return removed;
+}
+
 /** A real game-support extension, without game-specific writes to Documents or AppData. */
 export function installSandboxExtension(instanceDir: string, config: HarnessConfig): void {
   if (config.gameId !== "vortexaisandbox") return;

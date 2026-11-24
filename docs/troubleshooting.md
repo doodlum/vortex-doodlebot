@@ -109,6 +109,12 @@ until you decide. Run `doodlebot game restore <gameId>`: it lists the changed fi
 choose `--all`, `--keep` or `--file <path>`. Saves and other files that are not Vortex's own
 are always listed rather than restored, since they may be yours.
 
+If the message says the run stopped cleanly, Vortex's own files were already put back; only the
+files it lists were left for you to decide. If a restart (`doodlebot up` while a test Vortex runs)
+says `Stopped the running harness Vortex and did not start a new one`, it is the same refusal:
+decide with `game restore`, then start again. To restart without putting the folders back in
+between, for example to see what the game wrote, use `doodlebot up --keep-user-folders`.
+
 If the message says the backup is missing, nothing can be restored from it. Check the folders
 yourself, then run `doodlebot game restore <gameId> --keep` to keep them as they are; that
 clears the refusal.

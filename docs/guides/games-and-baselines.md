@@ -105,7 +105,15 @@ Bethesda sandbox, which uses your real Fallout 4 folders on any Vortex build:
   during the run. It checks every restored file.
 - Every other changed file is kept as it is and listed for you, a save above all, even one
   made during the run: you may have played your own copy of the game while the test ran.
-  The next start is refused until you decide with `doodlebot game restore <gameId>`.
+  The next start is refused until you decide with `doodlebot game restore <gameId>`. That
+  refusal says the run stopped cleanly and lists only the files left for you.
+- To restart the test Vortex without putting the folders back in between, for a problem that
+  shows on every start, run `doodlebot up --keep-user-folders` while it runs. The next start sees
+  the plugin list and INI files as the last run, and the game, left them; `down` later puts them
+  back as they were before the first start.
+- A fresh start on a game copy removes what an earlier run deployed there, using Vortex's own
+  deployment records, so the new profile is not stopped by "Purge files from different
+  instance?". The game's own files are left alone.
 - If Vortex crashed or was closed without `down`, nothing is restored automatically and the next
   start is refused. Run `doodlebot game restore <gameId>` to see the changed files, then choose:
   `--all` restores them all, `--keep` keeps them all, and `--file <path>` restores the ones you

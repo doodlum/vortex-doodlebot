@@ -592,10 +592,26 @@ doodlebot game folder [<dir>]                  # store the copy folder (asked on
   the backup for `game restore`; the Vortex files are restored either way. The restore is byte
   for byte with the original times, verified by hash; when nothing is left for the owner, the
   pending restore and the backup are deleted. A folder that did not exist before is removed when
-  it holds no files. `save-login` restores the same way after its clean stop.
+  it holds no files. `save-login` restores the same way after its clean stop. A clean stop that
+  leaves files for the owner records `stoppedAt` on the pending restore, so a later launch's
+  refusal says the run `stopped cleanly at <time>` and lists only those files, not that it ended
+  without a clean stop.
 - **The restart path** in `up` and `bootstrap` restores only after stopping its own live leftover
   cleanly. If the leftover was already dead (an unclean end) it restores nothing, refuses and
-  prints the listing. A launch that fails after the backup restores once nothing of it runs.
+  prints the listing. When the restore after that clean stop leaves files for the owner, the
+  refusal starts `Stopped the running harness Vortex and did not start a new one:`, since nothing
+  runs any more. A launch that fails after the backup restores once nothing of it runs.
+- **`up --keep-user-folders`** restarts this cache's running Vortex (refused when none runs)
+  without restoring the user folders in between: the next start sees `plugins.txt`, `loadorder.txt`
+  and the INIs as the last run, and the game launched from it, left them. It is how a "happens on
+  every start" report is reproduced. The first launch's backup stays the pending restore and no
+  new one is made, so `down` restores to the state before the first launch.
+- **A registered game copy on a reset profile** (`--fresh`, a cold start or a changed build):
+  the files an earlier profile deployed are removed by its `vortex.deployment*.json` manifests in
+  the game folder and in `Data` (`removeCopyDeployments`, `sandbox.ts`), a game file Vortex moved
+  aside (`<file>.vortex_backup`) is put back and the manifests are deleted. Otherwise the new
+  profile meets "Purge files from different instance?" on every install and deploy. Files no
+  manifest lists, the game's own above all, are left alone.
 - **`game restore <gameId>`** lists every file changed since the backup with its modification
   time (exit 1), then `--all` restores all, `--keep` keeps all, `--file <path>` (repeatable)
   restores those; each clears the pending restore. It refuses while the game or a harness Vortex

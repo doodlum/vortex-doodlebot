@@ -10,6 +10,7 @@ import { USER_FOLDERS, VORTEX_WRITES, vortexWrites } from "./gameSetup";
 import {
   assertNoPendingRestore,
   gameRestore,
+  pendingRestoreOf,
   planRestore,
   protectUserFolders,
   settlePendingRestores,
@@ -150,8 +151,20 @@ describe("user folders", () => {
     expect(failure?.message).toContain("doodlebot game restore fallout4 --all");
     expect(fs.readFileSync(ownerSave, "utf8")).toBe("a new owner save");
     expect(fs.readFileSync(path.join(local(), "plugins.txt"), "utf8")).toBe("*Owner.esp\r\n");
-    // The save keeps the pending restore, for the owner to decide.
+    // The save keeps the pending restore, for the owner to decide, and it records the clean stop.
     expect(readContent(deps.contentFile).pendingRestores).toHaveLength(1);
+    expect(readContent(deps.contentFile).pendingRestores[0]?.stoppedAt).toBe(
+      at(10_000).toISOString(),
+    );
+    // The next launch says the run stopped cleanly, not that it ended without a clean stop.
+    const later = await settlePendingRestores({ clean: false }, deps).catch(
+      (error: unknown) => error as Error,
+    );
+    expect(later?.message).toContain(`stopped cleanly at ${at(10_000).toISOString()}`);
+    expect(later?.message).not.toContain("without a clean stop");
+    expect(later?.message).toContain(ownerSave);
+    expect(later?.message).not.toContain("plugins.txt");
+    expect(later?.message).toContain("doodlebot game restore fallout4 --all");
     const listing = await gameRestore("fallout4", {}, deps);
     expect(listing.text).toContain(ownerSave);
     expect(listing.text).not.toContain("plugins.txt");
@@ -182,6 +195,13 @@ describe("user folders", () => {
     expect(fs.existsSync(path.join(local(), "plugins.txt"))).toBe(false);
   });
 
+  it("finds the pending restore of one game", async () => {
+    expect(pendingRestoreOf("fallout4", deps)).toBeUndefined();
+    const pending = await protectUserFolders("fallout4", cache(), deps);
+    expect(pendingRestoreOf("fallout4", deps)).toEqual(pending);
+    expect(pendingRestoreOf("skyrimse", deps)).toBeUndefined();
+  });
+
   it("says a pending restore's backup is missing, and --keep clears it", async () => {
     const pending = await protectUserFolders("fallout4", cache(), deps);
     fs.rmSync(pending!.backupDir, { recursive: true, force: true });
@@ -204,6 +224,7 @@ describe("user folders", () => {
       (error: unknown) => error as Error,
     );
     expect(failure?.message).toContain("ended without a clean stop");
+    expect(readContent(deps.contentFile).pendingRestores[0]?.stoppedAt).toBeUndefined();
     expect(failure?.message).toContain(path.join(local(), "plugins.txt"));
     expect(failure?.message).toContain("doodlebot game restore fallout4 --all");
     expect(fs.readFileSync(path.join(local(), "plugins.txt"), "utf8")).toBe("*Harness.esp\r\n");

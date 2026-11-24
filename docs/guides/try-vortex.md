@@ -106,6 +106,8 @@ The agent runs `doodlebot collection <url>` in the background and follows the in
 `doodlebot call collection_install_state` until it finishes. A completed install is recorded in
 `~/.doodlebot/content.json`, so later runs and `doodlebot test nexus` can use it. Deploy only
 into a registered game copy (see [Use real games and baselines](games-and-baselines.md)).
+`doodlebot deploy` and `doodlebot purge` act on the game the test Vortex manages, and name that
+game in what they print.
 
 By default `doodlebot collection` decides the optional mods itself and skips them all, which no
 user does. To see what Vortex does with optional mods on its own, as when you install a

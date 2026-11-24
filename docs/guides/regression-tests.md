@@ -67,6 +67,11 @@ For release-fetch changes, `pnpm exec vitest run harness/src/releaseFetch.test.t
 registration and refusal paths without a Vortex install or network. It covers prereleases whose
 Windows version resource omits the beta label, while keeping the requested release identity.
 
+For changes to restarts and user-folder restores, `pnpm exec vitest run
+harness/src/userFolders.test.ts harness/src/bootstrap.test.ts harness/src/sandbox.test.ts` checks
+them with temporary folders: a restore that leaves files after a clean stop, a restart with
+`--keep-user-folders`, and a fresh start on a game copy an earlier run deployed to.
+
 ## What's next
 
 - [Open a pull request](pull-requests.md) for the Vortex change, with its own Vortex test.

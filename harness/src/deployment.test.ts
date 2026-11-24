@@ -1,6 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
-import { deployMods, purgeGame } from "./deployment";
+import { activeGameOf, deployMods, purgeGame } from "./deployment";
 import type { VortexMcpClient } from "./mcpClient";
+
+describe("activeGameOf", () => {
+  it("is the running instance's game, not the kit's default", async () => {
+    const call = vi.fn(async () => "skyrimse");
+    await expect(activeGameOf({ call } as unknown as VortexMcpClient)).resolves.toBe("skyrimse");
+    expect(call).toHaveBeenCalledExactlyOnceWith("vortex_query", { selector: "activeGameId" });
+  });
+
+  it.each([null, ""])("refuses when no game is active (%j)", async (value) => {
+    const call = vi.fn(async () => value);
+    await expect(activeGameOf({ call } as unknown as VortexMcpClient)).rejects.toThrow(
+      "No game is active",
+    );
+  });
+});
 
 describe("deployment operations", () => {
   it("refuses unfinished installs before dispatching or answering any dialog", async () => {

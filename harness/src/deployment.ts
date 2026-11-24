@@ -65,6 +65,17 @@ export async function modsStillInstalling(
 }
 
 /**
+ * The game the running instance manages. Deploying and purging act on it, so a command reports
+ * and checks it rather than the kit's configured default, which `--game` on `up` alone changes.
+ */
+export async function activeGameOf(mcp: VortexMcpClient): Promise<string> {
+  const gameId = await mcp.call<string | null>("vortex_query", { selector: "activeGameId" });
+  if (typeof gameId !== "string" || gameId === "")
+    throw new DeploymentError("No game is active in the running Vortex; manage one first.");
+  return gameId;
+}
+
+/**
  * Remove everything Vortex has deployed to the game directory.
  *
  * `allowFallback` is true: when the deployment manifest is missing or unusable

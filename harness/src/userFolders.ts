@@ -34,6 +34,7 @@ import {
 } from "./gameSetup";
 import {
   addPendingRestore,
+  markPendingRestoreStopped,
   readContent,
   removePendingRestore,
   type PendingRestore,
@@ -354,6 +355,19 @@ async function refuseWhileGameRuns(gameId: string, deps: UserFolderDeps, action:
     throw new ConfigError(`${gameName(gameId)} is running; close it before ${action}.`);
 }
 
+/**
+ * The pending restore of `gameId`, if any. `up --keep-user-folders` keeps it across a restart, so
+ * the next `down` restores the folders as they were before the first launch.
+ */
+export function pendingRestoreOf(
+  gameId: string,
+  deps: UserFolderDeps = {},
+): PendingRestore | undefined {
+  return readContent(deps.contentFile ?? CONTENT_FILE).pendingRestores.find(
+    (p) => p.gameId === gameId,
+  );
+}
+
 /** Refuse while any restore is pending: its backup must not be replaced by a new one. */
 export function assertNoPendingRestore(deps: UserFolderDeps = {}): void {
   const pending = readContent(deps.contentFile ?? CONTENT_FILE).pendingRestores[0];
@@ -462,6 +476,13 @@ export async function settlePendingRestores(
         finish(pending, deps);
         continue;
       }
+      // A clean stop already restored Vortex's files; what is left was set aside for the owner.
+      if (pending.stoppedAt !== undefined)
+        throw new ConfigError(
+          `The run of ${name} started ${pending.startedAt} stopped cleanly at ${pending.stoppedAt}; ` +
+            `these changed files in its user folders were left for you to decide:\n` +
+            `${formatChanges(changes)}\n${choiceHint(pending.gameId)}`,
+        );
       throw new ConfigError(
         `The run of ${name} started ${pending.startedAt} ended without a clean stop, so its user ` +
           `folders were not restored. Changed since the backup:\n${formatChanges(changes)}\n` +
@@ -480,7 +501,12 @@ export async function settlePendingRestores(
       plan.restore.length === 0
         ? ""
         : `Restored the user folders of ${name} (${String(plan.restore.length)} file(s)).`;
-    if (plan.blocked.length > 0)
+    if (plan.blocked.length > 0) {
+      markPendingRestoreStopped(
+        pending.backupDir,
+        new Date(end).toISOString(),
+        deps.contentFile ?? CONTENT_FILE,
+      );
       throw new ConfigError(
         `${restored === "" ? "" : `${restored} `}Not restored: these files in the user folders of ` +
           `${name} changed, and are not files Vortex writes changed inside the run ` +
@@ -488,6 +514,7 @@ export async function settlePendingRestores(
           `yours, made while the run lasted:\n${formatChanges(plan.blocked)}\n` +
           `The backup is kept at ${pending.backupDir}. ${choiceHint(pending.gameId)}`,
       );
+    }
     finish(pending, deps);
     if (restored !== "") write(restored);
   }

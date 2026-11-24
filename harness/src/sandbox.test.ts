@@ -5,7 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { HarnessConfig } from "./config";
-import { localOnlyConfig, removeRootDeployments, resetDisposableGameData } from "./sandbox";
+import {
+  localOnlyConfig,
+  removeCopyDeployments,
+  removeRootDeployments,
+  resetDisposableGameData,
+} from "./sandbox";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -91,5 +96,58 @@ describe("removeRootDeployments", () => {
     // Data is the caller's to clear, and nothing outside the game folder is touched
     expect(fs.existsSync(path.join(game, "Data", "keep.esp"))).toBe(true);
     expect(fs.existsSync(path.join(path.dirname(game), "outside.txt"))).toBe(true);
+  });
+});
+
+describe("removeCopyDeployments", () => {
+  it("undoes an earlier deployment in a game copy, keeping the game's own files", () => {
+    const game = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-ai-copydeploy-"));
+    dirs.push(game);
+    const data = path.join(game, "Data");
+    fs.mkdirSync(path.join(data, "meshes"), { recursive: true });
+    fs.writeFileSync(path.join(game, "SkyrimSE.exe"), "game");
+    fs.writeFileSync(path.join(data, "Skyrim.esm"), "master");
+    fs.writeFileSync(path.join(data, "Untracked.esp"), "placed by hand");
+    // Deployed by the earlier profile: two plugins, and a game file Vortex moved aside.
+    fs.writeFileSync(path.join(data, "ProbeAlpha.esp"), "mod");
+    fs.writeFileSync(path.join(data, "meshes", "x.nif"), "mod mesh");
+    fs.writeFileSync(path.join(data, "meshes", "x.nif.vortex_backup"), "game mesh");
+    fs.writeFileSync(
+      path.join(data, "vortex.deployment.json"),
+      JSON.stringify({
+        instance: "earlier-profile",
+        targetPath: data,
+        files: [
+          { relPath: "ProbeAlpha.esp" },
+          { relPath: "meshes/x.nif" },
+          { relPath: "../../outside.txt" },
+        ],
+      }),
+    );
+    fs.writeFileSync(path.join(path.dirname(game), "outside.txt"), "x");
+    dirs.push(path.join(path.dirname(game), "outside.txt"));
+
+    expect(removeCopyDeployments(game).sort()).toEqual(
+      [
+        path.join("Data", "ProbeAlpha.esp"),
+        path.join("Data", "meshes", "x.nif"),
+        path.join("Data", "vortex.deployment.json"),
+      ].sort(),
+    );
+    expect(fs.readdirSync(data).sort()).toEqual(["Skyrim.esm", "Untracked.esp", "meshes"].sort());
+    expect(fs.readFileSync(path.join(data, "meshes", "x.nif"), "utf8")).toBe("game mesh");
+    expect(fs.existsSync(path.join(data, "meshes", "x.nif.vortex_backup"))).toBe(false);
+    expect(fs.existsSync(path.join(game, "SkyrimSE.exe"))).toBe(true);
+    expect(fs.existsSync(path.join(path.dirname(game), "outside.txt"))).toBe(true);
+  });
+
+  it("removes an unreadable manifest and finds nothing in a copy never deployed to", () => {
+    const game = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-ai-copydeploy-"));
+    dirs.push(game);
+    fs.mkdirSync(path.join(game, "Data"));
+    expect(removeCopyDeployments(game)).toEqual([]);
+    fs.writeFileSync(path.join(game, "Data", "vortex.deployment.json"), "{not json");
+    expect(removeCopyDeployments(game)).toEqual([path.join("Data", "vortex.deployment.json")]);
+    expect(fs.readdirSync(path.join(game, "Data"))).toEqual([]);
   });
 });
