@@ -292,6 +292,59 @@ describe("one harness Vortex per machine", () => {
   });
 });
 
+describe("baseline build compatibility", () => {
+  it("never seeds an older release with a newer release's profile, even with --fresh", async () => {
+    const newer = fakeConfig();
+    newer.target.executable = "C:/releases/2.8.0/Vortex.exe";
+    await bootstrap(newer, { fresh: true, skipGame: true });
+    const newerSnapshot = snapshotDir(newer, "test-key", true);
+    fs.writeFileSync(path.join(newerSnapshot, "newer-state"), "2.8.0 only");
+    const older = {
+      ...newer,
+      target: { ...newer.target, executable: "C:/releases/2.3.0/Vortex.exe" },
+    };
+    const observed: boolean[] = [];
+    const normalLaunch = vi.mocked(launchVortex).getMockImplementation()!;
+    vi.mocked(launchVortex).mockImplementation(async (options) => {
+      observed.push(fs.existsSync(path.join(options.userDataDir, "newer-state")));
+      return normalLaunch(options);
+    });
+    try {
+      const result = await bootstrap(older, { fresh: true, skipGame: true });
+      expect(observed).toEqual([false, false]);
+      expect(result.tier).toBe("cold");
+      expect(fs.readFileSync(path.join(newerSnapshot, "newer-state"), "utf8")).toBe("2.8.0 only");
+      expect(readMarker(snapshotDir(older, "test-key", true))?.build).toBe(older.target.executable);
+    } finally {
+      vi.mocked(launchVortex).mockImplementation(normalLaunch);
+    }
+  });
+
+  it.each([undefined, "C:/another-build/Vortex.exe"])(
+    "rebuilds a baseline whose build marker is %s",
+    async (build) => {
+      const config = fakeConfig();
+      await bootstrap(config, { fresh: true, skipGame: true });
+      const snapshot = snapshotDir(config, "test-key", true);
+      const marker = readMarker(snapshot)!;
+      fs.writeFileSync(
+        path.join(snapshot, ".vortex-ai-snapshot.json"),
+        JSON.stringify({ ...marker, build }),
+      );
+      const result = await bootstrap(config, { fresh: true, skipGame: true });
+      expect(result.tier).toBe("cold");
+      expect(readMarker(snapshot)?.build).toBe(config.target.executable);
+    },
+  );
+
+  it("reuses the same build's baseline on another fresh start", async () => {
+    const config = fakeConfig();
+    await bootstrap(config, { fresh: true, skipGame: true });
+    const result = await bootstrap(config, { fresh: true, skipGame: true });
+    expect(result.tier).toBe("reset");
+  });
+});
+
 describe("a stale source build (stale-build-refused)", { timeout: 60_000 }, () => {
   /** A built git checkout of Vortex whose build record matches it. */
   function builtCheckout(): string {

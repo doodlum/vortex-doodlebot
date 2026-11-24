@@ -170,3 +170,5 @@ the agent’s PR instructions together so both describe the same publication ste
 
 - [How doodlebot works](concepts/how-it-works.md).
 - [Credits](credits.md).
+
+Baseline compatibility regressions are covered by harness/src/bootstrap.test.ts: switching from a newer release to an older one must launch without copying the newer profile, missing or mismatched build markers force cold setup, and another fresh start of the same build reuses its baseline.

@@ -115,9 +115,11 @@ export function snapshotDir(config: HarnessConfig, apiKey: string, skipGame = fa
   // interchangeable: a released Vortex keeps startup.json under appData/Vortex
   // and a source checkout under appData/@vortex/main, so reusing one build's
   // snapshot for the other makes Vortex quit on a missing startup.json.
+  // Distinguish release executables and source checkouts too: an older Vortex
+  // cannot safely read a profile written by a newer build.
   const key = fingerprint(
     `${String(SNAPSHOT_SCHEMA_VERSION)}:${apiKey}:${config.gameId}:${config.gamePath ?? "auto"}:` +
-      `${config.target.kind}:${config.target.appName}${skipGame ? ":no-game" : ""}`,
+      `${config.target.kind}:${config.target.appName}:${normalizedPath(buildOf(config.target))}${skipGame ? ":no-game" : ""}`,
   );
   return path.join(config.cacheDir, `snapshot-${key}`);
 }
@@ -156,12 +158,13 @@ function copyProfile(source: string, destination: string): void {
   });
 }
 
-function isUsableSnapshot(dir: string, apiKey: string, gameId: string): boolean {
+function isUsableSnapshot(dir: string, apiKey: string, gameId: string, build: string): boolean {
   const marker = readMarker(dir);
   return (
     marker !== undefined &&
     marker.schemaVersion === SNAPSHOT_SCHEMA_VERSION &&
     marker.gameId === gameId &&
+    sameBuild(marker.build, build) &&
     marker.apiKeyFingerprint === fingerprint(apiKey) &&
     // A game that has since been uninstalled would make every later step fail
     // in a confusing place; catch it while there is still a clear thing to say.
@@ -414,7 +417,7 @@ async function launchProfile(
     }
   };
 
-  const cold = !isUsableSnapshot(snapshot, apiKey, config.gameId);
+  const cold = !isUsableSnapshot(snapshot, apiKey, config.gameId, buildOf(config.target));
   if (cold) {
     report("no usable snapshot — running a cold bootstrap (this happens once)");
     resetGame("before building the baseline");
@@ -428,6 +431,7 @@ async function launchProfile(
   const legacyMatch =
     liveMarker?.snapshotKey === undefined &&
     liveMarker?.schemaVersion === SNAPSHOT_SCHEMA_VERSION &&
+    sameBuild(liveMarker.build, buildOf(config.target)) &&
     liveMarker?.apiKeyFingerprint === fingerprint(apiKey) &&
     liveMarker?.gameId === config.gameId &&
     (options.skipGame === true
