@@ -40,6 +40,11 @@ const pendingRestoreSchema = z.object({
   backupDir: z.string(),
   /** When the run started: just before the backup, before Vortex was launched. */
   startedAt: z.string(),
+  /**
+   * When the kit confirmed Vortex's clean exit, if a restore after it left files for the owner.
+   * Later launches then say the run stopped cleanly, not that it ended without a clean stop.
+   */
+  stoppedAt: z.string().optional(),
 });
 
 const collectionSchema = z.object({
@@ -150,6 +155,19 @@ export function recordCollection(
 export function addPendingRestore(pending: PendingRestore, file = CONTENT_FILE): void {
   updateContent((content) => {
     content.pendingRestores = [...content.pendingRestores, pending];
+  }, file);
+}
+
+/** Record on a pending restore when the run it protects stopped cleanly. */
+export function markPendingRestoreStopped(
+  backupDir: string,
+  stoppedAt: string,
+  file = CONTENT_FILE,
+): void {
+  updateContent((content) => {
+    content.pendingRestores = content.pendingRestores.map((p) =>
+      samePath(p.backupDir, backupDir) ? { ...p, stoppedAt } : p,
+    );
   }, file);
 }
 

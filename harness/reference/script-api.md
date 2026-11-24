@@ -1135,6 +1135,15 @@ export async function modsStillInstalling(
 
 [Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L57).
 
+The game the running instance manages. Deploying and purging act on it, so a command reports
+and checks it rather than the kit's configured default, which `--game` on `up` alone changes.
+
+```typescript
+export async function activeGameOf(mcp: VortexMcpClient): Promise<string>;
+```
+
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L71).
+
 Remove everything Vortex has deployed to the game directory.
 
 `allowFallback` is true: when the deployment manifest is missing or unusable
@@ -1150,7 +1159,7 @@ export async function purgeGame(
 ): Promise<AnsweredDialog[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L76).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L87).
 
 Link every enabled mod into the game directory.
 
@@ -1162,7 +1171,7 @@ export async function deployMods(
 ): Promise<AnsweredDialog[]>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L90).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L101).
 
 Whether Vortex still considers this game to have undeployed changes.
 
@@ -1170,7 +1179,7 @@ Whether Vortex still considers this game to have undeployed changes.
 export async function needsDeployment(mcp: VortexMcpClient, gameId: string): Promise<boolean>;
 ```
 
-[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L161).
+[Implementation](https://github.com/doodlum/vortex-doodlebot/blob/main/harness/src/deployment.ts#L172).
 
 ## downloads
 

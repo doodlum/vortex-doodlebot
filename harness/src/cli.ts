@@ -58,7 +58,7 @@ import { bethesdaSandboxConfig } from "./bethesdaSandbox";
 import { installLocalMod } from "./localMod";
 import { runSlowDownloads } from "./slowDownload";
 import { installCollection, parseOptionalMods } from "./collections";
-import { deployMods, needsDeployment, purgeGame } from "./deployment";
+import { activeGameOf, deployMods, needsDeployment, purgeGame } from "./deployment";
 import { runE2e } from "./e2e";
 import { versionCommand } from "./versionCommand";
 import { formatLink, link } from "./linkCommand";
@@ -216,7 +216,10 @@ Instance lifecycle
     --stale-ok           Launch a source build whose build record no longer matches its
                          checkout, and say so (otherwise refused, naming a changed file);
                          a build with no record is launched with a warning
-  bootstrap              Build/reset baseline and launch (--no-game, --stale-ok supported)
+    --keep-user-folders  Restart this cache's running Vortex without restoring the game's
+                         user folders between (plugins.txt, INIs stay as the run left them);
+                         the first launch's backup stays pending and down restores it
+  bootstrap             Build/reset baseline and launch (--no-game, --stale-ok supported)
   down                   Quit the recorded harness Vortex (any cache), wait for clean exit,
                          then restore the game's user folders and the nxm link handler
   status                 Show endpoint and profile cache status
@@ -802,6 +805,7 @@ async function main(): Promise<number> {
           skipGame: flags["no-game"] === true,
           rebuildExtension: flags["rebuild-extension"] === true,
           staleOk: flags["stale-ok"] === true,
+          keepUserFolders: flags["keep-user-folders"] === true,
           onProgress: (m) => log(`  ${m}`),
         });
         log(
@@ -1098,26 +1102,25 @@ async function main(): Promise<number> {
 
       case "deploy": {
         const mcp = await requireRunning(config);
-        await deployMods(mcp, config.gameId, {
+        // The instance's game, which need not be the kit's default (`--game` is not repeated).
+        const gameId = await activeGameOf(mcp);
+        await deployMods(mcp, gameId, {
           allowForeignPurge: flags.purge === true,
           allowIncomplete: flags["allow-incomplete"] === true,
           onProgress: (m) => log(`  ${m}`),
         });
-        const pending = await needsDeployment(mcp, config.gameId);
+        const pending = await needsDeployment(mcp, gameId);
         log("");
-        log(
-          pending
-            ? `${config.gameId} still reports undeployed changes.`
-            : `Deployed ${config.gameId}.`,
-        );
+        log(pending ? `${gameId} still reports undeployed changes.` : `Deployed ${gameId}.`);
         return pending ? 1 : 0;
       }
 
       case "purge": {
         const mcp = await requireRunning(config);
+        const gameId = await activeGameOf(mcp);
         await purgeGame(mcp, { allowForeignPurge: true, onProgress: (m) => log(`  ${m}`) });
         log("");
-        log(`Purged ${config.gameId}; the game directory is back to unmodded.`);
+        log(`Purged ${gameId}; the game directory is back to unmodded.`);
         return 0;
       }
 

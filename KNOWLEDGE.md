@@ -605,7 +605,9 @@ launching it directly, as `launchGame` does (`processWaitMs` for tests).
 
 "Purge files from different instance?": answer Cancel unattended. A real install has tens of
 thousands of deployed files, and Vortex calls that purge direction less reliable. Use a disposable
-game directory. In External Changes, "Source files were deleted" → Save removes deployed copies whose source is gone; the harness
+game directory. A registered game copy no longer meets it after a profile reset: `up` removes the
+earlier profile's deployment by its manifests first (`removeCopyDeployments`); on a warm restart it
+can still appear, and `deploy --purge` answers it in a copy. In External Changes, "Source files were deleted" → Save removes deployed copies whose source is gone; the harness
 confirms it. "Links were deleted" → every row defaults to **Save change (delete file)**, which
 deletes the mods' _staging_ files; the harness refuses and reports it. Answer with **Revert all
 changes**. Never delete files a purge left while `vortex.deployment.json` lists them (unlisted

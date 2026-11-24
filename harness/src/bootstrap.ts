@@ -39,7 +39,8 @@ import {
 import { VortexMcpClient } from "./mcpClient";
 import { requireOAuth } from "./auth";
 import { ensureFallout4Inis, isBethesdaSandbox } from "./bethesdaSandbox";
-import { resetDisposableGameData } from "./sandbox";
+import { findGameCopy } from "./content";
+import { removeCopyDeployments, resetDisposableGameData } from "./sandbox";
 import { describeMigration, migrateDefaultLogin, usesSharedLogin } from "./login";
 import { normalizedPath } from "./paths";
 import {
@@ -52,6 +53,7 @@ import {
 import { assertNoOwnVortex, windowsOnlyWarning } from "./ownVortex";
 import { assertGamePathAllowed } from "./gameCommand";
 import {
+  pendingRestoreOf,
   protectUserFolders,
   settlePendingRestores,
   userFolderRoots,
@@ -212,6 +214,12 @@ export interface BootstrapOptions {
    * say so, instead of refusing.
    */
   staleOk?: boolean;
+  /**
+   * `--keep-user-folders`: restart this cache's running Vortex without restoring the game's user
+   * folders in between, so the next start sees plugins.txt and the INIs as the last run left them.
+   * The first launch's backup stays the pending restore, and `down` restores to it.
+   */
+  keepUserFolders?: boolean;
 }
 
 export interface BootstrapResult {
@@ -271,6 +279,11 @@ export async function bootstrap(
     const refusal = leftoverRefusal(running, build);
     if (refusal !== undefined) throw new ConfigError(refusal);
   }
+  const keep = options.keepUserFolders === true;
+  if (keep && running === undefined)
+    throw new ConfigError(
+      "--keep-user-folders restarts a running harness Vortex of this cache, and none is running. Start one with `doodlebot up`.",
+    );
   // A real game folder is managed only when it is a registered copy (content.json).
   if (options.skipGame !== true) assertGamePathAllowed(config);
 
@@ -281,7 +294,18 @@ export async function bootstrap(
   if (stopped) report("stopped a Vortex instance left over from an earlier run");
   // The leftover's user folders: restored after the clean stop just confirmed; after an unclean
   // end (no live leftover) nothing is restored and the launch refuses with the changed files.
-  await settlePendingRestores({ clean: running !== undefined || stopped, write: report });
+  // --keep-user-folders leaves them as the stopped run left them, its backup still pending.
+  if (!keep) {
+    try {
+      await settlePendingRestores({ clean: running !== undefined || stopped, write: report });
+    } catch (error) {
+      if (!stopped) throw error;
+      throw new ConfigError(
+        `Stopped the running harness Vortex and did not start a new one: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
   // Checked once this cache's own leftover is gone, so its processes never count.
   assertNoOwnVortex(runningVortex()?.pid);
   // Off Windows those checks find nothing: say so, whether or not progress is reported.
@@ -294,11 +318,16 @@ export async function bootstrap(
   if (options.fresh !== true && fresh)
     report(`the build changed since the last launch on this cache (${lastBuild!}); starting fresh`);
 
+  const kept = keep && options.skipGame !== true ? pendingRestoreOf(config.gameId) : undefined;
+  if (kept !== undefined)
+    report(
+      `kept the user folders of ${config.gameId} as the last run left them; \`down\` restores them to ${kept.backupDir}`,
+    );
   const pending =
     options.skipGame === true
       ? undefined
-      : await protectUserFolders(config.gameId, config.cacheDir);
-  if (pending !== undefined)
+      : (kept ?? (await protectUserFolders(config.gameId, config.cacheDir)));
+  if (pending !== undefined && kept === undefined)
     report(`backed up the user folders of ${config.gameId} to ${pending.backupDir}`);
   try {
     // The fake Fallout 4 uses the real Fallout 4 folders, backed up just now. Vortex needs the
@@ -362,12 +391,27 @@ async function launchProfile(
   // The disposable game keeps the files an earlier profile deployed. A fresh profile knows of no
   // deployment, so Vortex asks "Purge files from different instance?" and the game never becomes
   // active: the game folder is emptied before every fresh profile, the baseline's included.
+  // A registered copy keeps the real game's files, so only what an earlier profile deployed (its
+  // manifests list it) is removed: otherwise the same purge prompt blocks every install and deploy.
   const resetGame = (when: string): void => {
+    if (options.preserveGameFixture === true) return;
     if (
-      options.preserveGameFixture !== true &&
       resetDisposableGameData(config, isBethesdaSandbox(config) ? { keep: ["Fallout4.esm"] } : {})
-    )
+    ) {
       report(`cleared the disposable game's deployed files ${when}`);
+      return;
+    }
+    if (
+      options.skipGame !== true &&
+      config.gamePath !== undefined &&
+      findGameCopy(config.gameId, config.gamePath) !== undefined
+    ) {
+      const removed = removeCopyDeployments(config.gamePath);
+      if (removed.length > 0)
+        report(
+          `removed an earlier deployment from the game copy ${when} (${String(removed.length)} file(s))`,
+        );
+    }
   };
 
   const cold = !isUsableSnapshot(snapshot, apiKey, config.gameId);

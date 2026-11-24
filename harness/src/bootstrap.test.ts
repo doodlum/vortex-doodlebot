@@ -17,7 +17,14 @@ import {
 } from "./bootstrap";
 import { assertNoOwnVortex, windowsOnlyWarning } from "./ownVortex";
 import { assertGamePathAllowed } from "./gameCommand";
-import { protectUserFolders, settlePendingRestores, userFoldersOf } from "./userFolders";
+import {
+  pendingRestoreOf,
+  protectUserFolders,
+  settlePendingRestores,
+  userFoldersOf,
+} from "./userFolders";
+import { findGameCopy } from "./content";
+import { ConfigError } from "./config";
 import { bethesdaSandboxPaths } from "./bethesdaSandbox";
 import type { HarnessConfig } from "./config";
 import { requireOAuth } from "./auth";
@@ -63,7 +70,13 @@ vi.mock("./ownVortex", () => ({
   windowsOnlyWarning: vi.fn((): string | undefined => undefined),
 }));
 vi.mock("./gameCommand", () => ({ assertGamePathAllowed: vi.fn() }));
+// The registry of game copies is ~/.doodlebot/content.json: never read the machine's own.
+vi.mock("./content", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./content")>()),
+  findGameCopy: vi.fn(() => undefined),
+}));
 vi.mock("./userFolders", () => ({
+  pendingRestoreOf: vi.fn(() => undefined),
   protectUserFolders: vi.fn(async () => undefined),
   settlePendingRestores: vi.fn(async () => undefined),
   userFolderRoots: vi.fn(() => ({ documents: "", localAppData: "", roamingAppData: "" })),
@@ -203,6 +216,55 @@ describe("one harness Vortex per machine", () => {
       vi.mocked(launchVortex).mock.invocationCallOrder[0]!,
     );
     await result.instance.stop();
+  });
+
+  it("says it stopped the leftover and started nothing when its restore leaves files", async () => {
+    const config = fakeConfig();
+    writeInstanceRecord(liveRecord(config.cacheDir));
+    vi.mocked(stopStaleInstance).mockResolvedValueOnce(true);
+    vi.mocked(settlePendingRestores).mockRejectedValueOnce(
+      new ConfigError("Not restored: these files ..."),
+    );
+    const failure = await bootstrap(config, { fresh: true }).then(
+      () => undefined,
+      (e: unknown) => e as Error,
+    );
+    expect(failure).toBeInstanceOf(ConfigError);
+    expect(failure?.message).toBe(
+      "Stopped the running harness Vortex and did not start a new one: Not restored: these files ...",
+    );
+    expect(launchVortex).not.toHaveBeenCalled();
+  });
+
+  it("--keep-user-folders restarts without restoring, keeping the first run's backup", async () => {
+    const config = fakeConfig();
+    writeInstanceRecord(liveRecord(config.cacheDir));
+    vi.mocked(stopStaleInstance).mockResolvedValueOnce(true);
+    const kept = { gameId: "fallout4", backupDir: "C:/backups/first", startedAt: "earlier" };
+    vi.mocked(pendingRestoreOf).mockReturnValueOnce(kept);
+    const progress: string[] = [];
+    const result = await bootstrap(config, {
+      keepUserFolders: true,
+      onProgress: (m) => progress.push(m),
+    });
+    expect(stopStaleInstance).toHaveBeenCalledWith(config);
+    expect(settlePendingRestores).not.toHaveBeenCalled();
+    expect(protectUserFolders).not.toHaveBeenCalled();
+    expect(pendingRestoreOf).toHaveBeenCalledWith("fallout4");
+    expect(progress).toContain(
+      "kept the user folders of fallout4 as the last run left them; `down` restores them to C:/backups/first",
+    );
+    expect(launchVortex).toHaveBeenCalled();
+    await result.instance.stop();
+  });
+
+  it("--keep-user-folders refuses when nothing of this cache is running", async () => {
+    const config = fakeConfig();
+    await expect(bootstrap(config, { keepUserFolders: true })).rejects.toThrow(
+      "--keep-user-folders restarts a running harness Vortex of this cache, and none is running.",
+    );
+    expect(stopStaleInstance).not.toHaveBeenCalled();
+    expect(launchVortex).not.toHaveBeenCalled();
   });
 
   it("settles a dead leftover's restore as unclean", async () => {
@@ -484,6 +546,55 @@ describe("real copied game preservation", () => {
         );
     },
   );
+});
+
+describe("a registered game copy on a reset profile", () => {
+  function copyWithDeployment(config: HarnessConfig) {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), "vortex-ai-copy-"));
+    roots.push(copy);
+    const data = path.join(copy, "Data");
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(path.join(data, "Skyrim.esm"), "game master");
+    fs.writeFileSync(path.join(data, "ProbeAlpha.esp"), "deployed by an earlier profile");
+    fs.writeFileSync(
+      path.join(data, "vortex.deployment.json"),
+      JSON.stringify({
+        instance: "earlier",
+        targetPath: data,
+        files: [{ relPath: "ProbeAlpha.esp" }],
+      }),
+    );
+    fs.writeFileSync(authCacheFile(config), "null");
+    return { ...config, gameId: "skyrimse", gamePath: copy };
+  }
+
+  it("loses the earlier deployment and keeps the game's files", async () => {
+    const config = copyWithDeployment(fakeConfig());
+    vi.mocked(findGameCopy).mockReturnValue({
+      gameId: "skyrimse",
+      path: config.gamePath!,
+    } as never);
+    const progress: string[] = [];
+    try {
+      await bootstrap(config, { fresh: true, onProgress: (m) => progress.push(m) });
+    } finally {
+      vi.mocked(findGameCopy).mockReset();
+    }
+    expect(fs.readdirSync(path.join(config.gamePath!, "Data"))).toEqual(["Skyrim.esm"]);
+    expect(progress).toContainEqual(
+      expect.stringMatching(
+        /^removed an earlier deployment from the game copy (before building the baseline|for the reset profile) \(2 file\(s\)\)$/,
+      ),
+    );
+  });
+
+  it("is left alone when the folder is not a registered copy", async () => {
+    const config = copyWithDeployment(fakeConfig());
+    await bootstrap(config, { fresh: true });
+    expect(fs.readdirSync(path.join(config.gamePath!, "Data")).sort()).toEqual(
+      ["ProbeAlpha.esp", "Skyrim.esm", "vortex.deployment.json"].sort(),
+    );
+  });
 });
 
 describe("live-A: a cold bootstrap's disposable game", () => {
